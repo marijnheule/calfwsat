@@ -869,13 +869,27 @@ HEADER:
   }
   if (is_weighted) {
     msg ("parsed header for weighted max sat problem with ' %d %d %lf'", m, n, max_weight);
-    #ifndef PALSAT
+    #ifdef PALSAT
+    {
+      int i;
+      for (i = 0; i < threads; i++) {
+        yals_set_max_weight (worker[i].yals, max_weight);
+        yals_using_maxs (worker[i].yals, 1);
+      }
+    }
+    #else
     yals_set_max_weight (yals, max_weight);
     yals_using_maxs (yals, 1);
     #endif
   } else {
     msg ("parsed header with ' %d %d'", m, n);
-    #ifndef PALSAT
+    #ifdef PALSAT
+    {
+      int i;
+      for (i = 0; i < threads; i++)
+        yals_using_maxs (worker[i].yals, 0);
+    }
+    #else
     yals_using_maxs (yals, 0);
     #endif
   }
@@ -933,10 +947,37 @@ BODY:
   lit *= sign;
   if (!lit) n--;
 #ifdef PALSAT
-  {
+  if (is_weighted && !got_weight) {
+    int i;
+    for (i = 0; i < threads; i++) {
+      if (cardinality)
+        yals_card_add_weight (worker[i].yals, weight);
+      else
+        yals_clause_add_weight (worker[i].yals, weight);
+    }
+    got_weight = 1;
+    weight = 0.0;
+    goto BODY;
+  }
+  if (cardinality && !bound) {
     int i;
     for (i = 0; i < threads; i++)
-      yals_add (worker[i].yals, lit);
+      yals_card_add (worker[i].yals, lit, 1); // add bound for new cardinality constraint
+    bound = 1;
+    goto BODY;
+  }
+  {
+    int i;
+    if (cardinality) {
+      for (i = 0; i < threads; i++)
+        yals_card_add (worker[i].yals, lit, 0); // add literal to cardinality constraint
+    } else {
+      for (i = 0; i < threads; i++)
+        yals_add (worker[i].yals, lit);
+    }
+  }
+  if (!lit) { // finished parsing a constraint, reset flags
+    cardinality = bound = got_weight = 0;
   }
 #else
   if (is_weighted && !got_weight) {
