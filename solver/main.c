@@ -1023,19 +1023,18 @@ DONE:
     else if (yals_getopt (WINNER, "witness")) fputs ("s CURRENT BEST\n", stdout);
     else fputs ("s UNKNOWN\n", stdout);
     write_witness ();
-    if (0) { // writing solution to standard out instead of a file
-        // if (res == 10) // output model only when it is solved.
-        // {
-          fflush (stdout);
-          for (i = 1; i <= V; i++) {
-	        lit = (yals_deref (WINNER, i) > 0) ? i : -i;
-          printval (lit);
-          }
-          printval (0);
-          if (nvaline) {
-            printvaline ();
-          }
-        // }
+    // Also print the satisfying assignment to stdout in DIMACS 'v' lines,
+    // so palsat / CaLFwSAT can be used in pipelines without reading witness.sol.
+    if (res == 10 && yals_getopt (WINNER, "witness")) {
+      fflush (stdout);
+      for (i = 1; i <= V; i++) {
+        lit = (yals_deref (WINNER, i) > 0) ? i : -i;
+        printval (lit);
+      }
+      printval (0);
+      if (nvaline) {
+        printvaline ();
+      }
     }
   } else fputs ("s UNSATISFIABLE\n", stdout);
   fflush (stdout);
