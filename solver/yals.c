@@ -4437,9 +4437,17 @@ double basic_ddfw_score (Yals * yals, int var) {
   int false_lit = -true_lit;
 
   double flip_gain =
-        yals->ddfw.unsat_weights [get_pos (false_lit)]  
+        yals->ddfw.unsat_weights [get_pos (false_lit)]
         - yals->ddfw.sat1_weights [get_pos (true_lit)];
   LOG ("determine uwvar %d with gain %lf, unsat %lf, sat %lf", var, flip_gain,yals->ddfw.unsat_weights [get_pos (false_lit)], yals->ddfw.sat1_weights [get_pos (true_lit)]);
+
+  // Snap near-zero gains to 0 so noisy residuals are treated as non-improving.
+  // eps = flip_gain_eps_e4 / 10000 (0 disables).
+  int e4 = yals->opts.flip_gain_eps_e4.val;
+  if (e4 > 0) {
+    double eps = e4 / 10000.0;
+    if (flip_gain > -eps && flip_gain < eps) flip_gain = 0.0;
+  }
 
   return flip_gain;
 }

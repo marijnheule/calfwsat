@@ -47,8 +47,8 @@ This code extends the solver yal-lin (Md Solimul Chowdhury, Cayden Codel, Marijn
   OPT (paramAbig,10,1,100,"a="); \
   OPT (paramCSmall,1,1,8,"c>"); \
   OPT (paramCBig,2,1,8,"c="); \
-  OPT (paramCeq,175,1,1000,"c="); \
-  OPT (paramAeq,75,1,1000,"c="); \
+  OPT (paramCeq,0,0,1000,"c="); \
+  OPT (paramAeq,250,1,1000,"c="); \
   OPT (limofranda,25,0,1000,"limit for random value of a"); \
   OPT (hitlim,-1,-1,INT_MAX,"minimum hit limit"); \
   OPT (keep,0,0,1,"keep assignment during restart"); \
@@ -81,23 +81,24 @@ This code extends the solver yal-lin (Md Solimul Chowdhury, Cayden Codel, Marijn
   OPT (wpercentage,10,0,90,"percentage of clause weights to transfer."); \
   OPT (wtrule,2,1,6,"weight transfer rule"); \
   OPT (invwtfactor,1,1,100," factor for computing weight with the inv factor rule."); \
-  OPT (wtrulelinchoice,2,1,10,"Linear weight transfer rule choice"); \
+  OPT (wtrulelinchoice,3,1,10,"Linear weight transfer rule choice"); \
   OPT (card_wtrule,2,1,2,"card ddfw weight transfer rule (1: constant, 2: linear"); \
-  OPT (card_compute,1,1,6,"card ddfw weight computation rule (1: linear, 2: exponential, 3: quadratic, 4: choice of exponent from option ddfw_cad_exp)"); \
-  OPT (ddfw_neighbors_plus,1,0,1,"ddfw look for neighbors+ before random sat"); \
+  OPT (card_compute,4,1,6,"card ddfw weight computation rule (1: linear, 2: exponential, 3: quadratic, 4: choice of exponent from option ddfw_cad_exp)"); \
+  OPT (ddfw_neighbors_plus,0,0,1,"ddfw look for neighbors+ before random sat"); \
   OPT (maxs_hard_eps,0,0,INT_MAX,"pure maxsat hard epsilon"); \
   OPT (maxs_soft_eps,0,0,INT_MAX,"pure maxsat soft epsilon"); \
   OPT (maxs_soft_stochastic_selection,0,0,INT_MAX,"Soft Constraints: pick from top K variables with weighted stochastic selection"); \
   OPT (maxs_hard_stochastic_selection,7,0,INT_MAX,"All/Hard Constraints: pick from top K variables with weighted stochastic selection"); \
   OPT (init_solution,0,0,1,"start from initial solution provided at <init.sol> [currently only in (Pure) MaxSAT]"); \
-  OPT (ddfw_init_clause_weight,8,1,INT_MAX,"initial ddfw clause weight"); \
-  OPT (ddfw_init_card_weight,35,1,INT_MAX,"initial ddfw cardinality constraint weight"); \
-  OPT (sat_ddfw_init_card_weight,8,1,INT_MAX,"initial ddfw cardinality constraint weight for SAT"); \
+  OPT (ddfw_init_clause_weight,100,1,INT_MAX,"initial ddfw clause weight"); \
+  OPT (ddfw_init_card_weight,100,1,INT_MAX,"initial ddfw cardinality constraint weight"); \
+  OPT (sat_ddfw_init_card_weight,100,1,INT_MAX,"initial ddfw cardinality constraint weight for SAT"); \
   OPT (maxs_transfer_soft,0,0,1,"transfer weight for soft constraints"); \
   OPT (maxs_soft_takes_hard,0,0,1,"soft constraints can take from hard in random transfer"); \
   OPT (maxs_hard_takes_soft,0,0,1,"hard constraints can take from soft in random transfer"); \
   OPT (wt_transfer_all,0,0,10,"transfer N / 10 of all weight on initial weight transfer"); \
-  OPT (ddfw_card_exp,0,-INT_MAX,INT_MAX,"exp = <val> / 10 + 1 for card_compute=4"); \
+  OPT (ddfw_card_exp,20,-INT_MAX,INT_MAX,"exp = <val> / 10 + 1 for card_compute=4"); \
+  OPT (flip_gain_eps_e4,1000,0,INT_MAX,"if >0, snap |flip_gain| < val/10000 to 0 in basic_ddfw_score"); \
   OPT (maxs_transfer_slow,0,0,1,"transfer weights if no improvement on inner loop (slow), instead of every inner loop (fast)"); \
   OPT (ddfw_select_exp,1,1,INT_MAX,"exponent for weighting variable values in stochastic selection"); \
   OPT (ddfw_random_select,-1,-1,INT_MAX,"chance of selecting a literal from the stack at random during variable selection, N / 100000"); \
@@ -108,7 +109,7 @@ This code extends the solver yal-lin (Md Solimul Chowdhury, Cayden Codel, Marijn
   OPT (maxs_flip_step,1,1,INT_MAX,"inner flips increment on each failed inner loop"); \
   OPT (maxs_pure,0,0,1,"set to pure (if adding partition units)"); \
   OPT (maxs_pure_polarity,0,-1,1,"set hard polarity (if adding partition units)"); \
-  OPT (reset_weights_on_restart,1,0,1,"reset ddfw weights to initial values on inner restart"); \
+  OPT (reset_weights_on_restart,0,0,1,"reset ddfw weights to initial values on inner restart"); \
   OPT (ddfw_maxs_init_weight_relative,1,0,1,"ddfw weights for soft constraints start as MaxSAT weights"); \
   OPT (maxs_keep_assignment,-1,-1,INT_MAX,"chance of keeping the current assignment after an inner restart, N / 100000"); \
   OPTSTEMPLATENDEBUG
