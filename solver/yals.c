@@ -5816,6 +5816,15 @@ int yals_inner_loop_max_tries (Yals * yals)
     {
        if (!yals_nunsat(yals))
         return 1;
+       // Check external termination callback (e.g., palsat sibling worker won).
+       // Throttle: only call the callback every termint iterations.
+       if (yals->cbs.term.fun && yals->limits.term-- <= 0) {
+         yals->limits.term = yals->opts.termint.val;
+         if (yals->cbs.term.fun (yals->cbs.term.state)) {
+           yals_msg (yals, 1, "forced to terminate (max_tries loop)");
+           return -1;
+         }
+       }
         // always active, no backwards compat for probsat... (keep for quick decent)
        if (!yals->ddfw.ddfw_active && yals_needs_ddfw (yals))
         yals->ddfw.ddfw_active = 1;
