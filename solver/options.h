@@ -35,7 +35,7 @@ This code extends the solver yal-lin (Md Solimul Chowdhury, Cayden Codel, Marijn
   OPT (computeneiinit,0 , 0, 1, "Compute the ddfw clause neighborhood initially for palsat"); \
   OPT (correct,0,0,1,"correct CB value depending on maximum length"); \
   OPT (crit,1,0,1,"dynamic break values (using critical lits)"); \
-  OPT (cutoff,1000000000 , 0,INT_MAX,"Maximum number of restarts"); \
+  OPT (cutoff,2000 , 0,INT_MAX,"flips per try (0 = unlimited; controls shared-cache cycle frequency)"); \
   OPT (ddfwpicklit, 2,1,6,"1=best,4=wrand"); \
   OPT (ddfwonly, 1,0,1,"1=only emply ddfw,0=employ a combination of heuristics"); \
   OPT (ddfwstartth, 10000,10,1000000,"use to compute threshold for #unsat_cluase/#total_clause to start ddfw."); \
@@ -52,7 +52,7 @@ This code extends the solver yal-lin (Md Solimul Chowdhury, Cayden Codel, Marijn
   OPT (limofranda,25,0,1000,"limit for random value of a"); \
   OPT (hitlim,-1,-1,INT_MAX,"minimum hit limit"); \
   OPT (keep,0,0,1,"keep assignment during restart"); \
-  OPT (maxtries,1 , 0,INT_MAX,"Maximum number of restarts"); \
+  OPT (maxtries,INT_MAX , 0,INT_MAX,"Maximum number of tries (default INT_MAX = unlimited)"); \
   OPT (minchunksize,(1<<8),2,(1<<20),"minium queue chunk size"); \
   OPT (pick,0,-1,4,"-1=pbfs,0=rnd,1=bfs,2=dfs,3=rbfs,4=ubfs"); \
   OPT (pol,0,-1,1,"negative=-1 positive=1 or random=0 polarity"); \
