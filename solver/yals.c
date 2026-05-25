@@ -25,9 +25,11 @@ This code extends the solver yal-lin (Md Solimul Chowdhury, Cayden Codel, Marijn
 #include <ctype.h>
 #include <limits.h>
 #include <math.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <float.h>
+#include <pthread.h>
 #include <sys/resource.h>
 #include <sys/time.h>
 
@@ -1604,6 +1606,433 @@ static unsigned yals_gcd (unsigned a, unsigned b) {
   }
   return a;
 }
+
+/*------------------------------------------------------------------------*/
+/* Shared assignment cache for parallel (palsat) workers.                 */
+/*                                                                        */
+/* Workers share a fixed-capacity pool of "good" assignments. Each time a */
+/* worker reaches its restart boundary (cutoff hit on the previous try),  */
+/* it (1) releases the cache slot it had been working on, (2) inserts its */
+/* best-of-try assignment, and (3) picks a new starting assignment by     */
+/* weighted random selection over unreserved slots (better cost -> higher */
+/* weight). The picked slot is reserved by this worker so no other worker */
+/* starts from the same assignment concurrently.                          */
+/*                                                                        */
+/* All policy choices are runtime-configurable via YalsSharedCacheConfig. */
+/*------------------------------------------------------------------------*/
+
+struct YalsSharedCache {
+  pthread_mutex_t lock;
+  YalsSharedCacheConfig cfg;
+  int count;                  // number of allocated slots
+  int nvars;                  // set on first insert
+  int nvarwords;              // set on first insert
+  int hamming_threshold;      // computed = max(1, percent*nvars/100)
+  int nworkers;
+  Word ** vals;               // [capacity] each NULL until allocated
+  int *   mins;               // [capacity] cost (yals_minimum) per slot
+  int *   reserved;           // [capacity] owner worker id or -1
+  int *   worker_slot;        // [nworkers] slot each worker reserves or -1
+  int *   worker_restarts;    // [nworkers] count of restarts seen so far
+  int *   worker_start_cost;  // [nworkers] cost at start-of-current-try (INT_MAX if none)
+  // stats
+  long long s_inserted, s_replaced_ham, s_replaced_worse;
+  long long s_skipped_close_worse, s_skipped_no_room, s_skipped_empty;
+  long long s_skipped_no_improve;
+  long long s_picked, s_pick_empty, s_pick_warmup, s_pick_explore;
+};
+
+void yals_shared_cache_config_init (YalsSharedCacheConfig * cfg) {
+  // Defaults chosen from the "combo_loose" winner of the initial sweep on
+  // ntil-35/36: looser Hamming threshold and a smaller cache promote
+  // diversity, and a brief per-worker warmup lets workers diverge before
+  // they start sharing.
+  cfg->capacity         = 256;
+  cfg->hamming_percent  = 5;
+  cfg->pick_weight      = YSC_PICK_LINEAR;
+  cfg->softmax_temp_x10 = 10;        // T = 1.0
+  cfg->replace_full     = YSC_REPLACE_WORSE_ONLY;
+  cfg->ham_replace      = YSC_HAM_REPLACE_EQ;
+  cfg->warmup           = 5;
+  cfg->explore_pct      = 0;
+  cfg->insert_mode      = YSC_INSERT_ALWAYS;
+}
+
+void yals_shared_cache_config_dump (const YalsSharedCacheConfig * cfg,
+                                    FILE * f) {
+  static const char * pick_names[]   = {"linear","rank","softmax","uniform","inv"};
+  static const char * repl_names[]   = {"worse-only","always","never"};
+  static const char * ham_names[]    = {"eq","strict","always"};
+  static const char * ins_names[]    = {"always","improved"};
+  fprintf (f,
+    "c shared-cache config: cap=%d ham_pct=%d pick=%s softmax_T=%.1f "
+    "replace=%s ham_replace=%s warmup=%d explore_pct=%d insert=%s\n",
+    cfg->capacity, cfg->hamming_percent,
+    pick_names[cfg->pick_weight % 5],
+    cfg->softmax_temp_x10 / 10.0,
+    repl_names[cfg->replace_full % 3],
+    ham_names[cfg->ham_replace % 3],
+    cfg->warmup, cfg->explore_pct,
+    ins_names[cfg->insert_mode % 2]);
+}
+
+YalsSharedCache * yals_shared_cache_new (int nworkers,
+                                         const YalsSharedCacheConfig * cfg) {
+  YalsSharedCache * c = calloc (1, sizeof *c);
+  c->cfg = *cfg;
+  if (c->cfg.capacity < 1) c->cfg.capacity = 1;
+  if (c->cfg.hamming_percent < 0) c->cfg.hamming_percent = 0;
+  if (c->cfg.softmax_temp_x10 < 1) c->cfg.softmax_temp_x10 = 1;
+  if (c->cfg.warmup < 0) c->cfg.warmup = 0;
+  if (c->cfg.explore_pct < 0) c->cfg.explore_pct = 0;
+  if (c->cfg.explore_pct > 100) c->cfg.explore_pct = 100;
+  c->nworkers = nworkers;
+  c->vals = calloc (c->cfg.capacity, sizeof (Word *));
+  c->mins = calloc (c->cfg.capacity, sizeof (int));
+  c->reserved = malloc (c->cfg.capacity * sizeof (int));
+  for (int i = 0; i < c->cfg.capacity; i++) c->reserved[i] = -1;
+  c->worker_slot = malloc (nworkers * sizeof (int));
+  c->worker_restarts = calloc (nworkers, sizeof (int));
+  c->worker_start_cost = malloc (nworkers * sizeof (int));
+  for (int i = 0; i < nworkers; i++) {
+    c->worker_slot[i] = -1;
+    c->worker_start_cost[i] = INT_MAX;
+  }
+  pthread_mutex_init (&c->lock, 0);
+  return c;
+}
+
+void yals_shared_cache_delete (YalsSharedCache * c) {
+  if (!c) return;
+  for (int i = 0; i < c->cfg.capacity; i++) free (c->vals[i]);
+  free (c->vals);
+  free (c->mins);
+  free (c->reserved);
+  free (c->worker_slot);
+  free (c->worker_restarts);
+  free (c->worker_start_cost);
+  pthread_mutex_destroy (&c->lock);
+  free (c);
+}
+
+void yals_set_shared_cache (Yals * yals, YalsSharedCache * c) {
+  yals->shared_cache = c;
+}
+
+void yals_shared_cache_stats (YalsSharedCache * c) {
+  if (!c) return;
+  fprintf (stdout,
+    "c shared cache: capacity %d, used %d, hamming_thresh %d bits "
+    "(%d%% of %d vars)\n",
+    c->cfg.capacity, c->count, c->hamming_threshold,
+    c->cfg.hamming_percent, c->nvars);
+  fprintf (stdout,
+    "c shared cache: inserts %lld, ham-replaces %lld, worse-replaces %lld\n",
+    c->s_inserted, c->s_replaced_ham, c->s_replaced_worse);
+  fprintf (stdout,
+    "c shared cache: skipped (close-worse %lld, no-room %lld, src-empty %lld, no-improve %lld)\n",
+    c->s_skipped_close_worse, c->s_skipped_no_room, c->s_skipped_empty,
+    c->s_skipped_no_improve);
+  fprintf (stdout,
+    "c shared cache: picks %lld (warmup-skip %lld, explore %lld), pick-empty %lld\n",
+    c->s_picked, c->s_pick_warmup, c->s_pick_explore, c->s_pick_empty);
+  fflush (stdout);
+}
+
+static int yals_shared_cache_hamming (const Word * a, const Word * b,
+                                      int nwords) {
+  int h = 0;
+  for (int i = 0; i < nwords; i++)
+    h += __builtin_popcount ((unsigned) (a[i] ^ b[i]));
+  return h;
+}
+
+static void yals_shared_cache_init_dims_locked (YalsSharedCache * c,
+                                                int nvars, int nvarwords) {
+  if (c->nvarwords) return;
+  c->nvars = nvars;
+  c->nvarwords = nvarwords;
+  int t = (c->cfg.hamming_percent * nvars) / 100;
+  if (t < 1 && c->cfg.hamming_percent > 0) t = 1;
+  c->hamming_threshold = t;
+}
+
+static void yals_shared_cache_release (Yals * yals) {
+  YalsSharedCache * c = yals->shared_cache;
+  if (!c) return;
+  int w = yals->wid;
+  if (w < 0 || w >= c->nworkers) return;
+  pthread_mutex_lock (&c->lock);
+  int slot = c->worker_slot[w];
+  if (slot >= 0) {
+    c->reserved[slot] = -1;
+    c->worker_slot[w] = -1;
+  }
+  pthread_mutex_unlock (&c->lock);
+}
+
+// Decide whether to keep the inserted assignment given a Hamming-close
+// existing entry.
+static int yals_shared_cache_ham_should_replace (int policy,
+                                                 int new_cost,
+                                                 int old_cost) {
+  switch (policy) {
+    case YSC_HAM_REPLACE_STRICT: return new_cost <  old_cost;
+    case YSC_HAM_REPLACE_ALWAYS: return 1;
+    case YSC_HAM_REPLACE_EQ:
+    default:                     return new_cost <= old_cost;
+  }
+}
+
+static void yals_shared_cache_insert (Yals * yals) {
+  YalsSharedCache * c = yals->shared_cache;
+  if (!c) return;
+  // Nothing useful to insert until at least one flip / save_new_minimum.
+  if (yals->stats.tmp == INT_MAX) {
+    pthread_mutex_lock (&c->lock);
+    c->s_skipped_empty++;
+    pthread_mutex_unlock (&c->lock);
+    return;
+  }
+  const Word * src = yals->tmp;
+  int min = yals->stats.tmp;
+  pthread_mutex_lock (&c->lock);
+  yals_shared_cache_init_dims_locked (c, yals->nvars, yals->nvarwords);
+
+  // Insert gating: only insert if we improved over what this try started with.
+  if (c->cfg.insert_mode == YSC_INSERT_IMPROVED) {
+    int w = yals->wid;
+    int start = (w >= 0 && w < c->nworkers) ? c->worker_start_cost[w] : INT_MAX;
+    if (start != INT_MAX && min >= start) {
+      c->s_skipped_no_improve++;
+      pthread_mutex_unlock (&c->lock);
+      return;
+    }
+  }
+  size_t bytes = c->nvarwords * sizeof (Word);
+
+  // 1. Hamming-close unreserved entry?  (skip search if threshold == 0)
+  int close = -1;
+  if (c->hamming_threshold > 0) {
+    for (int i = 0; i < c->cfg.capacity; i++) {
+      if (!c->vals[i]) continue;
+      if (c->reserved[i] >= 0) continue;
+      int h = yals_shared_cache_hamming (src, c->vals[i], c->nvarwords);
+      if (h < c->hamming_threshold) { close = i; break; }
+    }
+  }
+  if (close >= 0) {
+    if (yals_shared_cache_ham_should_replace (c->cfg.ham_replace,
+                                              min, c->mins[close])) {
+      memcpy (c->vals[close], src, bytes);
+      c->mins[close] = min;
+      c->s_replaced_ham++;
+    } else {
+      c->s_skipped_close_worse++;
+    }
+    pthread_mutex_unlock (&c->lock);
+    return;
+  }
+
+  // 2. Free slot?
+  int free_slot = -1;
+  for (int i = 0; i < c->cfg.capacity; i++) {
+    if (!c->vals[i]) { free_slot = i; break; }
+  }
+  if (free_slot >= 0) {
+    c->vals[free_slot] = malloc (bytes);
+    memcpy (c->vals[free_slot], src, bytes);
+    c->mins[free_slot] = min;
+    c->reserved[free_slot] = -1;
+    c->count++;
+    c->s_inserted++;
+    pthread_mutex_unlock (&c->lock);
+    return;
+  }
+
+  // 3. Cache full + no ham-match. Replacement per policy.
+  if (c->cfg.replace_full == YSC_REPLACE_NEVER) {
+    c->s_skipped_no_room++;
+    pthread_mutex_unlock (&c->lock);
+    return;
+  }
+  int worst = -1, worst_cost = -1;
+  int require_worse = (c->cfg.replace_full == YSC_REPLACE_WORSE_ONLY);
+  for (int i = 0; i < c->cfg.capacity; i++) {
+    if (c->reserved[i] >= 0) continue;
+    if (require_worse && c->mins[i] < min) continue;
+    if (c->mins[i] > worst_cost) {
+      worst_cost = c->mins[i];
+      worst = i;
+    }
+  }
+  if (worst >= 0) {
+    memcpy (c->vals[worst], src, bytes);
+    c->mins[worst] = min;
+    c->s_replaced_worse++;
+  } else {
+    c->s_skipped_no_room++;
+  }
+  pthread_mutex_unlock (&c->lock);
+}
+
+// Build a per-slot weight given the configured pick scheme. Slots that
+// are not available (NULL or reserved) get weight 0.
+// `weights` is sized [capacity]. Returns the sum of weights.
+static double yals_shared_cache_build_weights (YalsSharedCache * c,
+                                               double * weights) {
+  int cap = c->cfg.capacity;
+  int maxc = -1;
+  int navail = 0;
+  for (int i = 0; i < cap; i++) {
+    weights[i] = 0.0;
+    if (!c->vals[i] || c->reserved[i] >= 0) continue;
+    if (c->mins[i] > maxc) maxc = c->mins[i];
+    navail++;
+  }
+  if (!navail) return 0.0;
+  // For rank scheme we need a sorted list of (cost, idx) over avail.
+  // For other schemes we compute directly.
+  if (c->cfg.pick_weight == YSC_PICK_RANK) {
+    // O(n^2) ranking, fine for cap <= ~4096.
+    // Each available slot's rank = number of available slots with strictly
+    // smaller cost (or equal, with ties broken by index). Weight = N - rank.
+    for (int i = 0; i < cap; i++) {
+      if (!c->vals[i] || c->reserved[i] >= 0) continue;
+      int rank = 0;
+      for (int j = 0; j < cap; j++) {
+        if (j == i || !c->vals[j] || c->reserved[j] >= 0) continue;
+        if (c->mins[j] < c->mins[i] ||
+            (c->mins[j] == c->mins[i] && j < i)) rank++;
+      }
+      weights[i] = (double) (navail - rank);
+    }
+  } else {
+    double temp = c->cfg.softmax_temp_x10 / 10.0;
+    if (temp < 0.1) temp = 0.1;
+    for (int i = 0; i < cap; i++) {
+      if (!c->vals[i] || c->reserved[i] >= 0) continue;
+      int cost = c->mins[i];
+      double w;
+      switch (c->cfg.pick_weight) {
+        case YSC_PICK_UNIFORM: w = 1.0; break;
+        case YSC_PICK_INV:     w = 1.0 / (cost + 1.0); break;
+        case YSC_PICK_SOFTMAX: w = exp ((double)(maxc - cost) / temp); break;
+        case YSC_PICK_LINEAR:
+        default:               w = (double) (maxc - cost + 1); break;
+      }
+      weights[i] = w;
+    }
+  }
+  double total = 0.0;
+  for (int i = 0; i < cap; i++) total += weights[i];
+  return total;
+}
+
+// Returns 1 if a pick was made and yals->vals was overwritten.
+static int yals_shared_cache_pick (Yals * yals) {
+  YalsSharedCache * c = yals->shared_cache;
+  if (!c) return 0;
+  int w = yals->wid;
+  if (w < 0 || w >= c->nworkers) return 0;
+
+  pthread_mutex_lock (&c->lock);
+  // Per-worker warm-up: first N restarts skip the shared pick.
+  int rcount = c->worker_restarts[w]++;
+  if (rcount < c->cfg.warmup) {
+    c->s_pick_warmup++;
+    pthread_mutex_unlock (&c->lock);
+    return 0;
+  }
+  if (!c->nvarwords || c->count == 0) {
+    c->s_pick_empty++;
+    pthread_mutex_unlock (&c->lock);
+    return 0;
+  }
+
+  int cap = c->cfg.capacity;
+  int picked = -1;
+  int navail = 0;
+  for (int i = 0; i < cap; i++) {
+    if (!c->vals[i] || c->reserved[i] >= 0) continue;
+    navail++;
+  }
+  if (!navail) {
+    c->s_pick_empty++;
+    pthread_mutex_unlock (&c->lock);
+    return 0;
+  }
+
+  int use_explore = 0;
+  if (c->cfg.explore_pct > 0) {
+    unsigned r = yals_rand (yals) % 100u;
+    if ((int) r < c->cfg.explore_pct) use_explore = 1;
+  }
+
+  if (use_explore) {
+    unsigned pick_idx = yals_rand (yals) % (unsigned) navail;
+    unsigned seen = 0;
+    for (int i = 0; i < cap; i++) {
+      if (!c->vals[i] || c->reserved[i] >= 0) continue;
+      if (seen == pick_idx) { picked = i; break; }
+      seen++;
+    }
+    c->s_pick_explore++;
+  } else {
+    double * weights = malloc (cap * sizeof (double));
+    double total = yals_shared_cache_build_weights (c, weights);
+    if (total > 0) {
+      // Two yals_rand calls give 64 bits of entropy.
+      unsigned hi = yals_rand (yals);
+      unsigned lo = yals_rand (yals);
+      double u = (((double) hi) * 4294967296.0 + (double) lo) /
+                 (4294967296.0 * 4294967296.0);
+      double target = u * total;
+      double acc = 0.0;
+      for (int i = 0; i < cap; i++) {
+        if (weights[i] <= 0) continue;
+        acc += weights[i];
+        if (acc >= target) { picked = i; break; }
+      }
+      // numerical safety: fall back to any available.
+      if (picked < 0) {
+        for (int i = 0; i < cap; i++) {
+          if (c->vals[i] && c->reserved[i] < 0) { picked = i; break; }
+        }
+      }
+    }
+    free (weights);
+  }
+
+  if (picked >= 0) {
+    c->reserved[picked] = w;
+    c->worker_slot[w] = picked;
+    c->worker_start_cost[w] = c->mins[picked];
+    size_t bytes = c->nvarwords * sizeof (Word);
+    memcpy (yals->vals, c->vals[picked], bytes);
+    c->s_picked++;
+  } else {
+    c->s_pick_empty++;
+    // No pick made: this try will run from whatever yals_pick_assignment
+    // left in vals. Treat its starting cost as unknown -> never improvable.
+    c->worker_start_cost[w] = INT_MAX;
+  }
+  pthread_mutex_unlock (&c->lock);
+  return picked >= 0 ? 1 : 0;
+}
+
+// Hook called from yals_restart_inner: release previous reservation,
+// insert best-of-just-finished try, pick a new starting assignment.
+// Returns 1 iff yals->vals was overwritten (caller must reapply trailing
+// bits + units and rebuild satcounters).
+static int yals_shared_cache_cycle (Yals * yals) {
+  if (!yals->shared_cache) return 0;
+  yals_shared_cache_release (yals);
+  yals_shared_cache_insert (yals);
+  return yals_shared_cache_pick (yals);
+}
+
+/*------------------------------------------------------------------------*/
 
 static void yals_cache_assignment (Yals * yals) {
   int min, other_min, cachemax, cachemin, cachemincount, cachemaxcount;
@@ -3299,6 +3728,12 @@ static void yals_restart_inner (Yals * yals) {
       yals_fix_strategy (yals);
       save_current_assignment (yals);
       yals_pick_assignment (yals, 0);
+      // If a shared cache is attached (palsat), it may override the
+      // per-worker pick with an assignment drawn from the shared pool.
+      if (yals_shared_cache_cycle (yals)) {
+        yals_remove_trailing_bits (yals);
+        yals_set_units (yals);
+      }
       yals_update_sat_and_unsat (yals);
       yals->stats.tmp = INT_MAX;
       yals->stats.maxs_tmp_weight = YALS_DOUBLE_MAX;
@@ -3315,6 +3750,10 @@ static void yals_restart_inner (Yals * yals) {
       yals_fix_strategy (yals);
       save_current_assignment (yals);
       yals_pick_assignment (yals, 0);
+      if (yals_shared_cache_cycle (yals)) {
+        yals_remove_trailing_bits (yals);
+        yals_set_units (yals);
+      }
       yals_update_sat_and_unsat (yals);
       yals->stats.tmp = INT_MAX;
       yals_save_new_minimum (yals);

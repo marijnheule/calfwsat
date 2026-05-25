@@ -60,6 +60,9 @@ This code extends the solver yal-lin (Md Solimul Chowdhury, Cayden Codel, Marijn
 #define THREADS 12
 typedef struct Worker { Yals * yals; pthread_t thread; } Worker;
 static Worker * worker;
+static YalsSharedCache * shared_cache;
+static YalsSharedCacheConfig shared_cache_cfg;
+static int shared_cache_enabled = 1;     // overridden by --no-shared-cache
 static int done, winner, threads = THREADS, threadset;
 struct { pthread_mutex_t done, msg, mem; } lock;
 #else
@@ -376,6 +379,9 @@ static void catchsig (int sig) {
     catchedsig = 1;
     caughtsigmsg (sig);
     stats ();
+#ifdef PALSAT
+    yals_shared_cache_stats (shared_cache);
+#endif
     if (verbose) write_witness();
     caughtsigmsg (sig);
   }
@@ -445,6 +451,24 @@ static int opt (const char * arg) {
 
 /*------------------------------------------------------------------------*/
 #ifdef PALSAT
+
+// Match `--key=val`, `--key val`, or `--key` (treated as flag, returns "").
+// Returns the value string on match, or NULL otherwise.
+// If the form `--key val` is used, advances *idx to consume the value.
+static const char * sc_flag (const char * arg, const char * key,
+                             int * idx, int argc, char ** argv) {
+  size_t klen = strlen (key);
+  if (strncmp (arg, key, klen) != 0) return NULL;
+  if (arg[klen] == 0) {
+    // Bare --key.  Peek next arg; if it looks like a value (not a new --flag
+    // and not the end) consume it.  Otherwise treat as a flag (return "").
+    if (*idx + 1 < argc && argv[*idx + 1][0] != '-')
+      return argv[++(*idx)];
+    return "";
+  }
+  if (arg[klen] == '=') return arg + klen + 1;
+  return NULL;
+}
 
 static void lockmsg (void* dummy) {
   (void) dummy;
@@ -667,6 +691,8 @@ static void version () { printf ("%s\n", yals_version ()); }
 
 int main (int argc, char** argv) {
   int i, ch, sign, lit, res, m, n;
+  const char * __v;
+  (void) __v;
   int cardinality, bound, got_weight;
   double weight;
   int is_weighted = 0;
@@ -712,6 +738,7 @@ int main (int argc, char** argv) {
   }
   msg ("creating %d solver instances", threads);
   worker = mymalloc (0, threads * sizeof *worker);
+  yals_shared_cache_config_init (&shared_cache_cfg);
   for (i = 0; i < threads; i++) {
     char prefix[80];
     Yals * y = yals_new_with_mem_mgr (0, mymalloc, myrealloc, myfree);
@@ -787,7 +814,59 @@ int main (int argc, char** argv) {
     else if (!strcmp (argv[i], "--innerrestart")) setopt ("innerrestartoff", 0);
     else if (!strcmp (argv[i], "--maxtries")) { setopt ("maxtries", atoll (argv[++i]));}
     else if (!strcmp (argv[i], "--cutoff")) { setopt ("cutoff", atoll (argv[++i]));}
-    
+
+#ifdef PALSAT
+    else if (!strcmp (argv[i], "--no-shared-cache") ||
+             !strcmp (argv[i], "--shared-cache=0"))
+      shared_cache_enabled = 0;
+    else if (!strcmp (argv[i], "--shared-cache=1"))
+      shared_cache_enabled = 1;
+    else if ((__v = sc_flag (argv[i], "--shared-cache-size",
+                             &i, argc, argv)) != NULL)
+      shared_cache_cfg.capacity = atoi (__v);
+    else if ((__v = sc_flag (argv[i], "--shared-cache-hamming",
+                             &i, argc, argv)) != NULL)
+      shared_cache_cfg.hamming_percent = atoi (__v);
+    else if ((__v = sc_flag (argv[i], "--shared-cache-pick",
+                             &i, argc, argv)) != NULL) {
+      if      (!strcmp (__v, "linear"))  shared_cache_cfg.pick_weight = YSC_PICK_LINEAR;
+      else if (!strcmp (__v, "rank"))    shared_cache_cfg.pick_weight = YSC_PICK_RANK;
+      else if (!strcmp (__v, "softmax")) shared_cache_cfg.pick_weight = YSC_PICK_SOFTMAX;
+      else if (!strcmp (__v, "uniform")) shared_cache_cfg.pick_weight = YSC_PICK_UNIFORM;
+      else if (!strcmp (__v, "inv"))     shared_cache_cfg.pick_weight = YSC_PICK_INV;
+      else die ("unknown --shared-cache-pick value '%s' (linear|rank|softmax|uniform|inv)", __v);
+    }
+    else if ((__v = sc_flag (argv[i], "--shared-cache-softmax-temp",
+                             &i, argc, argv)) != NULL)
+      shared_cache_cfg.softmax_temp_x10 = atoi (__v);
+    else if ((__v = sc_flag (argv[i], "--shared-cache-replace",
+                             &i, argc, argv)) != NULL) {
+      if      (!strcmp (__v, "worse"))  shared_cache_cfg.replace_full = YSC_REPLACE_WORSE_ONLY;
+      else if (!strcmp (__v, "always")) shared_cache_cfg.replace_full = YSC_REPLACE_ALWAYS;
+      else if (!strcmp (__v, "never"))  shared_cache_cfg.replace_full = YSC_REPLACE_NEVER;
+      else die ("unknown --shared-cache-replace value '%s' (worse|always|never)", __v);
+    }
+    else if ((__v = sc_flag (argv[i], "--shared-cache-ham-replace",
+                             &i, argc, argv)) != NULL) {
+      if      (!strcmp (__v, "eq"))     shared_cache_cfg.ham_replace = YSC_HAM_REPLACE_EQ;
+      else if (!strcmp (__v, "strict")) shared_cache_cfg.ham_replace = YSC_HAM_REPLACE_STRICT;
+      else if (!strcmp (__v, "always")) shared_cache_cfg.ham_replace = YSC_HAM_REPLACE_ALWAYS;
+      else die ("unknown --shared-cache-ham-replace value '%s' (eq|strict|always)", __v);
+    }
+    else if ((__v = sc_flag (argv[i], "--shared-cache-warmup",
+                             &i, argc, argv)) != NULL)
+      shared_cache_cfg.warmup = atoi (__v);
+    else if ((__v = sc_flag (argv[i], "--shared-cache-explore",
+                             &i, argc, argv)) != NULL)
+      shared_cache_cfg.explore_pct = atoi (__v);
+    else if ((__v = sc_flag (argv[i], "--shared-cache-insert",
+                             &i, argc, argv)) != NULL) {
+      if      (!strcmp (__v, "always"))   shared_cache_cfg.insert_mode = YSC_INSERT_ALWAYS;
+      else if (!strcmp (__v, "improved")) shared_cache_cfg.insert_mode = YSC_INSERT_IMPROVED;
+      else die ("unknown --shared-cache-insert value '%s' (always|improved)", __v);
+    }
+#endif
+
     else if (!strcmp (argv[i], "-")) {
       if (filename)
 	die ("file '%s' and '-' specified (try '-h')", filename);
@@ -809,6 +888,16 @@ int main (int argc, char** argv) {
     else
       closefile = 1, filename = argv[i];
   }
+#ifdef PALSAT
+  if (shared_cache_enabled) {
+    shared_cache = yals_shared_cache_new (threads, &shared_cache_cfg);
+    yals_shared_cache_config_dump (&shared_cache_cfg, stdout);
+    for (i = 0; i < threads; i++)
+      yals_set_shared_cache (worker[i].yals, shared_cache);
+  } else {
+    msg ("shared assignment cache disabled (--no-shared-cache)");
+  }
+#endif
   setsighandlers ();
   verbose = yals_getopt (YALS, "verbose");
   if (verbose) {
@@ -1041,8 +1130,10 @@ DONE:
   resetsighandlers ();
   stats ();
 #ifdef PALSAT
+  yals_shared_cache_stats (shared_cache);
   for (i = 0; i < threads; i++) yals_del (worker[i].yals);
   myfree (0, worker, threads * sizeof *worker);
+  yals_shared_cache_delete (shared_cache);
 #else
   yals_del (yals);
 #endif
