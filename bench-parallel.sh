@@ -97,7 +97,8 @@ case "$INSTANCES_ARG" in
     # synthesize a one-line instances file in a scratch tempdir
     INSTANCES_FILE=$(mktemp -t bp-instances.XXXXXX)
     echo "$INSTANCES_ARG" > "$INSTANCES_FILE"
-    trap 'rm -f "$INSTANCES_FILE"' EXIT
+    # (cleanup of this temp file is registered later in the combined
+    #  EXIT/INT/TERM/HUP trap that also performs aggregation.)
     ;;
   *)
     INSTANCES_FILE="$INSTANCES_ARG"
@@ -134,11 +135,124 @@ done
 mkdir -p "$OUT_DIR/rows"
 ROW_DIR="$OUT_DIR/rows"
 
-# Mirror everything we print to a run.log inside out_dir so the full session
-# is captured in the committable output directory.
+# Mirror everything we print to a run.log inside out_dir.
 RUN_LOG="$OUT_DIR/run.log"
 : > "$RUN_LOG"
 exec > >(tee -a "$RUN_LOG") 2>&1
+
+# ---------- aggregation: defined early, run from EXIT trap ----------
+# Defined as a function and triggered via trap EXIT so that even if the
+# script gets killed (SIGHUP from terminal disconnect, SIGTERM, etc.) the
+# CSV/summary/report still get written from whatever rows are on disk.
+# Re-running the script later re-fires the trap; output files are
+# overwritten idempotently.
+do_aggregate() {
+  # Don't error out if files are missing; this trap may run very early.
+  set +u
+  local CSV="$OUT_DIR/results.csv"
+  local SUMMARY="$OUT_DIR/summary.txt"
+  local PER_INST="$OUT_DIR/per-instance.txt"
+  local REPORT="$OUT_DIR/report.txt"
+
+  # If there are no row files yet, nothing to aggregate.
+  if ! ls "$ROW_DIR"/*.row >/dev/null 2>&1; then
+    return 0
+  fi
+
+  {
+    echo "config,instance,vars,seed,result,rc,wall,best"
+    ls "$ROW_DIR"/*.row 2>/dev/null | sort | while read -r f; do cat "$f"; done
+  } > "$CSV"
+  local nrows=$(($(wc -l < "$CSV") - 1))
+
+  awk -F, -v T="$TIMEOUT_SEC" '
+    NR==1 { next }
+    { cfg=$1; res=$5; wall=$7+0
+      n[cfg]++
+      if (res == "SAT") { s[cfg]++; ws[cfg] += wall; walls[cfg] = walls[cfg] " " wall }
+      par_sum[cfg] += (res == "SAT" ? wall : 2*T) }
+    END {
+      for (c in n) {
+        ss = s[c] ? s[c] : 0; tt = n[c] - ss
+        mean_w = ss ? ws[c]/ss : 0; par2 = par_sum[c] / n[c]
+        nw = split(walls[c], arr, " "); m = 0
+        for (i = 1; i <= nw; i++) if (arr[i] != "") { m++; v[m] = arr[i] }
+        for (i = 1; i <= m; i++) for (j = i+1; j <= m; j++)
+          if (v[i]+0 > v[j]+0) { t = v[i]; v[i] = v[j]; v[j] = t }
+        median = m == 0 ? 0 : (m % 2 == 1 ? v[(m+1)/2] : (v[m/2] + v[m/2+1])/2)
+        printf "%-30s %6d %6d %6d %10.2f %10.2f %10.2f\n", \
+          c, n[c], ss, tt, par2, mean_w, median
+        delete v
+      } }
+  ' "$CSV" | sort -k5 -n > "$SUMMARY.body" 2>/dev/null
+  {
+    printf "%-30s %6s %6s %6s %10s %10s %10s\n" \
+      "config" "runs" "SAT" "TO" "PAR-2" "mean_w" "median_w"
+    cat "$SUMMARY.body" 2>/dev/null
+  } > "$SUMMARY"
+  rm -f "$SUMMARY.body"
+
+  awk -F, '
+    NR==1 { next }
+    { cfg=$1; inst=$2; res=$5; wall=$7+0
+      key = cfg "/" inst; n[key]++
+      if (res == "SAT") { s[key]++; ws[key] += wall }
+      cfgs[cfg]=1; insts[inst]=1 }
+    END {
+      nc=0; for (c in cfgs) { nc++; ca[nc]=c }
+      for (i=1; i<=nc; i++) for (j=i+1; j<=nc; j++)
+        if (ca[i] > ca[j]) { t=ca[i]; ca[i]=ca[j]; ca[j]=t }
+      ni=0; for (ii in insts) { ni++; ia[ni]=ii }
+      for (i=1; i<=ni; i++) for (j=i+1; j<=ni; j++)
+        if (ia[i] > ia[j]) { t=ia[i]; ia[i]=ia[j]; ia[j]=t }
+      printf "%-15s", "instance"
+      for (i=1; i<=nc; i++) printf "  %-22s", ca[i]
+      printf "\n"
+      for (i=1; i<=ni; i++) {
+        inst = ia[i]; printf "%-15s", inst
+        for (j=1; j<=nc; j++) {
+          c = ca[j]; key = c "/" inst
+          if (n[key] > 0) {
+            ss = s[key] ? s[key] : 0; mw = ss ? ws[key]/ss : 0
+            printf "  %2d/%-2d  %8.2fs    ", ss, n[key], mw
+          } else { printf "  %-22s", "-" }
+        }
+        printf "\n" } }
+  ' "$CSV" > "$PER_INST" 2>/dev/null
+
+  {
+    echo "palsat bench-parallel report"
+    echo "============================"
+    echo
+    echo "generated:  $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    echo "out_dir:    $OUT_DIR"
+    echo "rows:       $nrows"
+    echo "timeout:    ${TIMEOUT_SEC}s"
+    echo
+    echo "Leaderboard (sorted by PAR-2 ascending; lower = better)"
+    echo "-------------------------------------------------------"
+    cat "$SUMMARY" 2>/dev/null
+    echo
+    echo "Per-instance breakdown (cell = N_SAT/N_RUNS  mean_wall)"
+    echo "-------------------------------------------------------"
+    cat "$PER_INST" 2>/dev/null
+  } > "$REPORT"
+
+  echo
+  echo "=== aggregation done (trap EXIT): $nrows rows -> $CSV, summary, report ==="
+}
+
+# Combine with the cleanup trap for the temp instances file (if any).
+_INSTANCES_TMP="${INSTANCES_FILE:-}"
+case "${INSTANCES_ARG:-}" in
+  *.knf|*.knf.gz|*.knf.bz2|*.knf.xz|*.cnf|*.cnf.gz|*.cnf.bz2|*.cnf.xz|*.wknf|*.wcnf)
+    ;;  # _INSTANCES_TMP is the synthesized temp file
+  *) _INSTANCES_TMP="" ;;
+esac
+trap '
+  do_aggregate
+  [ -n "$_INSTANCES_TMP" ] && [ -f "$_INSTANCES_TMP" ] && rm -f "$_INSTANCES_TMP"
+' EXIT INT TERM HUP
 
 # ---------- parse configs into parallel arrays ----------
 CFG_NAMES=()
@@ -224,16 +338,18 @@ run_one() {
 }
 
 # ---------- main launch loop with concurrency cap ----------
+# Plain indexed array of background pids — works in bash 3.2+ (no -A needed).
 launched=0
-declare -A PIDS=()
+RUNNING=()
 
 reap_dead() {
-  local pid
-  for pid in "${!PIDS[@]}"; do
-    if ! kill -0 "$pid" 2>/dev/null; then
-      unset 'PIDS[$pid]'
-    fi
-  done
+  local pid; local NEW=()
+  if [ "${#RUNNING[@]}" -gt 0 ]; then
+    for pid in "${RUNNING[@]}"; do
+      if kill -0 "$pid" 2>/dev/null; then NEW+=("$pid"); fi
+    done
+  fi
+  if [ "${#NEW[@]}" -gt 0 ]; then RUNNING=("${NEW[@]}"); else RUNNING=(); fi
 }
 
 for inst in "${INSTS[@]}"; do
@@ -243,183 +359,35 @@ for inst in "${INSTS[@]}"; do
       cargs="${CFG_ARGS[$k]}"
 
       # block until under the parallelism cap
-      while [ "${#PIDS[@]}" -ge "$MAX_PARALLEL" ]; do
-        # wait for ANY job to exit (bash 4.3+)
-        wait -n 2>/dev/null || true
+      while [ "${#RUNNING[@]}" -ge "$MAX_PARALLEL" ]; do
+        # bash 4.3+: wait for any one job; bash 3.2 fallback: wait for first.
+        if ! wait -n 2>/dev/null; then
+          [ "${#RUNNING[@]}" -gt 0 ] && wait "${RUNNING[0]}" 2>/dev/null
+        fi
         reap_dead
       done
 
       run_one "$cname" "$cargs" "$inst" "$seed" &
-      PIDS[$!]=1
+      RUNNING+=("$!")
       launched=$((launched+1))
 
       if [ $((launched % 50)) -eq 0 ] || [ "$launched" -eq "$NTOTAL" ]; then
         printf "  launched %d / %d (in flight: %d) at %s\n" \
-          "$launched" "$NTOTAL" "${#PIDS[@]}" "$(date -u +%H:%M:%SZ)"
+          "$launched" "$NTOTAL" "${#RUNNING[@]}" "$(date -u +%H:%M:%SZ)"
       fi
     done
   done
 done
 
 # drain
-echo "  all $NTOTAL launched; waiting for ${#PIDS[@]} in-flight to finish..."
+echo "  all $NTOTAL launched; waiting for ${#RUNNING[@]} in-flight to finish..."
 wait
 echo "  all runs complete at $(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
-# ---------- concatenate per-run rows into one CSV ----------
-CSV="$OUT_DIR/results.csv"
-{
-  echo "config,instance,vars,seed,result,rc,wall,best"
-  # sort by config then instance then seed for determinism
-  ls "$ROW_DIR"/*.row 2>/dev/null | sort | while read -r f; do cat "$f"; done
-} > "$CSV"
+# NOTE: aggregation (CSV + summary + per-instance + report) is handled by
+# the EXIT trap (do_aggregate) so it runs even if the script is killed.
+echo "  triggering aggregation via EXIT trap..."
 
-n_rows=$(($(wc -l < "$CSV") - 1))
-echo "  wrote $CSV with $n_rows data rows"
-
-# ---------- summary: PAR-2, mean & median walltime per config ----------
-SUMMARY="$OUT_DIR/summary.txt"
-awk -F, -v T="$TIMEOUT_SEC" '
-  NR==1 { next }
-  {
-    cfg=$1; res=$5; wall=$7+0
-    n[cfg]++
-    if (res == "SAT") { s[cfg]++; ws[cfg] += wall; walls[cfg] = walls[cfg] " " wall }
-    par_sum[cfg] += (res == "SAT" ? wall : 2*T)
-  }
-  END {
-    for (c in n) {
-      ss = s[c] ? s[c] : 0
-      tt = n[c] - ss
-      mean_w = ss ? ws[c]/ss : 0
-      par2 = par_sum[c] / n[c]
-      nw = split(walls[c], arr, " "); m = 0
-      for (i = 1; i <= nw; i++) if (arr[i] != "") { m++; v[m] = arr[i] }
-      for (i = 1; i <= m; i++)
-        for (j = i+1; j <= m; j++)
-          if (v[i]+0 > v[j]+0) { t = v[i]; v[i] = v[j]; v[j] = t }
-      median = m == 0 ? 0 : (m % 2 == 1 ? v[(m+1)/2] : (v[m/2] + v[m/2+1])/2)
-      printf "%-30s %6d %6d %6d %10.2f %10.2f %10.2f\n", \
-        c, n[c], ss, tt, par2, mean_w, median
-      delete v
-    }
-  }
-' "$CSV" | sort -k5 -n > "$SUMMARY.body"
-{
-  printf "%-30s %6s %6s %6s %10s %10s %10s\n" \
-    "config" "runs" "SAT" "TO" "PAR-2" "mean_w" "median_w"
-  cat "$SUMMARY.body"
-} > "$SUMMARY"
-rm -f "$SUMMARY.body"
-
-echo
-echo "=== summary ==="
-cat "$SUMMARY"
-
-# ---------- per-instance breakdown ----------
-PER_INST="$OUT_DIR/per-instance.txt"
-awk -F, '
-  NR==1 { next }
-  {
-    cfg=$1; inst=$2; res=$5; wall=$7+0
-    key = cfg "/" inst
-    n[key]++
-    if (res == "SAT") { s[key]++; ws[key] += wall }
-    cfgs[cfg]=1; insts[inst]=1
-  }
-  END {
-    nc=0; for (c in cfgs) { nc++; ca[nc]=c }
-    for (i=1; i<=nc; i++) for (j=i+1; j<=nc; j++)
-      if (ca[i] > ca[j]) { t=ca[i]; ca[i]=ca[j]; ca[j]=t }
-    ni=0; for (ii in insts) { ni++; ia[ni]=ii }
-    for (i=1; i<=ni; i++) for (j=i+1; j<=ni; j++)
-      if (ia[i] > ia[j]) { t=ia[i]; ia[i]=ia[j]; ia[j]=t }
-    printf "%-15s", "instance"
-    for (i=1; i<=nc; i++) printf "  %-22s", ca[i]
-    printf "\n"
-    for (i=1; i<=ni; i++) {
-      inst = ia[i]
-      printf "%-15s", inst
-      for (j=1; j<=nc; j++) {
-        c = ca[j]; key = c "/" inst
-        if (n[key] > 0) {
-          ss = s[key] ? s[key] : 0
-          mw = ss ? ws[key]/ss : 0
-          printf "  %2d/%-2d  %8.2fs    ", ss, n[key], mw
-        } else { printf "  %-22s", "-" }
-      }
-      printf "\n"
-    }
-  }
-' "$CSV" > "$PER_INST"
-
-echo
-echo "=== per-instance ==="
-cat "$PER_INST"
-
-# ---------- self-contained committable report ----------
-# This file is intended to be checked into the repo so results can be
-# reviewed later (or by someone else) without needing the per-run logs.
-REPORT="$OUT_DIR/report.txt"
-{
-  echo "palsat bench-parallel report"
-  echo "============================"
-  echo
-  echo "generated: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
-  echo "host:      $(uname -n) $(uname -s) $(uname -m) $(uname -r 2>/dev/null)"
-  echo "cores:     $(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo unknown)"
-  echo "palsat:    $PALSAT"
-  if [ -x "$PALSAT" ]; then
-    echo "version:   $("$PALSAT" --version 2>/dev/null | head -1 || echo unknown)"
-  fi
-  echo
-  echo "Setup"
-  echo "-----"
-  echo "  configs file:   $CONFIGS_FILE  ($NCFG configs)"
-  echo "  instances file: $INSTANCES_FILE  ($NINST instances)"
-  echo "  seeds:          ${SEEDS[*]}  (n=$NSEEDS)"
-  echo "  timeout/run:    ${TIMEOUT_SEC}s"
-  echo "  threads/run:    $PER_RUN_THREADS"
-  echo "  parallel:       $MAX_PARALLEL concurrent palsat (~$((MAX_PARALLEL*PER_RUN_THREADS)) cores)"
-  echo "  cutoff:         $CUTOFF"
-  echo "  total runs:     $NTOTAL"
-  echo
-  echo "Configs"
-  echo "-------"
-  printf "  %-30s %s\n" "name" "args"
-  for k in $(seq 0 $((NCFG-1))); do
-    printf "  %-30s %s\n" "${CFG_NAMES[$k]}" "${CFG_ARGS[$k]:-(none)}"
-  done
-  echo
-  echo "Instances"
-  echo "---------"
-  for I in "${INSTS[@]}"; do
-    V=$(grep -m1 "^p " "$I" 2>/dev/null | awk '{print $3}')
-    printf "  %-30s  vars=%s\n" "$I" "${V:-?}"
-  done
-  echo
-  echo "Leaderboard (sorted by PAR-2 ascending; lower = better)"
-  echo "-------------------------------------------------------"
-  cat "$SUMMARY"
-  echo
-  echo "Per-instance breakdown (cell = N_SAT/N_RUNS  mean_wall)"
-  echo "-------------------------------------------------------"
-  cat "$PER_INST"
-  echo
-  echo "Files in this directory"
-  echo "-----------------------"
-  echo "  report.txt           - this file"
-  echo "  run.log              - full stdout of the bench-parallel script"
-  echo "  results.csv          - raw per-run CSV (long format)"
-  echo "  summary.txt          - per-config aggregate"
-  echo "  per-instance.txt     - per-config x per-instance matrix"
-  echo "  <config>/<inst>-<seed>.log - per-run palsat stdout"
-  echo "  rows/                - per-run intermediate csv rows (idempotency)"
-} > "$REPORT"
-
-echo
-echo "=== report.txt ==="
-cat "$REPORT"
-echo
+# Trap handles aggregation on exit. Just print a final marker.
 echo "end: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
 echo "outputs in: $OUT_DIR"
