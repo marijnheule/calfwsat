@@ -1,0 +1,28 @@
+# Sweep9: confirm new default + refine around new operating point.
+#
+# New default after sweep8: pick=uniform, pop=50, ham=10%, cutoff=20000,
+#                           explore=0, warmup=0, cap=auto.
+#
+# Use TIMEOUT=600 (10 min/run), 10 seeds. Suggested: ntil-45, ntil-46.
+# name	args
+no_cache	--no-shared-cache
+default
+# Regression check
+old_default	--shared-cache-pick=linear --cutoff=2000 --shared-cache-popularity=0 --shared-cache-hamming=1
+# Cutoff axis around new default 20000
+default_co10000	--cutoff=10000
+default_co15000	--cutoff=15000
+default_co25000	--cutoff=25000
+default_co30000	--cutoff=30000
+# Hamming axis around new default 10%
+default_ham5	--shared-cache-hamming=5
+default_ham15	--shared-cache-hamming=15
+default_ham20	--shared-cache-hamming=20
+# Popularity axis around new default 50
+default_pop25	--shared-cache-popularity=25
+default_pop75	--shared-cache-popularity=75
+# Pick scheme regression
+linear_pick	--shared-cache-pick=linear
+# Compounds: push both winning axes further; combine pop+ham
+default_ham15_co15000	--shared-cache-hamming=15 --cutoff=15000
+default_pop75_ham15	--shared-cache-popularity=75 --shared-cache-hamming=15
