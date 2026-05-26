@@ -35,7 +35,7 @@ This code extends the solver yal-lin (Md Solimul Chowdhury, Cayden Codel, Marijn
   OPT (computeneiinit,0 , 0, 1, "Compute the ddfw clause neighborhood initially for palsat"); \
   OPT (correct,0,0,1,"correct CB value depending on maximum length"); \
   OPT (crit,1,0,1,"dynamic break values (using critical lits)"); \
-  OPT (cutoff,10000 , 0,INT_MAX,"flips per try (0 = unlimited; controls shared-cache cycle frequency)"); \
+  OPT (cutoff,50000 , 0,INT_MAX,"flips per try (0 = unlimited; controls shared-cache cycle frequency)"); \
   OPT (ddfwpicklit, 2,1,6,"1=best,4=wrand"); \
   OPT (ddfwonly, 1,0,1,"1=only emply ddfw,0=employ a combination of heuristics"); \
   OPT (ddfwstartth, 10000,10,1000000,"use to compute threshold for #unsat_cluase/#total_clause to start ddfw."); \
