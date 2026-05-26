@@ -28,6 +28,7 @@ set -uo pipefail
 SEEDS_DEFAULT="${SEEDS:-1,2,3,4,5}"
 TIMEOUT_DEFAULT="${TIMEOUT:-60}"
 THREADS_DEFAULT="${THREADS:-8}"
+CUTOFF_DEFAULT="${CUTOFF:-2000}"
 CONFIGS_REL="${CONFIGS:-bench/configs-sweep4.tsv}"
 # ------------------------------------------------------------------
 
@@ -48,6 +49,7 @@ echo "  configs:  $CONFIGS"
 echo "  seeds:    $SEEDS_DEFAULT"
 echo "  timeout:  ${TIMEOUT_DEFAULT}s"
 echo "  threads:  $THREADS_DEFAULT per palsat"
+echo "  cutoff:   $CUTOFF_DEFAULT (per-config can override via --cutoff= in args)"
 echo "  out:      bench-results/$OUT_NAME"
 echo
 
@@ -55,6 +57,7 @@ echo
 bash "$SCRIPT_DIR/bench-parallel.sh" \
   --timeout "$TIMEOUT_DEFAULT" \
   --threads "$THREADS_DEFAULT" \
+  --cutoff "$CUTOFF_DEFAULT" \
   "$CONFIGS" \
   "$FORMULA" \
   "$SEEDS_DEFAULT" \
