@@ -1,0 +1,25 @@
+# Sweep5: validate the new default (pick=uniform, explore=25) and test
+# one-knob deltas from it. Each row is informative — no redundancies
+# with the new default.
+# name	args
+no_cache	--no-shared-cache
+default
+# Old default for regression check
+old_default	--shared-cache-pick=linear --shared-cache-explore=0
+# Isolate which axis is doing the work in the new default:
+linear_expl25	--shared-cache-pick=linear --shared-cache-explore=25
+uniform_no_explore	--shared-cache-pick=uniform --shared-cache-explore=0
+# Vary explore around the new default's 25
+expl_10	--shared-cache-explore=10
+expl_50	--shared-cache-explore=50
+expl_75	--shared-cache-explore=75
+# Add popularity penalty on top of the new default
+default_pop25	--shared-cache-popularity=25
+default_pop50	--shared-cache-popularity=50
+default_pop100	--shared-cache-popularity=100
+# Combine with other knobs that were promising
+default_ham_always	--shared-cache-ham-replace=always
+default_warmup5	--shared-cache-warmup=5
+# Cutoff sensitivity for the new default
+default_co10000	--cutoff=10000
+default_co200	--cutoff=200
