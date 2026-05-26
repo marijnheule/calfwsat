@@ -1669,8 +1669,9 @@ void yals_shared_cache_config_init (YalsSharedCacheConfig * cfg) {
   cfg->warmup           = 0;
   cfg->explore_pct      = 0;
   cfg->insert_mode      = YSC_INSERT_ALWAYS;
-  cfg->popularity_pct   = 25;        // sweep6: pop25 + cutoff=50000 robustly
-                                     //         beats no_cache across instances
+  cfg->popularity_pct   = 50;        // sweep7: pop50 top-3 on 3/4 hard
+                                     //         instances; faster slot
+                                     //         cooling -> more diversity.
 }
 
 void yals_shared_cache_config_dump (const YalsSharedCacheConfig * cfg,
