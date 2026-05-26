@@ -22,11 +22,13 @@
 
 set -uo pipefail
 
-# -------- defaults (edit here if you want different ones) --------
-SEEDS_DEFAULT="1,2,3,4,5"
-TIMEOUT_DEFAULT=60
-THREADS_DEFAULT=8
-CONFIGS_REL="bench/configs-sweep4.tsv"
+# -------- defaults (edit here, or override via env vars) ----------
+# Any of these can be overridden by setting an env var when invoking:
+#   TIMEOUT=300 SEEDS="1,2,3" bash sweep-one.sh <formula>
+SEEDS_DEFAULT="${SEEDS:-1,2,3,4,5}"
+TIMEOUT_DEFAULT="${TIMEOUT:-60}"
+THREADS_DEFAULT="${THREADS:-8}"
+CONFIGS_REL="${CONFIGS:-bench/configs-sweep4.tsv}"
 # ------------------------------------------------------------------
 
 FORMULA="${1:?usage: $0 <formula.knf>}"
