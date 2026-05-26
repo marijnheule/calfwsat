@@ -1,0 +1,35 @@
+# Sweep8: hard-instance tuning around the new default (pop=50, cutoff=30000,
+# pick=uniform, ham=5%, warmup=0, explore=0, cap=auto).
+#
+# Focus on the harder regime — the user cares about hard instances most.
+# Use TIMEOUT=600 (10 min per run). Suggested instances: ntil-45, ntil-46.
+#
+# Axes explored:
+#   * Popularity beyond 50 (the new default)
+#   * Cutoff above and below 30000
+#   * Linear-pick variants paired with high popularity
+#   * One or two strategic compounds
+# name	args
+no_cache	--no-shared-cache
+default
+# Regression check
+old_default	--shared-cache-pick=linear --cutoff=2000 --shared-cache-popularity=0
+# Popularity axis (current default 50)
+default_pop25	--shared-cache-popularity=25
+default_pop75	--shared-cache-popularity=75
+default_pop100	--shared-cache-popularity=100
+# Cutoff axis (current default 30000)
+default_co20000	--cutoff=20000
+default_co25000	--cutoff=25000
+default_co40000	--cutoff=40000
+default_co50000	--cutoff=50000
+# Linear-pick variants (linear inherits default pop=50, co=30000)
+linear_pick	--shared-cache-pick=linear
+linear_pop100	--shared-cache-pick=linear --shared-cache-popularity=100
+# Hamming variation (default_ham10 was robust in sweep6: never worse than rank 8)
+default_ham10	--shared-cache-hamming=10
+# Strategic compounds: pair high pop with shorter cutoff; extreme pop with
+# longer cutoff (hypothesis: aggressive popularity needs more search time
+# per try so the diversification has something to bite into)
+default_pop75_co25000	--shared-cache-popularity=75 --cutoff=25000
+default_pop100_co50000	--shared-cache-popularity=100 --cutoff=50000
