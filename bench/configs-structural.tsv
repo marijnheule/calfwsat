@@ -1,0 +1,19 @@
+# Structural axes: capacity, hamming, replacement policies, warmup, exploration.
+# name	args
+no_cache	--no-shared-cache
+default
+cap_64	--shared-cache-size=64
+cap_256	--shared-cache-size=256
+cap_4096	--shared-cache-size=4096
+ham_0	--shared-cache-hamming=0
+ham_2	--shared-cache-hamming=2
+ham_5	--shared-cache-hamming=5
+ham_10	--shared-cache-hamming=10
+warmup_5	--shared-cache-warmup=5
+warmup_20	--shared-cache-warmup=20
+explore_15	--shared-cache-explore=15
+explore_40	--shared-cache-explore=40
+replace_always	--shared-cache-replace=always
+replace_never	--shared-cache-replace=never
+ham_strict	--shared-cache-ham-replace=strict
+ham_always	--shared-cache-ham-replace=always

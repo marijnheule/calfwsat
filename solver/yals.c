@@ -1635,6 +1635,7 @@ struct YalsSharedCache {
   int *   worker_slot;        // [nworkers] slot each worker reserves or -1
   int *   worker_restarts;    // [nworkers] count of restarts seen so far
   int *   worker_start_cost;  // [nworkers] cost at start-of-current-try (INT_MAX if none)
+  long long * pick_count;     // [capacity] times each slot has been picked (reset on replace)
   // stats
   long long s_inserted, s_replaced_ham, s_replaced_worse;
   long long s_skipped_close_worse, s_skipped_no_room, s_skipped_empty;
@@ -1643,19 +1644,22 @@ struct YalsSharedCache {
 };
 
 void yals_shared_cache_config_init (YalsSharedCacheConfig * cfg) {
-  // Defaults chosen from the "combo_loose" winner of the initial sweep on
-  // ntil-35/36: looser Hamming threshold and a smaller cache promote
-  // diversity, and a brief per-worker warmup lets workers diverge before
-  // they start sharing.
-  cfg->capacity         = 256;
+  // Defaults tuned via sweep2 (ntil-37,39,40 x 4 seeds x 60s, see
+  // SHARED_CACHE_REPORT.md). The biggest single change vs untuned was
+  // dropping warmup from 5 to 0 (-34% PAR-2). Hamming 5% already won in
+  // sweep1; sweep2 reconfirmed.
+  // capacity=0 means "auto" -- the palsat driver sets it to 32 x threads
+  // before allocating. Explicit --shared-cache-size=N still overrides.
+  cfg->capacity         = 0;
   cfg->hamming_percent  = 5;
   cfg->pick_weight      = YSC_PICK_LINEAR;
   cfg->softmax_temp_x10 = 10;        // T = 1.0
   cfg->replace_full     = YSC_REPLACE_WORSE_ONLY;
   cfg->ham_replace      = YSC_HAM_REPLACE_EQ;
-  cfg->warmup           = 5;
+  cfg->warmup           = 0;
   cfg->explore_pct      = 0;
   cfg->insert_mode      = YSC_INSERT_ALWAYS;
+  cfg->popularity_pct   = 0;
 }
 
 void yals_shared_cache_config_dump (const YalsSharedCacheConfig * cfg,
@@ -1666,30 +1670,37 @@ void yals_shared_cache_config_dump (const YalsSharedCacheConfig * cfg,
   static const char * ins_names[]    = {"always","improved"};
   fprintf (f,
     "c shared-cache config: cap=%d ham_pct=%d pick=%s softmax_T=%.1f "
-    "replace=%s ham_replace=%s warmup=%d explore_pct=%d insert=%s\n",
+    "replace=%s ham_replace=%s warmup=%d explore_pct=%d insert=%s popularity_pct=%d\n",
     cfg->capacity, cfg->hamming_percent,
     pick_names[cfg->pick_weight % 5],
     cfg->softmax_temp_x10 / 10.0,
     repl_names[cfg->replace_full % 3],
     ham_names[cfg->ham_replace % 3],
     cfg->warmup, cfg->explore_pct,
-    ins_names[cfg->insert_mode % 2]);
+    ins_names[cfg->insert_mode % 2],
+    cfg->popularity_pct);
 }
 
 YalsSharedCache * yals_shared_cache_new (int nworkers,
                                          const YalsSharedCacheConfig * cfg) {
   YalsSharedCache * c = calloc (1, sizeof *c);
   c->cfg = *cfg;
+  // capacity <= 0 means auto = 32 * nworkers (palsat driver normally
+  // applies this before calling us; this is a defensive fallback).
+  if (c->cfg.capacity <= 0) c->cfg.capacity = 32 * nworkers;
   if (c->cfg.capacity < 1) c->cfg.capacity = 1;
   if (c->cfg.hamming_percent < 0) c->cfg.hamming_percent = 0;
   if (c->cfg.softmax_temp_x10 < 1) c->cfg.softmax_temp_x10 = 1;
   if (c->cfg.warmup < 0) c->cfg.warmup = 0;
   if (c->cfg.explore_pct < 0) c->cfg.explore_pct = 0;
   if (c->cfg.explore_pct > 100) c->cfg.explore_pct = 100;
+  if (c->cfg.popularity_pct < 0) c->cfg.popularity_pct = 0;
+  if (c->cfg.popularity_pct > 100) c->cfg.popularity_pct = 100;
   c->nworkers = nworkers;
   c->vals = calloc (c->cfg.capacity, sizeof (Word *));
   c->mins = calloc (c->cfg.capacity, sizeof (int));
   c->reserved = malloc (c->cfg.capacity * sizeof (int));
+  c->pick_count = calloc (c->cfg.capacity, sizeof (long long));
   for (int i = 0; i < c->cfg.capacity; i++) c->reserved[i] = -1;
   c->worker_slot = malloc (nworkers * sizeof (int));
   c->worker_restarts = calloc (nworkers, sizeof (int));
@@ -1711,6 +1722,7 @@ void yals_shared_cache_delete (YalsSharedCache * c) {
   free (c->worker_slot);
   free (c->worker_restarts);
   free (c->worker_start_cost);
+  free (c->pick_count);
   pthread_mutex_destroy (&c->lock);
   free (c);
 }
@@ -1826,6 +1838,7 @@ static void yals_shared_cache_insert (Yals * yals) {
                                               min, c->mins[close])) {
       memcpy (c->vals[close], src, bytes);
       c->mins[close] = min;
+      c->pick_count[close] = 0;       // fresh content -> reset popularity
       c->s_replaced_ham++;
     } else {
       c->s_skipped_close_worse++;
@@ -1844,6 +1857,7 @@ static void yals_shared_cache_insert (Yals * yals) {
     memcpy (c->vals[free_slot], src, bytes);
     c->mins[free_slot] = min;
     c->reserved[free_slot] = -1;
+    c->pick_count[free_slot] = 0;     // new content -> reset popularity
     c->count++;
     c->s_inserted++;
     pthread_mutex_unlock (&c->lock);
@@ -1869,6 +1883,7 @@ static void yals_shared_cache_insert (Yals * yals) {
   if (worst >= 0) {
     memcpy (c->vals[worst], src, bytes);
     c->mins[worst] = min;
+    c->pick_count[worst] = 0;         // fresh content -> reset popularity
     c->s_replaced_worse++;
   } else {
     c->s_skipped_no_room++;
@@ -1922,6 +1937,16 @@ static double yals_shared_cache_build_weights (YalsSharedCache * c,
         default:               w = (double) (maxc - cost + 1); break;
       }
       weights[i] = w;
+    }
+  }
+  // Anti-clustering: divide each slot's weight by (1 + alpha * pick_count).
+  // alpha = popularity_pct / 100. Slots that have been picked many times since
+  // their content was last refreshed get exponentially less attractive.
+  if (c->cfg.popularity_pct > 0) {
+    double alpha = c->cfg.popularity_pct / 100.0;
+    for (int i = 0; i < cap; i++) {
+      if (weights[i] <= 0) continue;
+      weights[i] /= (1.0 + alpha * (double) c->pick_count[i]);
     }
   }
   double total = 0.0;
@@ -2008,6 +2033,7 @@ static int yals_shared_cache_pick (Yals * yals) {
     c->reserved[picked] = w;
     c->worker_slot[w] = picked;
     c->worker_start_cost[w] = c->mins[picked];
+    c->pick_count[picked]++;
     size_t bytes = c->nvarwords * sizeof (Word);
     memcpy (yals->vals, c->vals[picked], bytes);
     c->s_picked++;

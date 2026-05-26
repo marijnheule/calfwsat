@@ -1,0 +1,8 @@
+# Top 5 sweep4 ntil-37 winners + no_cache baseline.
+# name	args
+no_cache	--no-shared-cache
+default
+ham_always	--shared-cache-ham-replace=always
+pop_100	--shared-cache-popularity=100
+pop100_expl25	--shared-cache-popularity=100 --shared-cache-explore=25
+explore_25	--shared-cache-explore=25

@@ -1,0 +1,9 @@
+# Pick-weighting scheme comparison (with default for other knobs).
+# name	args
+no_cache	--no-shared-cache
+pick_linear	--shared-cache-pick=linear
+pick_rank	--shared-cache-pick=rank
+pick_softmax_T1	--shared-cache-pick=softmax --shared-cache-softmax-temp=10
+pick_softmax_T5	--shared-cache-pick=softmax --shared-cache-softmax-temp=50
+pick_uniform	--shared-cache-pick=uniform
+pick_inv	--shared-cache-pick=inv

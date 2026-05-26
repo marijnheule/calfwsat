@@ -865,6 +865,9 @@ int main (int argc, char** argv) {
       else if (!strcmp (__v, "improved")) shared_cache_cfg.insert_mode = YSC_INSERT_IMPROVED;
       else die ("unknown --shared-cache-insert value '%s' (always|improved)", __v);
     }
+    else if ((__v = sc_flag (argv[i], "--shared-cache-popularity",
+                             &i, argc, argv)) != NULL)
+      shared_cache_cfg.popularity_pct = atoi (__v);
 #endif
 
     else if (!strcmp (argv[i], "-")) {
@@ -890,6 +893,14 @@ int main (int argc, char** argv) {
   }
 #ifdef PALSAT
   if (shared_cache_enabled) {
+    // Auto-size capacity from thread count if not explicitly set.
+    // Default rule: 32 slots per worker (so 8 threads -> 256, 16 -> 512, ...).
+    if (shared_cache_cfg.capacity == 0) {
+      shared_cache_cfg.capacity = 32 * threads;
+      if (shared_cache_cfg.capacity < 32) shared_cache_cfg.capacity = 32;
+      msg ("shared-cache auto-sized capacity: 32 x %d threads = %d",
+           threads, shared_cache_cfg.capacity);
+    }
     shared_cache = yals_shared_cache_new (threads, &shared_cache_cfg);
     yals_shared_cache_config_dump (&shared_cache_cfg, stdout);
     for (i = 0; i < threads; i++)

@@ -1,0 +1,25 @@
+# Sweep4: validate sweep3 winners + test novel orthogonal combos.
+# Built around the new default (warmup=0, pick=linear, cap=auto, ham=5%).
+# name	args
+no_cache	--no-shared-cache
+default
+# Re-validate sweep3 top 3
+pop25_expl10	--shared-cache-popularity=25 --shared-cache-explore=10
+pop_100	--shared-cache-popularity=100
+pop50_rank	--shared-cache-popularity=50 --shared-cache-pick=rank
+# Re-validate sweep2 top non-warmup wins (with current warmup=0 default)
+pick_uniform	--shared-cache-pick=uniform
+ham_always	--shared-cache-ham-replace=always
+explore_25	--shared-cache-explore=25
+# Novel: pick_uniform + popularity (orthogonal mechanisms)
+uniform_pop25	--shared-cache-pick=uniform --shared-cache-popularity=25
+uniform_pop100	--shared-cache-pick=uniform --shared-cache-popularity=100
+# Novel: pick_uniform + explore (more diversification)
+uniform_expl25	--shared-cache-pick=uniform --shared-cache-explore=25
+# Novel: pick_uniform + best sweep3 combo (triple stack)
+uniform_pop25_expl10	--shared-cache-pick=uniform --shared-cache-popularity=25 --shared-cache-explore=10
+# Novel: extend popularity winners with explore
+pop100_expl25	--shared-cache-popularity=100 --shared-cache-explore=25
+pop50_rank_expl25	--shared-cache-popularity=50 --shared-cache-pick=rank --shared-cache-explore=25
+# Novel: ham_always combined with popularity
+ham_always_pop25	--shared-cache-ham-replace=always --shared-cache-popularity=25

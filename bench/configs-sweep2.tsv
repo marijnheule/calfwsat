@@ -1,0 +1,39 @@
+# Sweep centered on the new defaults (cap=256, ham=5, warmup=5, pick=linear).
+# Each row varies ONE knob from default, plus a few regression / combo rows.
+# name	args
+no_cache	--no-shared-cache
+default
+old_defaults	--shared-cache-size=1024 --shared-cache-hamming=1 --shared-cache-warmup=0
+# pick-weighting (around linear default)
+pick_rank	--shared-cache-pick=rank
+pick_softmax_T1	--shared-cache-pick=softmax --shared-cache-softmax-temp=10
+pick_uniform	--shared-cache-pick=uniform
+pick_inv	--shared-cache-pick=inv
+# capacity (around 256)
+cap_64	--shared-cache-size=64
+cap_128	--shared-cache-size=128
+cap_512	--shared-cache-size=512
+cap_1024	--shared-cache-size=1024
+# hamming (around 5)
+ham_0	--shared-cache-hamming=0
+ham_1	--shared-cache-hamming=1
+ham_2	--shared-cache-hamming=2
+ham_10	--shared-cache-hamming=10
+# warmup (around 5)
+warmup_0	--shared-cache-warmup=0
+warmup_2	--shared-cache-warmup=2
+warmup_10	--shared-cache-warmup=10
+warmup_20	--shared-cache-warmup=20
+# exploration
+explore_10	--shared-cache-explore=10
+explore_25	--shared-cache-explore=25
+explore_50	--shared-cache-explore=50
+# insert / replacement
+insert_improved	--shared-cache-insert=improved
+replace_always	--shared-cache-replace=always
+ham_strict	--shared-cache-ham-replace=strict
+ham_always	--shared-cache-ham-replace=always
+# promising combos
+combo_rank_explore	--shared-cache-pick=rank --shared-cache-explore=15
+combo_improve_warmup	--shared-cache-insert=improved --shared-cache-warmup=10
+combo_loose_strict	--shared-cache-ham-replace=strict --shared-cache-explore=15

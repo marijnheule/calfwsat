@@ -1,0 +1,31 @@
+# Sweep3: post-warmup-fix tuning.
+# New default after this sweep finishes: warmup=0 (was 5).
+# Axes: fine-grained explore, popularity penalty, plus combos.
+# name	args
+no_cache	--no-shared-cache
+default
+# explore fine-grained around the sweet spot
+explore_5	--shared-cache-explore=5
+explore_10	--shared-cache-explore=10
+explore_15	--shared-cache-explore=15
+explore_20	--shared-cache-explore=20
+explore_25	--shared-cache-explore=25
+explore_30	--shared-cache-explore=30
+explore_40	--shared-cache-explore=40
+# popularity penalty alone
+pop_10	--shared-cache-popularity=10
+pop_25	--shared-cache-popularity=25
+pop_50	--shared-cache-popularity=50
+pop_100	--shared-cache-popularity=100
+# popularity x explore combos
+pop25_expl10	--shared-cache-popularity=25 --shared-cache-explore=10
+pop25_expl25	--shared-cache-popularity=25 --shared-cache-explore=25
+pop50_expl10	--shared-cache-popularity=50 --shared-cache-explore=10
+pop50_expl25	--shared-cache-popularity=50 --shared-cache-explore=25
+pop100_expl10	--shared-cache-popularity=100 --shared-cache-explore=10
+pop100_expl25	--shared-cache-popularity=100 --shared-cache-explore=25
+# popularity with rank pick (rank concentrates more, popularity may help most)
+pop50_rank	--shared-cache-popularity=50 --shared-cache-pick=rank
+pop100_rank	--shared-cache-popularity=100 --shared-cache-pick=rank
+# sanity: revert to old defaults
+old_defaults	--shared-cache-size=1024 --shared-cache-hamming=1

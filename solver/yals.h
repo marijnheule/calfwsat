@@ -519,6 +519,9 @@ typedef struct YalsSharedCacheConfig {
   int warmup;              // per-worker: skip shared pick for first N restarts
   int explore_pct;         // 0-100: chance to ignore weights, pick uniformly
   int insert_mode;         // YSC_INSERT_*  (always / improved-over-start)
+  int popularity_pct;      // 0-100: anti-clustering penalty for popular slots.
+                           //   effective_weight = base / (1 + (pct/100) * pick_count)
+                           //   0 = no penalty (default), 100 = strong penalty.
 } YalsSharedCacheConfig;
 
 // Initialize a config struct with the current defaults.

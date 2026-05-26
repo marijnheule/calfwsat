@@ -1,0 +1,27 @@
+# Single comprehensive sweep covering the main axes (trimmed).
+# name	args
+no_cache	--no-shared-cache
+default
+# pick-weighting axis
+pick_rank	--shared-cache-pick=rank
+pick_softmax_T1	--shared-cache-pick=softmax --shared-cache-softmax-temp=10
+pick_uniform	--shared-cache-pick=uniform
+# capacity axis
+cap_64	--shared-cache-size=64
+cap_256	--shared-cache-size=256
+# hamming axis
+ham_0	--shared-cache-hamming=0
+ham_5	--shared-cache-hamming=5
+# diversification
+warmup_5	--shared-cache-warmup=5
+warmup_20	--shared-cache-warmup=20
+explore_25	--shared-cache-explore=25
+# insert gating
+insert_improved	--shared-cache-insert=improved
+# replacement
+replace_always	--shared-cache-replace=always
+ham_strict	--shared-cache-ham-replace=strict
+# Promising combos
+combo_div	--shared-cache-warmup=5 --shared-cache-explore=15 --shared-cache-insert=improved
+combo_aggressive	--shared-cache-pick=rank --shared-cache-warmup=10 --shared-cache-explore=25 --shared-cache-insert=improved --shared-cache-ham-replace=strict
+combo_loose	--shared-cache-hamming=5 --shared-cache-size=256 --shared-cache-warmup=5
