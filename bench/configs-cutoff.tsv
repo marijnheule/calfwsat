@@ -4,16 +4,24 @@
 # cutoff=0 means unlimited (one try, never restarts -> shared cache is dead
 # after the initial cycle).
 #
+# At ~200-400K flips/sec/worker, cutoff = flips / 300k seconds:
+#   cutoff=2000     ~ 5-10 ms / try   (very thrashy; current default)
+#   cutoff=10000    ~ 30-50 ms / try
+#   cutoff=100000   ~ 0.3-0.5 s / try
+#   cutoff=1000000  ~ 3-5 s / try
+#   cutoff=10000000 ~ 30-50 s / try    (similar to no_cache effectively)
+#
 # Each row also varies whether the cache is on/off so you can see how the
 # cutoff x cache interaction looks.
 # name	args
-no_cache_co2000	--no-shared-cache --cutoff=2000
-default_co200	--cutoff=200
 default_co500	--cutoff=500
-default_co1000	--cutoff=1000
 default_co2000	--cutoff=2000
-default_co5000	--cutoff=5000
 default_co10000	--cutoff=10000
 default_co50000	--cutoff=50000
-no_cache_co500	--no-shared-cache --cutoff=500
-no_cache_co10000	--no-shared-cache --cutoff=10000
+default_co100000	--cutoff=100000
+default_co500000	--cutoff=500000
+default_co1000000	--cutoff=1000000
+default_co10000000	--cutoff=10000000
+no_cache_co2000	--no-shared-cache --cutoff=2000
+no_cache_co100000	--no-shared-cache --cutoff=100000
+no_cache_co0	--no-shared-cache --cutoff=0
