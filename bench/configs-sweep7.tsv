@@ -1,0 +1,31 @@
+# Sweep7: refine around the sweep6 winner.
+#
+# New default (after sweep6): pick=uniform, popularity=25, cutoff=50000,
+#                             explore=0, ham=5%, warmup=0, cap=auto.
+#
+# Goals of this sweep:
+#   1. Fill the cutoff gap between 10000 and 50000 (sweep6 had a big jump).
+#   2. Test linear pick paired with the winning pop+cutoff combo.
+#   3. Isolate whether popularity itself is doing work, vs just cutoff bump.
+#   4. Tune popularity level around 25.
+# name	args
+no_cache	--no-shared-cache
+default
+# Regression check
+old_default	--shared-cache-pick=linear --cutoff=2000 --shared-cache-popularity=0
+# Linear-pick variants of the winning combo
+linear_pick	--shared-cache-pick=linear
+linear_pop25_co50000	--shared-cache-pick=linear --shared-cache-popularity=25 --cutoff=50000
+linear_no_pop_co50000	--shared-cache-pick=linear --shared-cache-popularity=0
+# Isolate the value of popularity at the winning cutoff
+default_no_pop	--shared-cache-popularity=0
+# Cutoff in [10000, 40000] — the unexplored range
+default_co10000	--cutoff=10000
+default_co15000	--cutoff=15000
+default_co20000	--cutoff=20000
+default_co25000	--cutoff=25000
+default_co30000	--cutoff=30000
+default_co40000	--cutoff=40000
+# Popularity level
+default_pop10	--shared-cache-popularity=10
+default_pop50	--shared-cache-popularity=50
