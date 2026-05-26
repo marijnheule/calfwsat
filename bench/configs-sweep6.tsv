@@ -1,0 +1,29 @@
+# Sweep6: one-knob deltas from the new default
+#   (pick=uniform, explore=0, cutoff=10000, ham=5%, warmup=0,
+#    cap=auto=32*threads, popularity=0)
+#
+# Each row tests a single change, plus a couple of compound experiments
+# combining two knobs that have been strong individually.
+# name	args
+no_cache	--no-shared-cache
+default
+# Full revert to old defaults (regression check)
+old_default	--shared-cache-pick=linear --cutoff=2000
+# Revert only the pick scheme (was uniform now, used to be linear)
+linear_pick	--shared-cache-pick=linear
+# Cutoff axis (current default 10000)
+default_co2000	--cutoff=2000
+default_co5000	--cutoff=5000
+default_co50000	--cutoff=50000
+default_co100000	--cutoff=100000
+# Hamming threshold axis (current default 5%)
+default_ham2	--shared-cache-hamming=2
+default_ham10	--shared-cache-hamming=10
+# Add a small amount of diversification (large amounts already shown to hurt)
+default_expl10	--shared-cache-explore=10
+default_pop25	--shared-cache-popularity=25
+# Replacement policy variant (ham_always was top-3 on ntil-37 sweep5)
+default_ham_always	--shared-cache-ham-replace=always
+# Compounds: stack the most promising single-knob improvements
+default_pop25_co50000	--shared-cache-popularity=25 --cutoff=50000
+default_ham_always_co50000	--shared-cache-ham-replace=always --cutoff=50000

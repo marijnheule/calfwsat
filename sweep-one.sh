@@ -29,7 +29,7 @@ SEEDS_DEFAULT="${SEEDS:-1,2,3,4,5}"
 TIMEOUT_DEFAULT="${TIMEOUT:-300}"
 THREADS_DEFAULT="${THREADS:-8}"
 CUTOFF_DEFAULT="${CUTOFF:-10000}"
-CONFIGS_REL="${CONFIGS:-bench/configs-sweep5.tsv}"
+CONFIGS_REL="${CONFIGS:-bench/configs-sweep6.tsv}"
 # ------------------------------------------------------------------
 
 FORMULA="${1:?usage: $0 <formula.knf>}"
