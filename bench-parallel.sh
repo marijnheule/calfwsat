@@ -115,9 +115,35 @@ case "$OUT_DIR" in
     ;;
 esac
 
-# auto-detect parallelism
+# auto-detect parallelism. Prefer PHYSICAL cores so we don't oversubscribe
+# via SMT/hyperthreads (palsat's DDFW is memory-bandwidth sensitive and rarely
+# benefits from SMT). Fallback chain: lscpu (Linux) -> sysctl (macOS) -> nproc.
+detect_physical_cores() {
+  local n=
+  # Linux: lscpu -p produces lines like "cpu,core,socket,..."; unique
+  # (core,socket) tuples = physical cores.
+  if command -v lscpu >/dev/null 2>&1; then
+    n=$(lscpu -p=Core,Socket 2>/dev/null | grep -v '^#' | sort -u | wc -l | tr -d ' ')
+    [ -n "$n" ] && [ "$n" -gt 0 ] && { echo "$n"; return; }
+  fi
+  # macOS: sysctl reports physical separately.
+  if command -v sysctl >/dev/null 2>&1; then
+    n=$(sysctl -n hw.physicalcpu 2>/dev/null)
+    [ -n "$n" ] && [ "$n" -gt 0 ] && { echo "$n"; return; }
+  fi
+  # /proc/cpuinfo: count unique (physical id, core id) tuples.
+  if [ -r /proc/cpuinfo ]; then
+    n=$(awk '/^physical id/{p=$NF} /^core id/{print p","$NF}' /proc/cpuinfo \
+          | sort -u | wc -l | tr -d ' ')
+    [ -n "$n" ] && [ "$n" -gt 0 ] && { echo "$n"; return; }
+  fi
+  # Last resort: logical cores.
+  n=$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 8)
+  echo "$n"
+}
+
 if [ -z "${MAX_PARALLEL:-}" ]; then
-  CORES=$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 8)
+  CORES=$(detect_physical_cores)
   MAX_PARALLEL=$(( CORES / PER_RUN_THREADS ))
   [ "$MAX_PARALLEL" -lt 1 ] && MAX_PARALLEL=1
 fi
