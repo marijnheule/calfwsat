@@ -1,0 +1,15 @@
+# Focused A/B/C experiment: is the cache feature reliably better than no_cache,
+# and within the cache configs does linear-pick or uniform-pick win?
+#
+# Suggested invocation (per instance):
+#   SEEDS="$(seq -s, 1 100)" CONFIGS=bench/configs-ab.tsv TIMEOUT=900 \
+#     bash sweep-one.sh ../ntil-45.knf
+#
+# Per instance: 3 configs x 100 seeds = 300 runs.
+# Per palsat: 8 threads. Parallelism on 192 physical cores = 24.
+# Worst case wall: ceil(300/24) * 900s = 11700s ≈ 3.25 hours per instance.
+# Realistic: 1.5-2.5 hours per instance.
+# name	args
+no_cache	--no-shared-cache
+default
+linear_pick	--shared-cache-pick=linear
