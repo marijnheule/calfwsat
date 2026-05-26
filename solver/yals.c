@@ -1644,24 +1644,20 @@ struct YalsSharedCache {
 };
 
 void yals_shared_cache_config_init (YalsSharedCacheConfig * cfg) {
-  // Defaults tuned across multiple ntil instance sizes (30..43 x 4-5
-  // seeds). Key findings driving the choices:
-  //   * warmup=0 (sweep2): per-worker warmup hurts; workers should
-  //     start cooperating immediately.
-  //   * hamming=5% (sweep1/2): looser near-dup threshold dominates.
-  //   * capacity=auto=32*threads: scales with thread count.
-  //   * pick=UNIFORM (sweep4 on ntil-41,43): the original linear
-  //     cost-bias causes "groupthink" — all workers gravitate to the
-  //     same best slot, hurting diversification on hard instances.
-  //     Uniform pick paired with a diversification valve (explore=25)
-  //     consistently lands in the top half on hard instances; the old
-  //     linear-pick default tied no_cache on ntil-41/43.
-  //   * explore=25 (sweep3/4): 25% chance of picking uniformly when
-  //     normally picking weighted — adds robustness to mode collapse.
-  //     Combined with pick=UNIFORM, this means cache picks are ~uniform
-  //     overall (uniform pick already, plus the explore knob means we
-  //     ignore weight when active — currently a small no-op but kept
-  //     for forward compatibility when pick changes).
+  // Defaults tuned across multiple ntil instance sizes (30..43, sweep5:
+  // 4 hard instances x 5 seeds x 300s budget). The configuration
+  // `pick=UNIFORM, explore=0` was first or top-5 on every instance
+  // tested (avg rank 2.5, worst 5) — by far the most robust single
+  // configuration. See SHARED_CACHE_REPORT.md for the data.
+  //
+  // History of default revisions:
+  //   v1 (initial):  cap=1024, ham=1%, warmup=0, pick=linear, expl=0
+  //   v2 (sweep1):   cap=256, ham=5%, warmup=5   (combo_loose)
+  //   v3 (sweep2):   warmup back to 0            (warmup_5 lost on 37,39,40)
+  //   v4 (sweep4):   pick=UNIFORM, expl=25       (won ntil-41 sweep4)
+  //   v5 (sweep5):   expl=0, cutoff bump         (current; expl=25 was
+  //                  bottom-half on every sweep5 instance)
+  //
   // capacity=0 means "auto" -- the palsat driver sets it to 32 x threads
   // before allocating. Explicit --shared-cache-size=N still overrides.
   cfg->capacity         = 0;
@@ -1671,7 +1667,7 @@ void yals_shared_cache_config_init (YalsSharedCacheConfig * cfg) {
   cfg->replace_full     = YSC_REPLACE_WORSE_ONLY;
   cfg->ham_replace      = YSC_HAM_REPLACE_EQ;
   cfg->warmup           = 0;
-  cfg->explore_pct      = 25;
+  cfg->explore_pct      = 0;
   cfg->insert_mode      = YSC_INSERT_ALWAYS;
   cfg->popularity_pct   = 0;
 }
