@@ -1,0 +1,18 @@
+# Stress test: 3 configs, very hard instances (ntil-47, 48, 50), n=100 seeds,
+# 3600s timeout. ~12h wall-clock per instance on a 192-core box.
+#
+# Configs compared:
+#   no_cache       — baseline: cache feature disabled
+#   default        — current binary defaults (pop=50, cutoff=20000, ham=10%,
+#                    pick=uniform)
+#   sweep6_winner  — the cache config that won 3/4 sweep6 instances:
+#                    pop=25, cutoff=50000, ham=5%
+#
+# Suggested invocation (per machine, one instance each):
+#   bash sweep-one.sh ../ntil-47.knf
+#   bash sweep-one.sh ../ntil-48.knf
+#   bash sweep-one.sh ../ntil-50.knf
+# name	args
+no_cache	--no-shared-cache
+default
+sweep6_winner	--shared-cache-popularity=25 --cutoff=50000 --shared-cache-hamming=5
