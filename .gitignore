@@ -14,6 +14,7 @@ solver/palsat
 /palsat
 /check-sat
 /ntil-encode
+/ntil-encode.c
 
 # Solver run output
 witness.sol
