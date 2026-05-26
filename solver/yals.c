@@ -1644,20 +1644,34 @@ struct YalsSharedCache {
 };
 
 void yals_shared_cache_config_init (YalsSharedCacheConfig * cfg) {
-  // Defaults tuned via sweep2 (ntil-37,39,40 x 4 seeds x 60s, see
-  // SHARED_CACHE_REPORT.md). The biggest single change vs untuned was
-  // dropping warmup from 5 to 0 (-34% PAR-2). Hamming 5% already won in
-  // sweep1; sweep2 reconfirmed.
+  // Defaults tuned across multiple ntil instance sizes (30..43 x 4-5
+  // seeds). Key findings driving the choices:
+  //   * warmup=0 (sweep2): per-worker warmup hurts; workers should
+  //     start cooperating immediately.
+  //   * hamming=5% (sweep1/2): looser near-dup threshold dominates.
+  //   * capacity=auto=32*threads: scales with thread count.
+  //   * pick=UNIFORM (sweep4 on ntil-41,43): the original linear
+  //     cost-bias causes "groupthink" — all workers gravitate to the
+  //     same best slot, hurting diversification on hard instances.
+  //     Uniform pick paired with a diversification valve (explore=25)
+  //     consistently lands in the top half on hard instances; the old
+  //     linear-pick default tied no_cache on ntil-41/43.
+  //   * explore=25 (sweep3/4): 25% chance of picking uniformly when
+  //     normally picking weighted — adds robustness to mode collapse.
+  //     Combined with pick=UNIFORM, this means cache picks are ~uniform
+  //     overall (uniform pick already, plus the explore knob means we
+  //     ignore weight when active — currently a small no-op but kept
+  //     for forward compatibility when pick changes).
   // capacity=0 means "auto" -- the palsat driver sets it to 32 x threads
   // before allocating. Explicit --shared-cache-size=N still overrides.
   cfg->capacity         = 0;
   cfg->hamming_percent  = 5;
-  cfg->pick_weight      = YSC_PICK_LINEAR;
+  cfg->pick_weight      = YSC_PICK_UNIFORM;
   cfg->softmax_temp_x10 = 10;        // T = 1.0
   cfg->replace_full     = YSC_REPLACE_WORSE_ONLY;
   cfg->ham_replace      = YSC_HAM_REPLACE_EQ;
   cfg->warmup           = 0;
-  cfg->explore_pct      = 0;
+  cfg->explore_pct      = 25;
   cfg->insert_mode      = YSC_INSERT_ALWAYS;
   cfg->popularity_pct   = 0;
 }
