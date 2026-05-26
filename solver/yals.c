@@ -1661,7 +1661,7 @@ void yals_shared_cache_config_init (YalsSharedCacheConfig * cfg) {
   // capacity=0 means "auto" -- the palsat driver sets it to 32 x threads
   // before allocating. Explicit --shared-cache-size=N still overrides.
   cfg->capacity         = 0;
-  cfg->hamming_percent  = 5;
+  cfg->hamming_percent  = 10;
   cfg->pick_weight      = YSC_PICK_UNIFORM;
   cfg->softmax_temp_x10 = 10;        // T = 1.0
   cfg->replace_full     = YSC_REPLACE_WORSE_ONLY;
