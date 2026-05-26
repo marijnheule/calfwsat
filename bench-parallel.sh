@@ -405,9 +405,16 @@ for inst in "${INSTS[@]}"; do
   done
 done
 
-# drain
-echo "  all $NTOTAL launched; waiting for ${#RUNNING[@]} in-flight to finish..."
-wait
+# drain. IMPORTANT: wait *only* for the tracked palsat pids, not for the
+# tee subprocess from `exec > >(tee ...)`. A bare `wait` blocks on tee's
+# pipe (which is still open because the script is still running), causing
+# the script to hang at the end and requiring a manual Ctrl-C.
+echo "  all $NTOTAL launched; waiting for in-flight to finish..."
+if [ "${#RUNNING[@]}" -gt 0 ]; then
+  for _pid in "${RUNNING[@]}"; do
+    wait "$_pid" 2>/dev/null || true
+  done
+fi
 echo "  all runs complete at $(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
 # NOTE: aggregation (CSV + summary + per-instance + report) is handled by
