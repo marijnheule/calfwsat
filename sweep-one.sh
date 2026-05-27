@@ -25,11 +25,11 @@ set -uo pipefail
 # -------- defaults (edit here, or override via env vars) ----------
 # Any of these can be overridden by setting an env var when invoking:
 #   TIMEOUT=300 SEEDS="1,2,3" bash sweep-one.sh <formula>
-SEEDS_DEFAULT="${SEEDS:-$(seq 1 100 | paste -sd, -)}"
+SEEDS_DEFAULT="${SEEDS:-1,2,3,4,5}"
 TIMEOUT_DEFAULT="${TIMEOUT:-900}"
 THREADS_DEFAULT="${THREADS:-8}"
 CUTOFF_DEFAULT="${CUTOFF:-20000}"
-CONFIGS_REL="${CONFIGS:-bench/configs-cutoff-nocache.tsv}"
+CONFIGS_REL="${CONFIGS:-bench/configs-aeq-ceq.tsv}"
 # ------------------------------------------------------------------
 
 FORMULA="${1:?usage: $0 <formula.knf>}"
