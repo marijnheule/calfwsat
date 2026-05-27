@@ -1,0 +1,21 @@
+# Cutoff sweep with the shared cache OFF (the new default).
+# Tests whether the cutoff value matters for palsat behavior even without
+# the shared cache — affects per-worker restart frequency, which determines
+# how often yals_pick_assignment fires (strategy switch + per-worker cache
+# pick) inside each worker.
+#
+# Spans 1.6 orders of magnitude on cutoff. With ~40K flips/sec/worker on
+# hard ntil instances, cycle frequencies per worker:
+#   cutoff=20k   ~ 2/s
+#   cutoff=50k   ~ 0.8/s
+#   cutoff=100k  ~ 0.4/s
+#   cutoff=200k  ~ 0.2/s   (~5s per cycle)
+#   cutoff=500k  ~ 0.08/s  (~12s per cycle)
+#   cutoff=1M    ~ 0.04/s  (~25s per cycle)
+# name	args
+co20k	--cutoff=20000
+co50k	--cutoff=50000
+co100k	--cutoff=100000
+co200k	--cutoff=200000
+co500k	--cutoff=500000
+co1M	--cutoff=1000000
