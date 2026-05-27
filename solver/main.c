@@ -62,7 +62,7 @@ typedef struct Worker { Yals * yals; pthread_t thread; } Worker;
 static Worker * worker;
 static YalsSharedCache * shared_cache;
 static YalsSharedCacheConfig shared_cache_cfg;
-static int shared_cache_enabled = 1;     // overridden by --no-shared-cache
+static int shared_cache_enabled = 0;     // OFF by default; opt-in via --shared-cache
 static int done, winner, threads = THREADS, threadset;
 struct { pthread_mutex_t done, msg, mem; } lock;
 #else
@@ -819,7 +819,8 @@ int main (int argc, char** argv) {
     else if (!strcmp (argv[i], "--no-shared-cache") ||
              !strcmp (argv[i], "--shared-cache=0"))
       shared_cache_enabled = 0;
-    else if (!strcmp (argv[i], "--shared-cache=1"))
+    else if (!strcmp (argv[i], "--shared-cache") ||
+             !strcmp (argv[i], "--shared-cache=1"))
       shared_cache_enabled = 1;
     else if ((__v = sc_flag (argv[i], "--shared-cache-size",
                              &i, argc, argv)) != NULL)
@@ -906,7 +907,7 @@ int main (int argc, char** argv) {
     for (i = 0; i < threads; i++)
       yals_set_shared_cache (worker[i].yals, shared_cache);
   } else {
-    msg ("shared assignment cache disabled (--no-shared-cache)");
+    msg ("shared assignment cache disabled (default; pass --shared-cache to enable)");
   }
 #endif
   setsighandlers ();

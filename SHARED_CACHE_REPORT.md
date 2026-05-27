@@ -65,7 +65,7 @@ All policy choices are runtime-configurable via the CLI flags below.
 
 | flag | default | meaning |
 |---|---|---|
-| `--no-shared-cache` | off (cache enabled) | disable the feature entirely |
+| `--shared-cache` / `--no-shared-cache` | **off by default** | opt-in via `--shared-cache`; cache feature off otherwise |
 | `--shared-cache-size=N` | auto = 32 × threads | cache capacity (slots) |
 | `--shared-cache-hamming=PCT` | 10 | near-duplicate threshold in % of V |
 | `--shared-cache-pick=NAME` | uniform | linear / rank / softmax / uniform / inv |
