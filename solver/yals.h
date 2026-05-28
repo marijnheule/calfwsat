@@ -1080,6 +1080,17 @@ static inline void yals_ddfw_update_var_weight (Yals *yals, int lit, int soft, i
   }
 
   LOG ("weight update of %lf for lit %d with sat %d and soft %d", weight_change, lit, sat, soft);
+
+  // Independent weighting of positive vs negative constraints: scale the
+  // falsified-weight (sat==0) contribution of POSITIVE constraints by
+  // pos = paramPos/1000. For pure-polarity formulas (e.g. ntil) the sign of
+  // the updated literal equals the polarity of the source constraint, so
+  // lit>0 in the unsat-weight path means a positive constraint. Both the
+  // initial population and every incremental make/break/transfer flow through
+  // here, so the scaling stays consistent (no drift). No-op when paramPos=1000.
+  if (sat == 0 && lit > 0 && yals->opts.paramPos.val != 1000)
+    weight_change = weight_change * (double) yals->opts.paramPos.val / 1000.0;
+
   weights[get_pos (lit)] += weight_change;
 
   // if (soft && !weights[get_pos (lit)] && yals->ddfw.var_unsat_count_soft[abs(lit)]) {
