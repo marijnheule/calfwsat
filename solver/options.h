@@ -62,8 +62,6 @@ This code extends the solver yal-lin (Md Solimul Chowdhury, Cayden Codel, Marijn
   OPT (restartouterfactor,100,1,INT_MAX,"outer restart interval factor"); \
   OPT (setfpu,1,0,1,"set FPU to use double precision on Linux"); \
   OPT (sidewaysmove,1,0,1,"enable sideways move"); \
-  OPT (stagrestart,0,0,1,"restart when ddfw is stagnent."); \
-  OPT (stagrestartfact, 1000, 0, 2000,"stagnant research factor"); \
   OPT (termint,1000,0,INT_MAX,"termination call back check interval"); \
   OPT (threadspec, 0, 0, 1, "if true, a thread use a set of fixed parameter values (applicable to palsat)"); \
   OPT (toggleuniform,0,0,1,"toggle uniform strategy"); \

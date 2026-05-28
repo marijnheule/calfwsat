@@ -1353,10 +1353,6 @@ void yals_flip_ddfw (Yals * yals, int lit) {
   if (!yals->using_maxs_weights) // otherwise cost saved separately
     yals_update_minimum (yals);
   yals->last_flip_unsat_count = yals_nunsat (yals);
-  if (yals->ddfw.min_unsat < yals_nunsat (yals))
-    yals->ddfw.min_unsat = yals_nunsat (yals);
-  else
-    yals->ddfw.min_unsat_flips_span++; 
 }
 
 /*------------------------------------------------------------------------*/
@@ -3534,7 +3530,7 @@ static void yals_restart_inner (Yals * yals) {
       }
   
   if (yals->using_maxs_weights) {
-    if (!yals->force_restart && yals->stats.maxs_best_cost < yals->stats.maxs_last) {
+    if (yals->stats.maxs_best_cost < yals->stats.maxs_last) {
       yals->stats.pick.keep++;
       yals_msg (yals, 2,
         "keeping strategy and assignment thus essentially skipping restart");
@@ -3556,7 +3552,7 @@ static void yals_restart_inner (Yals * yals) {
       yals_save_new_minimum (yals);
     }
   } else {
-    if (!yals->force_restart && yals->stats.best < yals->stats.last) {
+    if (yals->stats.best < yals->stats.last) {
       yals->stats.pick.keep++;
       yals_msg (yals, 2,
         "keeping strategy and assignment thus essentially skipping restart");
@@ -3577,11 +3573,6 @@ static void yals_restart_inner (Yals * yals) {
   }
   yals->stats.last = yals->stats.best;
   yals->stats.maxs_last = yals->stats.maxs_best_cost;
-  if(yals->force_restart) // sometimes keep assignment on restart (every other time if better)
-  {
-    yals->force_restart = 0; 
-    yals->fres_count++;
-  }
   yals->stats.time.restart += yals_time (yals) - start;
 }
 
@@ -5095,14 +5086,9 @@ void yals_init_ddfw (Yals *yals)
 {
   set_options (yals);
   if (yals->opts.componentlock.val) yals_build_components (yals); // builds once
-  yals->ddfw.min_unsat = -1;
-  yals->ddfw.clsselectp = yals->opts.threadspec.val && yals->nthreads>1 ? 
-                          set_cspt (yals) / 100.0: 
+  yals->ddfw.clsselectp = yals->opts.threadspec.val && yals->nthreads>1 ?
+                          set_cspt (yals) / 100.0:
                           (double) yals->opts.clsselectp.val / 100.0;
-  yals->fres_fact = floor(((double) yals->nvars / (double) yals->nclauses) * (double) yals->opts.stagrestartfact.val) ;
-  yals->ddfw.min_unsat_flips_span = 0;
-  yals->force_restart = 0;
-  yals->fres_count = 0;
   yals->ddfw.ddfw_active = 1;
   yals->ddfw.recent_max_reduction = -1;
   yals->last_flip_unsat_count = -1;

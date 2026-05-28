@@ -676,6 +676,22 @@ static void usage () {
     yals_del (y);
   }
   printf ("\n");
+#ifdef PALSAT
+  printf ("palsat shared-cache options (cross-thread assignment cache, OFF by default): \n");
+  printf ("\n");
+  printf ("--shared-cache / --no-shared-cache    enable / disable the shared cache [off]\n");
+  printf ("--shared-cache-size=<N>               capacity in slots [auto: 32 x threads]\n");
+  printf ("--shared-cache-hamming=<pct>          near-duplicate threshold, %% of vars [10]\n");
+  printf ("--shared-cache-pick=<mode>            pick weighting: linear|rank|softmax|uniform|inv [uniform]\n");
+  printf ("--shared-cache-softmax-temp=<N>       softmax temperature x10 (only for pick=softmax) [10]\n");
+  printf ("--shared-cache-replace=<mode>         on full cache: worse|always|never [worse]\n");
+  printf ("--shared-cache-ham-replace=<mode>     near-duplicate replace: eq|strict|always [eq]\n");
+  printf ("--shared-cache-warmup=<N>             flips before a worker starts using the cache [0]\n");
+  printf ("--shared-cache-explore=<pct>          %% of cycles a worker ignores the cache [0]\n");
+  printf ("--shared-cache-insert=<mode>          when to insert current best: always|improved [always]\n");
+  printf ("--shared-cache-popularity=<pct>       down-weight popular slots by this %% [50]\n");
+  printf ("\n");
+#endif
   printf ("The long options are by default used as '--<name>=<val>'.\n");
   printf ("Alternatively '--<name>' is the same as '--<name>=1' and\n");
   printf ("further '--no-<name>' is the same as '--<name>=0'.\n");
@@ -784,7 +800,6 @@ int main (int argc, char** argv) {
 
     else if (!strcmp (argv[i], "--computeneiinit")) setopt ("computeneiinit", 1);
     else if (!strcmp (argv[i], "--ignorewtcriteria")) setopt ("ignorewtcriteria", 1);
-    else if (!strcmp (argv[i], "--stagrestart")) setopt ("stagrestart", 1);
     else if (!strcmp (argv[i], "--clsselectp")) setopt ("clsselectp", atoll (argv[++i]));
     else if (!strcmp (argv[i], "--wpercentage")) setopt ("wpercentage", atoll (argv[++i]));
     else if (!strcmp (argv[i], "--paramAsmall")) setopt ("paramAsmall", atoll (argv[++i]));

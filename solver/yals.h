@@ -285,8 +285,6 @@ typedef struct DDFW {
   int pick_method; 
   double sum_uwr;
   double urandp;
-  int min_unsat;
-  int min_unsat_flips_span;
   double clsselectp;
   double ddfwstartth;
   int guaranteed_uwrvs, missed_guaranteed_uwvars;
@@ -359,8 +357,6 @@ typedef struct Yals {
   STACK (int) clause_size;
   int wid, nthreads;
   int consecutive_non_improvement, last_flip_unsat_count;
-  int force_restart, fres_count;
-  int fres_fact;
 
   /*
     additional data for max sat
