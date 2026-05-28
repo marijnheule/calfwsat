@@ -4422,14 +4422,12 @@ static void yals_build_components (Yals * yals) {
   yals->ddfw.cc_comp = malloc (N * sizeof (int));
   for (int i = 0; i < N; i++) yals->ddfw.cc_comp[i] = yals_cc_find (parent, i);
 
-  if (yals->opts.verbose.val) {
-    // count distinct components
-    int ncomp = 0;
-    for (int i = 0; i < N; i++) if (yals->ddfw.cc_comp[i] == i) ncomp++;
-    yals_msg (yals, 1,
-      "componentlock: %d constraints (%d clauses + %d card) in %d connected components",
-      N, yals->nclauses, yals->card_nclauses, ncomp);
-  }
+  // count distinct components
+  int ncomp = 0;
+  for (int i = 0; i < N; i++) if (yals->ddfw.cc_comp[i] == i) ncomp++;
+  yals_msg (yals, 0,
+    "componentlock: %d constraints (%d clauses + %d card) in %d connected components",
+    N, yals->nclauses, yals->card_nclauses, ncomp);
   free (parent);
 }
 
