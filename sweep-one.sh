@@ -29,7 +29,7 @@ SEEDS_DEFAULT="${SEEDS:-$(seq 1 20 | paste -sd, -)}"
 TIMEOUT_DEFAULT="${TIMEOUT:-900}"
 THREADS_DEFAULT="${THREADS:-8}"
 CUTOFF_DEFAULT="${CUTOFF:-20000}"
-CONFIGS_REL="${CONFIGS:-bench/configs-pos.tsv}"
+CONFIGS_REL="${CONFIGS:-bench/configs-componentlock.tsv}"
 # ------------------------------------------------------------------
 
 FORMULA="${1:?usage: $0 <formula.knf>}"

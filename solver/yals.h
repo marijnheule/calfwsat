@@ -292,6 +292,10 @@ typedef struct DDFW {
   int guaranteed_uwrvs, missed_guaranteed_uwvars;
   unsigned source_not_selected;
   unsigned total_transfers;
+  // componentlock: connected-component id per constraint (shared-literal
+  // connectivity). Unified index: clause cidx at [cidx], cardinality cidx at
+  // [nclauses + cidx]. NULL until built (lazily, only if componentlock on).
+  int * cc_comp;
 
   heap uvars_heap; // heap for hard variables (all variables if not MaxSAT)
   heap uvars_heap_soft; // heap for soft variables

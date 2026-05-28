@@ -3381,7 +3381,8 @@ void yals_del (Yals * yals) {
   DELN (yals->ddfw.uvars_heap.pos, yals->nvars);
   DELN (yals->ddfw.uvars_heap.score, yals->nvars);
 
-  // ddfw data structures allocated using malloc/calloc 
+  // ddfw data structures allocated using malloc/calloc
+  free (yals->ddfw.cc_comp);
   free (yals->ddfw.max_weighted_neighbour);
   free (yals->ddfw.sat_count_in_clause);
   free (yals->ddfw.helper_hash_clauses);
@@ -4361,6 +4362,77 @@ int yals_ddfw_get_max_weight_sat_clause (Yals *yals, int cidx, int constraint_ty
   return source;
 }
 
+/*------------------------------------------------------------------------*/
+/* Connected components by shared-literal connectivity (componentlock).    */
+/* Two constraints are connected if they share a common (signed) literal.  */
+/* Weight transfer is restricted to within a component when enabled.       */
+/* Note: positive-only and negative-only constraints never share a literal */
+/* (+x != -x), so they always land in different components -> no pos<->neg */
+/* weight transfer, which is the motivating use case.                      */
+/*------------------------------------------------------------------------*/
+
+static int yals_cc_find (int * parent, int x) {
+  while (parent[x] != x) { parent[x] = parent[parent[x]]; x = parent[x]; }
+  return x;
+}
+static void yals_cc_union (int * parent, int a, int b) {
+  int ra = yals_cc_find (parent, a), rb = yals_cc_find (parent, b);
+  if (ra != rb) parent[ra] = rb;
+}
+
+// Unified constraint id: clause cidx -> cidx; cardinality cidx -> nclauses+cidx.
+static inline int yals_cc_id (Yals * yals, int cidx, int type) {
+  return type == TYPECLAUSE ? cidx : yals->nclauses + cidx;
+}
+
+// Component id of a constraint (cc_comp must be built).
+static inline int yals_cc_comp_of (Yals * yals, int cidx, int type) {
+  return yals->ddfw.cc_comp[yals_cc_id (yals, cidx, type)];
+}
+
+// Build connected components over shared-literal connectivity. Idempotent:
+// only builds once (cc_comp stays valid for the lifetime of the formula).
+static void yals_build_components (Yals * yals) {
+  int N, v, s, occ, * p, * occs, cidx, first;
+  if (yals->ddfw.cc_comp) return;       // already built
+  N = yals->nclauses + yals->card_nclauses;
+  if (N <= 0) return;
+  int * parent = malloc (N * sizeof (int));
+  for (int i = 0; i < N; i++) parent[i] = i;
+
+  for (v = 1; v < yals->nvars; v++) {
+    for (s = 0; s < 2; s++) {
+      int lit = s ? -v : v;
+      first = -1;
+      occs = yals_occs (yals, lit);            // clauses containing lit
+      for (p = occs; (occ = *p) >= 0; p++) {
+        cidx = occ >> LENSHIFT;
+        if (first < 0) first = cidx;
+        else yals_cc_union (parent, first, cidx);
+      }
+      occs = yals_card_occs (yals, lit);        // cardinality containing lit
+      for (p = occs; (occ = *p) >= 0; p++) {
+        cidx = yals->nclauses + (occ >> LENSHIFT);
+        if (first < 0) first = cidx;
+        else yals_cc_union (parent, first, cidx);
+      }
+    }
+  }
+
+  yals->ddfw.cc_comp = malloc (N * sizeof (int));
+  for (int i = 0; i < N; i++) yals->ddfw.cc_comp[i] = yals_cc_find (parent, i);
+
+  if (yals->opts.verbose.val) {
+    // count distinct components
+    int ncomp = 0;
+    for (int i = 0; i < N; i++) if (yals->ddfw.cc_comp[i] == i) ncomp++;
+    yals_msg (yals, 1,
+      "componentlock: %d constraints (%d clauses + %d card) in %d connected components",
+      N, yals->nclauses, yals->card_nclauses, ncomp);
+  }
+  free (parent);
+}
+
 /*
 
   Get a random satisfied constraint with weight greater or equal to the initial weight.
@@ -4368,15 +4440,18 @@ int yals_ddfw_get_max_weight_sat_clause (Yals *yals, int cidx, int constraint_ty
   Select between a clause or cardinality consrtaint with weighted probability based
   on the number of each constraint type.
 
-  May loop and waste time but probably very important for taking weight 
+  May loop and waste time but probably very important for taking weight
   from other neighborhoods.
 
   Loop until a certain cutoff, if no source found with weight greater
   than initial weight, return the best weighted constraint found
   to that point.
 
+  If componentlock is enabled, sink_comp is the sink's component id and only
+  sources in the same component are accepted; pass sink_comp = -1 to disable.
+
 */
-int yals_ddfw_get_random_sat_clause (Yals * yals, int * constraint_type) {
+int yals_ddfw_get_random_sat_clause (Yals * yals, int * constraint_type, int sink_comp) {
     int source = -1;
     int selection, cnt = -1;
     int cnt_cutoff = 1000;// number of iterations before giving up
@@ -4427,7 +4502,10 @@ int yals_ddfw_get_random_sat_clause (Yals * yals, int * constraint_type) {
         
         source_hard = yals->hard_clause_ids [clause];
         if ((source_hard && !takes_hard) || (!source_hard && !takes_soft)) continue;
-        
+
+        // componentlock: only take from a source in the sink's component
+        if (sink_comp >= 0 && yals_cc_comp_of (yals, clause, TYPECLAUSE) != sink_comp) continue;
+
         if (yals_satcnt (yals, clause) > 0) {
           if (get_something) {
             if (yals->ddfw.ddfw_clause_weights [clause] > best_wt_cls) {
@@ -4453,7 +4531,10 @@ int yals_ddfw_get_random_sat_clause (Yals * yals, int * constraint_type) {
         
         source_hard = yals->hard_card_ids [card];
         if ((source_hard && !takes_hard) || (!source_hard && !takes_soft)) continue;
-        
+
+        // componentlock: only take from a source in the sink's component
+        if (sink_comp >= 0 && yals_cc_comp_of (yals, card, TYPECARDINALITY) != sink_comp) continue;
+
         if (yals_card_satcnt (yals, card) >= yals_card_bound (yals, card)) {
           if (get_something) {
             if (yals->ddfw.ddfw_card_weights [card] >= best_wt_card) {
@@ -4559,10 +4640,12 @@ void yals_ddfw_transfer_weights_for_clause (Yals *yals, int sink)
 {
   int constraint_type;
   int source = -1;
+  int sink_comp = yals->opts.componentlock.val ? yals_cc_comp_of (yals, sink, TYPECLAUSE) : -1;
 
   LOGCIDX (sink, "Transfer weight to");
 
-  // Find maximum weighted satisfied clause (source), which is in same sign neighborhood of cidx (sink)  
+  // Find maximum weighted satisfied clause (source), which is in same sign neighborhood of cidx (sink)
+  // (same-sign neighbors share a literal with the sink, so are always in its component)
   source = yals_ddfw_get_max_weight_sat_clause (yals, sink, TYPECLAUSE, &constraint_type);
 
   if (source == -1)
@@ -4570,7 +4653,7 @@ void yals_ddfw_transfer_weights_for_clause (Yals *yals, int sink)
 
   // If no such source is available (source=-1), then select a randomly satisfied clause as the source.
   if ( source == -1  || ( ( (double) yals_rand_mod (yals, INT_MAX) / (double) INT_MAX) <= yals->ddfw.clsselectp)) {
-    source = yals_ddfw_get_random_sat_clause (yals, &constraint_type);
+    source = yals_ddfw_get_random_sat_clause (yals, &constraint_type, sink_comp);
   }
 
   if (source == -1) {
@@ -4627,18 +4710,19 @@ void yals_ddfw_transfer_weights_for_card (Yals *yals, int sink)
 {
   int constraint_type;
   int source = -1;
+  int sink_comp = yals->opts.componentlock.val ? yals_cc_comp_of (yals, sink, TYPECARDINALITY) : -1;
 
   LOGCARDCIDX (sink, "Transfer weight to");
 
-  // Find maximum weighted satisfied clause (source), which is in same sign neighborhood of cidx (sink)  
+  // Find maximum weighted satisfied clause (source), which is in same sign neighborhood of cidx (sink)
   source = yals_ddfw_get_max_weight_sat_clause (yals, sink, TYPECARDINALITY, &constraint_type);
 
   if (source == -1)
     yals->ddfw.source_not_selected++;
-  
+
   // If no such source is available (source=-1), then select a randomly satisfied clause as the source.
   if ( source == -1  || ( ( (double) yals_rand_mod (yals, INT_MAX) / (double) INT_MAX) <= yals->ddfw.clsselectp)) {
-    source = yals_ddfw_get_random_sat_clause (yals, &constraint_type);
+    source = yals_ddfw_get_random_sat_clause (yals, &constraint_type, sink_comp);
   }
 
   if (source == -1) {
@@ -5329,6 +5413,7 @@ double set_cspt (Yals * yals)
 void yals_init_ddfw (Yals *yals)
 {
   set_options (yals);
+  if (yals->opts.componentlock.val) yals_build_components (yals); // builds once
   yals->ddfw.min_unsat = -1;
   yals->ddfw.clsselectp = yals->opts.threadspec.val && yals->nthreads>1 ? 
                           set_cspt (yals) / 100.0: 

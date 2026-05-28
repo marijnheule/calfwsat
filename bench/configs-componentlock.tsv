@@ -1,0 +1,9 @@
+# componentlock A/B: restrict DDFW weight transfer to within shared-literal
+# connected components. On ntil this yields exactly 2 components (positive
+# row/col cardinality vs negative no-triple clauses), so it eliminates ALL
+# pos<->neg weight transfer (the ~2.5% cross-polarity flow we measured).
+#
+# Cache OFF, cutoff=20000, aeq=ceq=0.167 (current defaults). 20 seeds, 900s.
+# name	args
+nolock	--componentlock=0
+lock	--componentlock=1
