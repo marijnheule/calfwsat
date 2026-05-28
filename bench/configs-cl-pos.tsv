@@ -1,0 +1,12 @@
+# componentlock {off,on} x paramPos {1.0, 0.99, 0.95, 0.9}
+# pos = paramPos/1000.  Cache off, cutoff=20000, aeq=ceq=0.167 (defaults).
+# 8 configs total; intended for 100 seeds.
+# name	args
+nolock_pos100	--componentlock=0 --paramPos=1000
+nolock_pos099	--componentlock=0 --paramPos=990
+nolock_pos095	--componentlock=0 --paramPos=950
+nolock_pos090	--componentlock=0 --paramPos=900
+lock_pos100	--componentlock=1 --paramPos=1000
+lock_pos099	--componentlock=1 --paramPos=990
+lock_pos095	--componentlock=1 --paramPos=950
+lock_pos090	--componentlock=1 --paramPos=900
