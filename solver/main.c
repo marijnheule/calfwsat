@@ -802,13 +802,8 @@ int main (int argc, char** argv) {
     else if (!strcmp (argv[i], "--ignorewtcriteria")) setopt ("ignorewtcriteria", 1);
     else if (!strcmp (argv[i], "--clsselectp")) setopt ("clsselectp", atoll (argv[++i]));
     else if (!strcmp (argv[i], "--wpercentage")) setopt ("wpercentage", atoll (argv[++i]));
-    else if (!strcmp (argv[i], "--paramAsmall")) setopt ("paramAsmall", atoll (argv[++i]));
-    else if (!strcmp (argv[i], "--paramAbig")) setopt ("paramAbig", atoll (argv[++i]));
-    else if (!strcmp (argv[i], "--paramCSmall")) setopt ("paramCSmall", atoll (argv[++i]));
-    else if (!strcmp (argv[i], "--paramCBig")) setopt ("paramCBig", atoll (argv[++i]));
     else if (!strcmp (argv[i], "--paramCeq")) setopt ("paramCeq", atoll (argv[++i]));
     else if (!strcmp (argv[i], "--paramAeq")) setopt ("paramAeq", atoll (argv[++i]));
-    else if (!strcmp (argv[i], "--wtrulelinchoice")) setopt ("wtrulelinchoice", atoll (argv[++i]));
     else if (!strcmp (argv[i], "--invwtfactor")) { setopt ("invwtfactor", atoll (argv[++i]));}
     else if (!strcmp (argv[i], "--limofranda")) { setopt ("limofranda", atoll (argv[++i]));}
     else if (!strcmp (argv[i], "--nosidewaysmove")) setopt ("sidewaysmove", 0);

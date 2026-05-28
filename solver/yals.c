@@ -3724,100 +3724,20 @@ double compute_degree_of_satisfaction (Yals *yals, int cidx)
   return ds;
 }
 
-double compute_gain (Yals *yals, int lit)
-{
-  int var = abs (lit);
-  int true_lit = yals_val (yals, var) ? var : -var;
-  int false_lit = -true_lit;
-  return 
-        yals->ddfw.unsat_weights [get_pos (false_lit)]  
-        - yals->ddfw.sat1_weights [get_pos (true_lit)];
-}
-
-double compute_shortfall (Yals * yals, int sink)
-{
-  int lit;
-  int * lits = yals_lits (yals, sink);
-  double shortfall = DBL_MAX; //yals->opts.wtrulelinchoice.val == 1 || yals->opts.wtrulelinchoice.val == 2 ? DBL_MAX : -DBL_MAX;
-  if (yals->opts.wtrulelinchoice.val == 1) // get the shortfall for first literal
-  {
-    lit=*lits;
-    double flip_gain = compute_gain (yals, lit);
-    if (flip_gain < 0) 
-      shortfall = flip_gain;
-  }
-  else if (yals->opts.wtrulelinchoice.val == 2) // get the lowest shortfall
-  {
-
-    while ((lit=*lits++))
-     { 
-       double flip_gain = compute_gain (yals, lit);
-       if (flip_gain < 0)
-       {
-         if (flip_gain < shortfall)
-           shortfall = flip_gain;
-       }
-     }
-  }
-  return shortfall;
-}
-
-double lmbased_wt (Yals * yals, int source, int sink)
-{
-  double w;
-  double shortfall = compute_shortfall (yals, sink);
-  double defwt = 1.0f;//(yals->ddfw.ddfw_clause_weights [source] > INIT_DDFW_WEIGHT ? 1.0f : 2.0f);
-  int shortfall_determined = shortfall < DBL_MAX;
-        //(yals->opts.wtrulelinchoice.val == 1 || yals->opts.wtrulelinchoice.val == 2) ? shortfall < DBL_MAX : shortfall > -DBL_MAX;
-  //int th = ceil (yals_nunsat (yals) * 0.01);
-  if (shortfall_determined && yals->ddfw.guaranteed_uwrvs < 1)
-  {
-    shortfall = fabs (shortfall);
-    int decby = shortfall + defwt; 
-    if (yals->ddfw.ddfw_clause_weights [source] - decby >= (yals->opts.ddfw_init_clause_weight.val - 1.0))
-    {
-      w = decby;
-      yals->ddfw.guaranteed_uwrvs++;
-    }
-    else 
-      w = defwt;
-  }
-  else 
-    w = defwt;
-  return w;
-}
-
 double linear_wt (Yals * yals, int source, int type_source)
 {
-  double w=0, a=0, c=0;
-
-  double init_weight = 0.0, source_weight = 0.0;
+  double source_weight = 0.0;
 
   if (type_source == TYPECLAUSE) {
-    init_weight = yals->opts.ddfw_init_clause_weight.val;
     source_weight = yals->ddfw.ddfw_clause_weights [source];
   } else if (type_source == TYPECARDINALITY) {
-    init_weight = yals->opts.ddfw_init_card_weight.val;
     source_weight = yals->ddfw.ddfw_card_weights [source];
   }
-  
-  if (yals->opts.wtrulelinchoice.val == 1) // lw-itl
-  {
-    a = source_weight > init_weight ? (float) yals->opts.paramAbig.val / 100.0 : (float) yals->opts.paramAsmall.val / 100.0;
-    c = source_weight > init_weight ? yals->opts.paramCBig.val : yals->opts.paramCSmall.val;
-  }
-  else if (yals->opts.wtrulelinchoice.val == 2) // lw-ith
-  {
-    a = source_weight > init_weight ? (float) yals->opts.paramAsmall.val / 100.0 : (float) yals->opts.paramAbig.val / 100.0;
-    c = source_weight > init_weight ? yals->opts.paramCSmall.val : yals->opts.paramCBig.val;
-  }
-  else if (yals->opts.wtrulelinchoice.val == 3) //lw-ite
-  {
-    a = (float) yals->opts.paramAeq.val / 1000.0;
-    c = (float) yals->opts.paramCeq.val / 1000.0;  // unified /1000 scale (was /100)
-  }
-  w = (double) ((float) source_weight * (float) a +  (float) c);
-  return w;
+
+  // lw-ite: w = source_weight * a + c
+  double a = (float) yals->opts.paramAeq.val / 1000.0;
+  double c = (float) yals->opts.paramCeq.val / 1000.0;
+  return (double) ((float) source_weight * (float) a + (float) c);
 }
 
 /*
@@ -5876,13 +5796,6 @@ void yals_print_stats (Yals * yals)
   //                 yals_minimum (yals), yals->ddfw.alg_switch, yals->stats.restart.inner.count, 
   //                 yals->fres_fact, yals->fres_count, yals->stats.time.restart);
   // double r = (double) yals->ddfw.source_not_selected / (double) yals->ddfw.total_transfers;
-  // double a = 0;
-  // double c = 0;
-  // if (yals->opts.wtrulelinchoice.val == 6 || yals->opts.wtrulelinchoice.val == 7)
-  // {
-  //   a = (float) yals->opts.l6parama.val / 1000.0;
-  //   c = (float) yals->opts.l6paramc.val / 100.0;
-  // }
   //printf ("c stats |%ld ", yals->stats.flips);
 }
 

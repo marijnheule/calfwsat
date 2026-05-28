@@ -40,10 +40,6 @@ This code extends the solver yal-lin (Md Solimul Chowdhury, Cayden Codel, Marijn
   OPT (fixed,4,0,INT_MAX,"fixed default strategy frequency (1=always)"); \
   OPT (geomfreq,66,0,100,"geometric picking first frequency (percent)"); \
   OPT (ignorewtcriteria,0,0,1,"ignore the check with initial weight while deciding a neighboring satisfied clause during weight transfer in ddfw"); \
-  OPT (paramAsmall,5,1,100,"a>"); \
-  OPT (paramAbig,10,1,100,"a="); \
-  OPT (paramCSmall,1,1,8,"c>"); \
-  OPT (paramCBig,2,1,8,"c="); \
   OPT (paramCeq,167,0,1000,"lw-ite additive term c (c = paramCeq/1000)"); \
   OPT (paramAeq,167,1,1000,"lw-ite multiplicative factor a (a = paramAeq/1000)"); \
   OPT (paramPos,1000,0,5000,"falsified-weight multiplier for positive constraints (pos = paramPos/1000)"); \
@@ -73,7 +69,6 @@ This code extends the solver yal-lin (Md Solimul Chowdhury, Cayden Codel, Marijn
   OPT (witness,1,0,1,"print witness"); \
   OPT (wpercentage,10,0,90,"percentage of clause weights to transfer."); \
   OPT (invwtfactor,1,1,100," factor for computing weight with the inv factor rule."); \
-  OPT (wtrulelinchoice,3,1,10,"Linear weight transfer rule choice"); \
   OPT (card_compute,4,1,6,"card ddfw weight computation rule (1: linear, 2: exponential, 3: quadratic, 4: choice of exponent from option ddfw_cad_exp)"); \
   OPT (ddfw_neighbors_plus,0,0,1,"ddfw look for neighbors+ before random sat"); \
   OPT (maxs_hard_eps,0,0,INT_MAX,"pure maxsat hard epsilon"); \
