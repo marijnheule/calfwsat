@@ -4070,8 +4070,8 @@ double linear_wt (Yals * yals, int source, int type_source)
   }
   else if (yals->opts.wtrulelinchoice.val == 3) //lw-ite
   {
-    a = (float) yals->opts.paramAeq.val / 1000.0; 
-    c = (float) yals->opts.paramCeq.val / 100.0;
+    a = (float) yals->opts.paramAeq.val / 1000.0;
+    c = (float) yals->opts.paramCeq.val / 1000.0;  // unified /1000 scale (was /100)
   }
   w = (double) ((float) source_weight * (float) a +  (float) c);
   return w;

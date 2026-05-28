@@ -47,8 +47,8 @@ This code extends the solver yal-lin (Md Solimul Chowdhury, Cayden Codel, Marijn
   OPT (paramAbig,10,1,100,"a="); \
   OPT (paramCSmall,1,1,8,"c>"); \
   OPT (paramCBig,2,1,8,"c="); \
-  OPT (paramCeq,0,0,1000,"c="); \
-  OPT (paramAeq,250,1,1000,"c="); \
+  OPT (paramCeq,167,0,1000,"lw-ite additive term c (c = paramCeq/1000)"); \
+  OPT (paramAeq,167,1,1000,"lw-ite multiplicative factor a (a = paramAeq/1000)"); \
   OPT (limofranda,25,0,1000,"limit for random value of a"); \
   OPT (hitlim,-1,-1,INT_MAX,"minimum hit limit"); \
   OPT (keep,0,0,1,"keep assignment during restart"); \
