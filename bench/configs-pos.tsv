@@ -1,19 +1,15 @@
-# pos sweep: multiply the falsified-weight contribution of POSITIVE constraints
-# by pos = paramPos/1000 in the DDFW variable-selection score.
-#   pos < 1  -> de-emphasize falsified positive (row/col) constraints
-#   pos = 1  -> current default (no scaling)
-#   pos > 1  -> emphasize falsified positive constraints
-#
+# pos sweep (v2): multiply the falsified-weight contribution of POSITIVE
+# constraints by pos = paramPos/1000 in the DDFW variable-selection score.
+# Earlier sweep showed pos>1.0 clearly worse; this round probes the LOW range
+# (strongly de-emphasizing positive row/col constraints) plus one slightly-
+# above-1 point.
+#   pos in {0.2, 0.4, 0.6, 0.8, 1.0, 1.05}
 # Cache OFF, cutoff=20000, aeq=ceq=0.167 (current defaults). 20 seeds, 900s.
-# 7 configs. pos10 = default.
-#
-# NOTE: early smoke showed pos=1.3 destabilizes even easy instances (stuck at
-# small #unsat). Expect the useful range to be pos <= 1.0.
+# pos100 = default.
 # name	args
-pos07	--paramPos=700
-pos08	--paramPos=800
-pos09	--paramPos=900
-pos10	--paramPos=1000
-pos11	--paramPos=1100
-pos12	--paramPos=1200
-pos13	--paramPos=1300
+pos020	--paramPos=200
+pos040	--paramPos=400
+pos060	--paramPos=600
+pos080	--paramPos=800
+pos100	--paramPos=1000
+pos105	--paramPos=1050
