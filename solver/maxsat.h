@@ -529,8 +529,6 @@ int yals_ass_maxs_inner_loop (Yals * yals) {
     if (!yals_get_cost (yals))
       return 1;
     // yals_maxs_restart_inner (yals);
-    if (!yals->opts.ddfwonly.val) // currently not allowed... (keep for quick decent)
-        yals->ddfw.ddfw_active = 0; // yals_abort (yals, "trying to switch out of ddfw mode");
     while ( c<yals->opts.cutoff.val || (yals->opts.cutoff.val <= 0)) // cutoff 0 is unlimited flips
     {
 

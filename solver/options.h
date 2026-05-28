@@ -24,7 +24,6 @@ This code extends the solver yal-lin (Md Solimul Chowdhury, Cayden Codel, Marijn
 
 #define OPTSTEMPLATE \
   OPT (best,0,0,1,"always pick best assignment during restart"); \
-  OPT (breakzero,0,0,1,"always use break zero literal if possibe"); \
   OPT (cached,1,0,1,"use cached assignment during restart"); \
   OPT (cacheduni,0,0,1,"pick random cached assignment uniformly"); \
   OPT (cachemax,(1<<10),0,(1<<20),"max cache size of saved assignments"); \
@@ -37,8 +36,6 @@ This code extends the solver yal-lin (Md Solimul Chowdhury, Cayden Codel, Marijn
   OPT (crit,1,0,1,"dynamic break values (using critical lits)"); \
   OPT (cutoff,20000 , 0,INT_MAX,"flips per try (0 = unlimited; controls shared-cache cycle frequency)"); \
   OPT (ddfwpicklit, 2,1,6,"1=best,4=wrand"); \
-  OPT (ddfwonly, 1,0,1,"1=only emply ddfw,0=employ a combination of heuristics"); \
-  OPT (ddfwstartth, 10000,10,1000000,"use to compute threshold for #unsat_cluase/#total_clause to start ddfw."); \
   OPT (defrag,1,0,1,"defragemtation of unsat queue"); \
   OPT (fixed,4,0,INT_MAX,"fixed default strategy frequency (1=always)"); \
   OPT (geomfreq,66,0,100,"geometric picking first frequency (percent)"); \
@@ -56,10 +53,8 @@ This code extends the solver yal-lin (Md Solimul Chowdhury, Cayden Codel, Marijn
   OPT (keep,0,0,1,"keep assignment during restart"); \
   OPT (maxtries,INT_MAX , 0,INT_MAX,"Maximum number of tries (default INT_MAX = unlimited)"); \
   OPT (minchunksize,(1<<8),2,(1<<20),"minium queue chunk size"); \
-  OPT (pick,0,-1,4,"-1=pbfs,0=rnd,1=bfs,2=dfs,3=rbfs,4=ubfs"); \
   OPT (pol,0,-1,1,"negative=-1 positive=1 or random=0 polarity"); \
   OPT (prep,1,0,1,"preprocessing through unit propagation"); \
-  OPT (rbfsrate,10,1,INT_MAX,"relaxed BFS rate"); \
   OPT (reluctant,1,0,1,"reluctant doubling of restart interval"); \
   OPT (restart,100000,0,INT_MAX,"basic (inner) restart interval"); \
   OPT (innerrestartoff, 1 ,0,1,"disable inner restart"); \
@@ -72,19 +67,15 @@ This code extends the solver yal-lin (Md Solimul Chowdhury, Cayden Codel, Marijn
   OPT (termint,1000,0,INT_MAX,"termination call back check interval"); \
   OPT (threadspec, 0, 0, 1, "if true, a thread use a set of fixed parameter values (applicable to palsat)"); \
   OPT (toggleuniform,0,0,1,"toggle uniform strategy"); \
-  OPT (unfairfreq,50,0,100,"unfair picking first frequency (percent)"); \
   OPT (uni,0,-1,1,"weighted=0,uni=1,antiuni=-1 clause weights"); \
-  OPT (unipick,-1,-1,4,"clause picking strategy for uniform formulas"); \
   OPT (unirestarts,0,0,INT_MAX,"max number restarts for uniform formulas"); \
   OPT (urandp, 0,0,100,"urandom selection probability for urand+optimal for DDFW"); \
   OPT (verbose,0,0,5,"set verbose level"); \
   OPT (weight,5,1,8,"maximum clause weight"); \
   OPT (witness,1,0,1,"print witness"); \
   OPT (wpercentage,10,0,90,"percentage of clause weights to transfer."); \
-  OPT (wtrule,2,1,6,"weight transfer rule"); \
   OPT (invwtfactor,1,1,100," factor for computing weight with the inv factor rule."); \
   OPT (wtrulelinchoice,3,1,10,"Linear weight transfer rule choice"); \
-  OPT (card_wtrule,2,1,2,"card ddfw weight transfer rule (1: constant, 2: linear"); \
   OPT (card_compute,4,1,6,"card ddfw weight computation rule (1: linear, 2: exponential, 3: quadratic, 4: choice of exponent from option ddfw_cad_exp)"); \
   OPT (ddfw_neighbors_plus,0,0,1,"ddfw look for neighbors+ before random sat"); \
   OPT (maxs_hard_eps,0,0,INT_MAX,"pure maxsat hard epsilon"); \

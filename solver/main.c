@@ -668,12 +668,6 @@ static void usage () {
   printf ("-c     enable internal checking (see '--checking')\n");
 #endif
   printf ("\n");
-  printf ("--bfs  BFS (same as '--pick=1')\n");
-  printf ("--dfs  DFS (same as '--pick=2')\n");
-  printf ("--rfs  relaxed BFS (same as '--pick=3')\n");
-  printf ("--pfs  pseudo BFS (same as '--pick=-1')\n");
-  printf ("--ufs  uniform random search (same as '--pick=0')\n");
-  printf ("\n");
   printf ("other options (also available through API): \n");
   printf ("\n");
   {
@@ -769,11 +763,6 @@ int main (int argc, char** argv) {
     else if (!strcmp (argv[i], "-c"))
       setopt ("checking", ++checking);
 #endif
-    else if (!strcmp (argv[i], "--bfs")) setopt ("pick", 1);
-    else if (!strcmp (argv[i], "--dfs")) setopt ("pick", 2);
-    else if (!strcmp (argv[i], "--rfs")) setopt ("pick", 3);
-    else if (!strcmp (argv[i], "--pfs")) setopt ("pick", -1);
-    else if (!strcmp (argv[i], "--ufs")) setopt ("pick", 0);
     else if (isnum (argv[i])) {
 #ifdef PALSAT
       if (seedset) die ("seed already set (try '-h')");
@@ -793,20 +782,17 @@ int main (int argc, char** argv) {
 
     else if (!strcmp (argv[i], "--urandp")) { setopt ("urandp", atoll (argv[++i]));}
 
-    else if (!strcmp (argv[i], "--ddfwonly")) setopt ("ddfwonly", 1);
     else if (!strcmp (argv[i], "--computeneiinit")) setopt ("computeneiinit", 1);
     else if (!strcmp (argv[i], "--ignorewtcriteria")) setopt ("ignorewtcriteria", 1);
     else if (!strcmp (argv[i], "--stagrestart")) setopt ("stagrestart", 1);
     else if (!strcmp (argv[i], "--clsselectp")) setopt ("clsselectp", atoll (argv[++i]));
     else if (!strcmp (argv[i], "--wpercentage")) setopt ("wpercentage", atoll (argv[++i]));
-    else if (!strcmp (argv[i], "--ddfwstartth")) setopt ("ddfwstartth", atoll (argv[++i]));
     else if (!strcmp (argv[i], "--paramAsmall")) setopt ("paramAsmall", atoll (argv[++i]));
     else if (!strcmp (argv[i], "--paramAbig")) setopt ("paramAbig", atoll (argv[++i]));
     else if (!strcmp (argv[i], "--paramCSmall")) setopt ("paramCSmall", atoll (argv[++i]));
     else if (!strcmp (argv[i], "--paramCBig")) setopt ("paramCBig", atoll (argv[++i]));
     else if (!strcmp (argv[i], "--paramCeq")) setopt ("paramCeq", atoll (argv[++i]));
     else if (!strcmp (argv[i], "--paramAeq")) setopt ("paramAeq", atoll (argv[++i]));
-    else if (!strcmp (argv[i], "--wtrule")) setopt ("wtrule", atoll (argv[++i]));
     else if (!strcmp (argv[i], "--wtrulelinchoice")) setopt ("wtrulelinchoice", atoll (argv[++i]));
     else if (!strcmp (argv[i], "--invwtfactor")) { setopt ("invwtfactor", atoll (argv[++i]));}
     else if (!strcmp (argv[i], "--limofranda")) { setopt ("limofranda", atoll (argv[++i]));}

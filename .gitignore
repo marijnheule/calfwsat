@@ -20,6 +20,9 @@ solver/palsat
 witness.sol
 temp.log
 
+# Sweep / benchmark result directories (regeneratable, large)
+bench-results/
+
 # Large benchmark instance data — regeneratable from ntil-encode.c
 ntil-*.knf
 ntil-*.cnf

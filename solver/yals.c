@@ -103,13 +103,6 @@ static inline int yals_best (Yals * yals, int lit) {
 // i.e., !yals->ddfw.ddfw_active
 
 
-static unsigned yals_weighted_break (Yals * yals, int lit) {
-  int idx = ABS (lit);
-  assert (yals->crit);
-  assert_valid_idx (idx);
-  return yals->weightedbreak[2*idx + (lit < 0)];
-}
-
 static void yals_inc_weighted_break (Yals * yals, int lit, int len) {
   //double s = yals_time (yals);
   int idx = ABS (lit), pos;
@@ -651,7 +644,7 @@ double yals_card_calculate_weight (Yals * yals, int bound, int nsat, double c_we
       double exp = (yals->opts.ddfw_card_exp.val) / 10.0 + 1;
       w =  c_weight * pow((bound - nsat),exp);
     }
-   } else {yals_abort (yals, "incorrect card wtrule");}
+   } else {yals_abort (yals, "incorrect card_compute");}
    /*
     Possible options
 
@@ -826,144 +819,6 @@ void yals_save_new_minimum (Yals * yals) {
 
 /*------------------------------------------------------------------------*/
 
-// probSAT API for picking clause and literal
-// Not yet modified to handle cardinality constraints or MaxSAT!
-
-static const char * yals_pick_to_str (Yals * yals) {
-  switch (yals->pick) {
-    case BFS_CLAUSE_PICKING:
-      return "clause by BFS strategy";
-    case RELAXED_BFS_CLAUSE_PICKING:
-      return "clause by relaxed BFS strategy";
-    case DFS_CLAUSE_PICKING:
-      return "clause by DFS strategy";
-    case PSEUDO_BFS_CLAUSE_PICKING:
-      return "clause by pseudo BFS strategy";
-    case UNFAIR_BFS_CLAUSE_PICKING:
-      return "clause by unfair BFS strategy";
-    case RANDOM_CLAUSE_PICKING:
-    default:
-      assert (yals->pick == RANDOM_CLAUSE_PICKING);
-      return "uniformly random clause";
-  }
-}
-
-static int yals_pick_clause (Yals * yals) {
-  int cidx, nunsat = yals_nunsat (yals);
-  assert (nunsat > 0);
-  if (yals->unsat.usequeue) {
-    Lnk * lnk;
-    if (yals->pick == BFS_CLAUSE_PICKING) {
-      lnk = yals->unsat.queue.first;
-    } else if (yals->pick == RELAXED_BFS_CLAUSE_PICKING) {
-      lnk = yals->unsat.queue.first;
-      while (lnk->next && !yals_rand_mod (yals, yals->opts.rbfsrate.val))
-lnk = lnk->next;
-    } else if (yals->pick == UNFAIR_BFS_CLAUSE_PICKING) {
-      if (yals->unsat.queue.count > 1 &&
- yals_rand_mod (yals, 100) >= yals->opts.unfairfreq.val) {
-lnk = yals->unsat.queue.first;
-yals_dequeue_lnk (yals, lnk);
-yals_enqueue_lnk (yals, lnk);
-yals->stats.queue.unfair++;
-      }
-      lnk = yals->unsat.queue.first;
-    } else {
-      assert (yals->pick == DFS_CLAUSE_PICKING);
-      lnk = yals->unsat.queue.last;
-    }
-    assert (lnk);
-    cidx = lnk->cidx;
-  } else {
-    int cpos;
-    if (yals->pick == PSEUDO_BFS_CLAUSE_PICKING) {
-      cpos = yals->stats.flips % nunsat;
-    } else {
-      assert (yals->pick == RANDOM_CLAUSE_PICKING);
-      cpos = yals_rand_mod (yals, nunsat);
-    }
-    cidx = PEEK (yals->unsat.stack, cpos);
-    assert (yals->pos[cidx] == cpos);
-  }
-  assert_valid_cidx (cidx);
-  LOG ("picking %s out of %d", yals_pick_to_str (yals), nunsat);
-  assert (!yals_satcnt (yals, cidx));
-  LOGCIDX (cidx, "picked");
-  return cidx;
-}
-
-/*------------------------------------------------------------------------*/
-
-static unsigned yals_dynamic_weighted_break (Yals * yals, int lit) {
-  unsigned res = yals_weighted_break (yals, -lit);
-  LOG ("literal %d results in weighted break %u", lit, res);
-  return res;
-}
-
-#define ACCU(SUM,INC) \
-do { \
-  if (UINT_MAX - (INC) < (SUM)) (SUM) = UINT_MAX; else (SUM) += (INC); \
-} while (0)
-
-static unsigned yals_compute_weighted_break (Yals * yals, int lit) {
-  unsigned wb, b, w, cnt;
-  const int * p, * occs;
-  int occ, cidx, len;
-
-  assert (!yals_val (yals, lit));
-  wb = b = 0;
-  occs = yals_occs (yals, -lit);
-  for (p = occs ; (occ = *p) >= 0; p++) {
-    len = occ & LENMASK;
-    cidx = occ >> LENSHIFT;
-    cnt = yals_satcnt (yals, cidx);
-    if (cnt != 1) continue;
-    w = yals->weights [len];  // TODO remove mem for uniform
-    assert (0 < w && w <= yals->strat.weight);
-    ACCU (wb, w);
-    b++;
-  }
-
-  LOG ("literal %d breaks %u clauses out of %d results in weighted break %u",
-    lit, b, (int)(p - occs), wb);
-
-  ADD (read, p - occs);
-
-  return wb;
-}
-
-static unsigned yals_determine_weighted_break (Yals * yals, int lit) {
-  unsigned res;
-  if (yals->crit) res = yals_dynamic_weighted_break (yals, lit);
-  else res = yals_compute_weighted_break (yals, lit);
-#ifndef NYALSTATS
-  if (yals->stats.wb.max < res) yals->stats.wb.max = res;
-  if (yals->stats.wb.min > res) yals->stats.wb.min = res;
-#endif
-  return res;
-}
-
-/*------------------------------------------------------------------------*/
-
-static double
-yals_compute_score_from_weighted_break (Yals * yals, unsigned w) {
-
-  double s;
-
-  if (yals->strat.correct)
-    s = (w < yals->exp.max.cb) ?
-          PEEK (yals->exp.table.cb, w) : yals->exp.eps.cb;
-  else
-    s = (w < yals->exp.max.two) ?
-          PEEK (yals->exp.table.two, w) : yals->exp.eps.two;
-
-  assert (s);
-
-  LOG ("weighted break %u gives score %g", w, s);
-
-  return s;
-}
-
 static int yals_pick_by_score (Yals * yals) {
   double s, lim, sum;
   const double * q;
@@ -996,76 +851,6 @@ static int yals_pick_by_score (Yals * yals) {
   }
 
   return res;
-}
-
-/*------------------------------------------------------------------------*/
-
-static int yals_pick_literal (Yals * yals, int cidx) {
-  const int pick_break_zero = yals->opts.breakzero.val;
-  const int * p, * lits;
-  int lit, zero;
-  unsigned w;
-  double s;
-
-  assert (EMPTY (yals->breaks));
-  assert (EMPTY (yals->cands));
-
-  lits = yals_lits (yals, cidx);
-
-  zero = 0;
-  for (p = lits; (lit = *p); p++) {
-    w = yals_determine_weighted_break (yals, lit);
-    LOG ("literal %d weighted break %u", lit, w);
-    if (pick_break_zero && !w) {
-      if (!zero++) CLEAR (yals->cands);
-      PUSH (yals->cands, lit);
-    } else if (!zero) {
-      PUSH (yals->breaks, w);
-      PUSH (yals->cands, lit);
-    }
-  }
-
-  if (zero) {
-
-    yals->stats.bzflips++;
-    assert (zero == COUNT (yals->cands));
-    lit = yals->cands.start[yals_rand_mod (yals, zero)];
-    LOG ("picked random break zero literal %d out of %d", lit, zero);
-
-  } else {
-
-    const unsigned * wbs = yals->breaks.start;
-    const unsigned n = COUNT (yals->breaks);
-    unsigned i;
-
-    assert (EMPTY (yals->scores));
-
-    for (i = 0; i < n; i++) {
-      w = wbs[i];
-      s = yals_compute_score_from_weighted_break (yals, w);
-      LOG ("literal %d weighted break %u score %g", lits[i], w, s);
-      PUSH (yals->scores, s);
-    }
-    lit = yals_pick_by_score (yals);
-
-#ifndef NDEBUG
-    for (i = 0; i < n; i++) {
-      int tmp = lits[i];
-      if (tmp != lit) continue;
-      s = yals->scores.start[i];
-      w = wbs[i];
-      break;
-    }
-#endif
-    LOG ("picked literal %d weigted break %d score %g", lit, w, s);
-
-    CLEAR (yals->scores);
-  }
-
-  CLEAR (yals->cands);
-  CLEAR (yals->breaks);
-
-  return lit;
 }
 
 /*------------------------------------------------------------------------*/
@@ -2695,10 +2480,7 @@ static void yals_connect (Yals * yals) {
     "average literal occurrence %.2f (min %d, max %d)",
     yals_avg (sumoccs, yals->nvars)/2.0, minoccs, maxoccs);
 
-  if (yals->uniform) yals->pick = yals->opts.unipick.val;
-  else yals->pick = yals->opts.pick.val;
-
-  yals_msg (yals, 1, "picking %s", yals_pick_to_str (yals));
+  yals->pick = 0;
 
   yals->unsat.usequeue = (yals->pick > 0);
 
@@ -2986,11 +2768,6 @@ void yals_card_connect (Yals * yals) {
   yals_msg (yals, 1,
     "average literal occurrence %.2f (min %d, max %d)",
     yals_avg (sumoccs, yals->nvars)/2.0, minoccs, maxoccs);
-
-  // if (yals->uniform) yals->pick = yals->opts.unipick.val;
-  // else yals->pick = yals->opts.pick.val;
-
-  // yals_msg (yals, 1, "picking %s", yals_pick_to_str (yals));
 
   yals->card_unsat.usequeue = 0; // always a stack!
 
@@ -3946,32 +3723,6 @@ void yals_ddfw_update_lit_weights_on_weight_transfer (Yals *yals, int sink, int 
   }
 }
 
-/*
-  default clause weight transfered from a source
-*/
-double default_clause_wt (Yals * yals, int source, int sink)
-{
-  double w;
-  if (yals->ddfw.ddfw_clause_weights[source] > yals->opts.ddfw_init_clause_weight.val)
-    w = 2.0f;
-  else
-    w = 1.0f;
-  return w;
-}
-
-/*
-  default cardinality weight transfered from a source
-*/
-double default_card_wt (Yals * yals, int source, int sink)
-{
-  double w;
-  if (yals->ddfw.ddfw_card_weights[source] > yals->opts.ddfw_init_card_weight.val)
-    w = 2.0f;
-  else
-    w = 1.0f;
-  return w;
-}
-
 // if actually using this, store the length in an array
 double compute_degree_of_satisfaction (Yals *yals, int cidx)
 {
@@ -4612,17 +4363,11 @@ double yals_ddfw_get_weight (Yals *yals, int source, int sink, int constraint_ty
   }
 
 
-  if (constraint_type_source == TYPECLAUSE) {
-    if (yals->opts.wtrule.val == 1)
-        w = default_clause_wt (yals, source, sink);
-    else if (yals->opts.wtrule.val == 2)
-      w = linear_wt (yals, source, TYPECLAUSE);
-  } else if (constraint_type_source == TYPECARDINALITY) {
-    if (yals->opts.card_wtrule.val == 1)
-        w = default_card_wt (yals, source, sink);
-    else if (yals->opts.card_wtrule.val == 2)
-      w = linear_wt (yals, source, TYPECARDINALITY);
-  } else {yals_abort (yals, "incorrect constraint type");}
+  if (constraint_type_source == TYPECLAUSE)
+    w = linear_wt (yals, source, TYPECLAUSE);
+  else if (constraint_type_source == TYPECARDINALITY)
+    w = linear_wt (yals, source, TYPECARDINALITY);
+  else yals_abort (yals, "incorrect constraint type");
 
   return w;
 }
@@ -4815,62 +4560,6 @@ void yals_ddfw_transfer_weights (Yals *yals)
   yals->stats.maxs_time.weight_transfer += yals_time (yals) - start;
 }
 
-static void yals_flip (Yals * yals) {
-  int cidx = yals_pick_clause (yals);
-  int lit = yals_pick_literal (yals, cidx);
-  yals->stats.flips++;
-  yals->stats.unsum += yals_nunsat (yals);
-  yals_flip_value_of_lit (yals, lit);
-  yals_make_clauses_after_flipping_lit (yals, lit);
-  yals_break_clauses_after_flipping_lit (yals, lit);
-  yals_update_minimum (yals);
-  yals->last_flip_unsat_count = yals_nunsat (yals);
-}
-
-
-// Currently not supported
-// only MaxTries inner loop is supported
-static int yals_inner_loop (Yals * yals) {
-  int res = 0;
-  int lit = 0;
-  yals_init_inner_restart_interval (yals);
-  LOG ("entering yals inner loop");
-  while (!(res = yals_done (yals)) && !yals_need_to_restart_outer (yals))
-    if (yals_need_to_restart_inner (yals)) 
-    {
-      yals_restart_inner (yals);
-      if (!yals->opts.ddfwonly.val) 
-        yals->ddfw.ddfw_active = 0;
-    }
-    else
-    {
-       if (!yals->ddfw.ddfw_active && yals_needs_ddfw (yals))
-        yals->ddfw.ddfw_active = 1;
-      // if (yals->ddfw.ddfw_active && yals_needs_probsat (yals))
-      //   yals->ddfw.ddfw_active = 0; 
-       if (yals->ddfw.ddfw_active) 
-       {
-          yals_ddfw_compute_uwrvs (yals);
-          if (yals->ddfw.uwrvs_size)
-            lit = yals_pick_literal_ddfw (yals);
-          else if (yals->opts.sidewaysmove.val && yals->ddfw.non_increasing_size > 0 && (yals_rand_mod (yals, INT_MAX) % 100) <= 15)
-          {
-            lit = yals_pick_non_increasing (yals);
-            yals->ddfw.sideways++;
-          }
-          else
-          {
-            yals_ddfw_transfer_weights (yals);
-            continue;
-          }
-          yals_flip_ddfw (yals, lit);
-        }
-        else
-          yals_flip (yals);
-    }
-  return res;
-}
-
 static void yals_init_outer_restart_interval (Yals * yals) {
   if (yals->opts.restartouter.val) {
     yals->limits.restart.outer.interval = yals_outer_restart_interval (yals);
@@ -4934,12 +4623,6 @@ static void yals_outer_loop (Yals * yals) {
       //  if (yals_inner_loop_max_tries (yals))  // this always returns a non-zero value...
       //   return;
     // }
-    // else // never reach this branch now
-    if (0) { // not supported
-      if (yals_inner_loop (yals)) 
-        return;
-      yals_restart_outer (yals);
-    }
 
 }
 
@@ -5417,11 +5100,10 @@ void yals_init_ddfw (Yals *yals)
                           set_cspt (yals) / 100.0: 
                           (double) yals->opts.clsselectp.val / 100.0;
   yals->fres_fact = floor(((double) yals->nvars / (double) yals->nclauses) * (double) yals->opts.stagrestartfact.val) ;
-  yals->ddfw.ddfwstartth = 1.0 / (double)  yals->opts.ddfwstartth.val;
-  yals->ddfw.min_unsat_flips_span = 0; 
+  yals->ddfw.min_unsat_flips_span = 0;
   yals->force_restart = 0;
   yals->fres_count = 0;
-  yals->ddfw.ddfw_active = yals->opts.ddfwonly.val;
+  yals->ddfw.ddfw_active = 1;
   yals->ddfw.recent_max_reduction = -1;
   yals->last_flip_unsat_count = -1;
   yals->consecutive_non_improvement = 0;
@@ -6352,15 +6034,6 @@ void yals_delete_vars_from_uvars (Yals* yals, int cidx, int constraint_type) {
   }
 }
 
-// currently not supported
-int yals_needs_ddfw (Yals *yals) {
-    double f = ((double) yals_nunsat (yals) / (double) yals->nclauses);
-    int activate =  f <  yals->ddfw.ddfwstartth || yals_nunsat (yals) < 100;
-    if (activate)
-      yals->ddfw.alg_switch++;
-    return activate;
-}
-
 int yals_inner_loop_max_tries (Yals * yals)
 {
   LOG ("Inner loop max tries with %d cutoff", yals->opts.cutoff.val);
@@ -6370,8 +6043,6 @@ int yals_inner_loop_max_tries (Yals * yals)
     if (!yals_nunsat(yals))
       return 1;
     yals_restart_inner (yals);
-    if (!yals->opts.ddfwonly.val) // currently not allowed... (keep for quick decent)
-        yals->ddfw.ddfw_active = 0; // yals_abort (yals, "trying to switch out of ddfw mode");
     for (int c=0; c<yals->opts.cutoff.val || (yals->opts.cutoff.val <= 0) ; ++c)// cutoff 0 is unlimited flips
     {
        if (!yals_nunsat(yals))
@@ -6385,11 +6056,6 @@ int yals_inner_loop_max_tries (Yals * yals)
            return -1;
          }
        }
-        // always active, no backwards compat for probsat... (keep for quick decent)
-       if (!yals->ddfw.ddfw_active && yals_needs_ddfw (yals))
-        yals->ddfw.ddfw_active = 1;
-       if (yals->ddfw.ddfw_active)  
-       {
           double start = yals_time (yals);
           lit = yals_pick_literal_from_heap (yals, 0);
           yals->stats.maxs_time.var_selection += yals_time (yals) - start;
@@ -6404,9 +6070,6 @@ int yals_inner_loop_max_tries (Yals * yals)
             continue;
           }
           yals_flip_ddfw (yals, lit);
-       }
-       else
-          yals_flip (yals);
     }
   }
   return -1;    
