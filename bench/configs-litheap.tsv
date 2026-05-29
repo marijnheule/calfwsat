@@ -1,0 +1,11 @@
+# default vs p670 weight-transfer rule, each with --litheap off and on (4 configs).
+#   def    = current solver defaults (wtmul=167, wtadd=167, wtpow=0)
+#   p670   = wtadd=0, wtmul=0, wtpow=670  ->  w = source^0.670
+# --litheap is a pure speedup (identical search path); on vs off should differ
+# only by what extra throughput lets finish within the 900s budget.
+# Everything else left at solver defaults.
+# name	args
+def
+def_lh	--litheap=1
+p670	--wtadd=0 --wtmul=0 --wtpow=670
+p670_lh	--wtadd=0 --wtmul=0 --wtpow=670 --litheap=1

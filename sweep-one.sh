@@ -11,7 +11,7 @@
 #   bash sweep-one.sh ntil-40.knf
 #
 # Hardcoded defaults (edit at top of script to change):
-#   configs:   bench/configs-rndlit.tsv  (default vs wtpow=675, each +/- rndlit)
+#   configs:   bench/configs-litheap.tsv  (default vs p670, each +/- litheap)
 #   seeds:     1..100
 #   timeout:   900s per run
 #   threads:   8 per palsat invocation
@@ -29,7 +29,7 @@ SEEDS_DEFAULT="${SEEDS:-$(seq 1 100 | paste -sd, -)}"
 TIMEOUT_DEFAULT="${TIMEOUT:-900}"
 THREADS_DEFAULT="${THREADS:-8}"
 CUTOFF_DEFAULT="${CUTOFF:-20000}"
-CONFIGS_REL="${CONFIGS:-bench/configs-rndlit.tsv}"
+CONFIGS_REL="${CONFIGS:-bench/configs-litheap.tsv}"
 # ------------------------------------------------------------------
 
 FORMULA="${1:?usage: $0 <formula.knf>}"
