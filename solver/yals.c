@@ -886,29 +886,39 @@ static inline double yals_nbr_weight (Yals * yals, int u) {
     : yals->ddfw.ddfw_card_weights [u - yals->nclauses];
 }
 
+// Ranking used throughout: a constraint ranks above another if it has greater
+// DDFW weight, with ties broken by smaller unified constraint id. This is a
+// total order (no ties), so the scan and the heap always select the same
+// source -- the search path is identical with and without --litheap.
+// e1, e2 are edge ids.
+static inline int yals_nbr_better (Yals * yals, int e1, int e2) {
+  int u1 = yals->ddfw.nbr_con[e1], u2 = yals->ddfw.nbr_con[e2];
+  double w1 = yals_nbr_weight (yals, u1), w2 = yals_nbr_weight (yals, u2);
+  if (w1 != w2) return w1 > w2;
+  return u1 < u2;
+}
+
 static void yals_nbr_siftup (Yals * yals, int g) {
-  int * heap = yals->ddfw.nbr_heap, * gpos = yals->ddfw.nbr_gpos, * con = yals->ddfw.nbr_con;
+  int * heap = yals->ddfw.nbr_heap, * gpos = yals->ddfw.nbr_gpos;
   int e = heap[g], lo = yals->ddfw.nbr_lstart[yals->ddfw.nbr_lit[e]];
-  double w = yals_nbr_weight (yals, con[e]);
   while (g > lo) {
     int par = lo + (g - lo - 1) / 2, pe = heap[par];
-    if (yals_nbr_weight (yals, con[pe]) >= w) break;
+    if (!yals_nbr_better (yals, e, pe)) break;
     heap[g] = pe; gpos[pe] = g; g = par;
   }
   heap[g] = e; gpos[e] = g;
 }
 
 static void yals_nbr_siftdown (Yals * yals, int g) {
-  int * heap = yals->ddfw.nbr_heap, * gpos = yals->ddfw.nbr_gpos, * con = yals->ddfw.nbr_con;
+  int * heap = yals->ddfw.nbr_heap, * gpos = yals->ddfw.nbr_gpos;
   int e = heap[g], p = yals->ddfw.nbr_lit[e];
   int lo = yals->ddfw.nbr_lstart[p], hi = yals->ddfw.nbr_lstart[p+1];
-  double w = yals_nbr_weight (yals, con[e]);
   for (;;) {
-    int l = lo + 2*(g - lo) + 1, r = l + 1, best = g; double bw = w, cw;
-    if (l < hi && (cw = yals_nbr_weight (yals, con[heap[l]])) > bw) { best = l; bw = cw; }
-    if (r < hi && (cw = yals_nbr_weight (yals, con[heap[r]])) > bw) { best = r; bw = cw; }
-    if (best == g) break;
-    int be = heap[best]; heap[g] = be; gpos[be] = g; g = best;
+    int l = lo + 2*(g - lo) + 1, r = l + 1, bestslot = -1, beste = e;
+    if (l < hi && yals_nbr_better (yals, heap[l], beste)) { beste = heap[l]; bestslot = l; }
+    if (r < hi && yals_nbr_better (yals, heap[r], beste)) { beste = heap[r]; bestslot = r; }
+    if (bestslot < 0) break;
+    heap[g] = beste; gpos[beste] = g; g = bestslot;
   }
   heap[g] = e; gpos[e] = g;
 }
@@ -935,11 +945,9 @@ static int yals_nbr_best (Yals * yals, int lit, int * ret_con_type) {
   int * fr = yals->ddfw.nbr_scratch, frn = 0;
   fr[frn++] = lo;
   while (frn > 0) {
-    int bi = 0; double bw = yals_nbr_weight (yals, con[heap[fr[0]]]);
-    for (int i = 1; i < frn; i++) {
-      double w = yals_nbr_weight (yals, con[heap[fr[i]]]);
-      if (w > bw) { bw = w; bi = i; }
-    }
+    int bi = 0;
+    for (int i = 1; i < frn; i++)
+      if (yals_nbr_better (yals, heap[fr[i]], heap[fr[bi]])) bi = i;
     int s = fr[bi]; fr[bi] = fr[--frn];
     int u = con[heap[s]];
     if (u < yals->nclauses) {
@@ -3964,6 +3972,10 @@ int yals_ddfw_get_max_weight_sat_clause (Yals *yals, int cidx, int constraint_ty
 
   double best_cls_wt, best_card_wt;
   best_cls_wt = best_card_wt = best_w = 0.0;
+  // Tie-break: among equal-weight eligible neighbors prefer the smallest
+  // unified id (clause u, or nclauses+card). Shared by the scan and the heap
+  // so both pick the same source -> identical search path with/without litheap.
+  int best_uid = INT_MAX;
 
   // soft constraints are using their MaxSAT weights as DDFW weights
   int relative = (yals->opts.maxs_init_weight_relative.val && yals->using_maxs_weights);
@@ -4016,7 +4028,10 @@ int yals_ddfw_get_max_weight_sat_clause (Yals *yals, int cidx, int constraint_ty
         double cw = (nbr_ct == TYPECLAUSE)
           ? yals->ddfw.ddfw_clause_weights [cand]
           : yals->ddfw.ddfw_card_weights [cand];
-        if (cw >= best_w) { source = cand; best_w = cw; *return_con_type = nbr_ct; }
+        int cuid = (nbr_ct == TYPECLAUSE) ? cand : yals->nclauses + cand;
+        if (cw > best_w || (cw == best_w && cuid < best_uid)) {
+          source = cand; best_w = cw; best_uid = cuid; *return_con_type = nbr_ct;
+        }
       }
     } else {
 
@@ -4030,18 +4045,13 @@ int yals_ddfw_get_max_weight_sat_clause (Yals *yals, int cidx, int constraint_ty
       if ((source_hard && !takes_hard) || (!source_hard && !takes_soft)) continue;
 
       if (yals_satcnt (yals, nidx)>0) { // clause is satisfied
-        // check if clause has geq it's initial weight
-        if (relative && !source_hard) {
-          if ( (yals->opts.ignorewtcriteria.val || yals->ddfw.ddfw_clause_weights [nidx] >= PEEK (yals->maxs_clause_weights, nidx))  && yals->ddfw.ddfw_clause_weights [nidx] >= best_w) {
-              source = nidx;
-              best_w = yals->ddfw.ddfw_clause_weights [nidx];
-              *return_con_type = TYPECLAUSE;
-            }
-        } else {
-          if ((yals->opts.ignorewtcriteria.val || yals->ddfw.ddfw_clause_weights [nidx] >= yals->opts.init_clause_weight.val) && yals->ddfw.ddfw_clause_weights [nidx] >= best_w) {
-            source = nidx;
-            best_w = yals->ddfw.ddfw_clause_weights [nidx];
-            *return_con_type = TYPECLAUSE;
+        // check if clause has geq it's initial weight, then (weight, id) tie-break
+        double thr = (relative && !source_hard) ? PEEK (yals->maxs_clause_weights, nidx)
+                                                 : (double) yals->opts.init_clause_weight.val;
+        if (yals->opts.ignorewtcriteria.val || yals->ddfw.ddfw_clause_weights [nidx] >= thr) {
+          double cw = yals->ddfw.ddfw_clause_weights [nidx];
+          if (cw > best_w || (cw == best_w && nidx < best_uid)) {
+            source = nidx; best_w = cw; best_uid = nidx; *return_con_type = TYPECLAUSE;
           }
         }
       }
@@ -4056,18 +4066,14 @@ int yals_ddfw_get_max_weight_sat_clause (Yals *yals, int cidx, int constraint_ty
       if ((source_hard && !takes_hard) || (!source_hard && !takes_soft)) continue;
 
       if (yals_card_satcnt (yals, nidx)>= yals_card_bound (yals, nidx)) { // constraint satisfied
-        // check if cardinality constraint has geq it's initial weight
-        if (relative && !source_hard) {
-          if ( (yals->opts.ignorewtcriteria.val || yals->ddfw.ddfw_card_weights [nidx] >= PEEK (yals->maxs_card_weights, nidx))  && yals->ddfw.ddfw_card_weights [nidx] >= best_w) {
-              source = nidx;
-              best_w = yals->ddfw.ddfw_card_weights [nidx];
-              *return_con_type = TYPECARDINALITY;
-            }
-        } else {
-          if ((yals->opts.ignorewtcriteria.val || yals->ddfw.ddfw_card_weights [nidx] >= yals->opts.init_card_weight.val) && yals->ddfw.ddfw_card_weights [nidx] >= best_w) {
-            source = nidx;
-            best_w = yals->ddfw.ddfw_card_weights [nidx];
-            *return_con_type = TYPECARDINALITY;
+        // check if cardinality constraint has geq it's initial weight, then (weight, id) tie-break
+        double thr = (relative && !source_hard) ? PEEK (yals->maxs_card_weights, nidx)
+                                                 : (double) yals->opts.init_card_weight.val;
+        if (yals->opts.ignorewtcriteria.val || yals->ddfw.ddfw_card_weights [nidx] >= thr) {
+          double cw = yals->ddfw.ddfw_card_weights [nidx];
+          int cuid = yals->nclauses + nidx;
+          if (cw > best_w || (cw == best_w && cuid < best_uid)) {
+            source = nidx; best_w = cw; best_uid = cuid; *return_con_type = TYPECARDINALITY;
           }
         }
       }
