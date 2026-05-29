@@ -716,6 +716,12 @@ int main (int argc, char** argv) {
   int is_weighted = 0;
   double max_weight;
 
+#ifdef PALSAT
+  // Initialize mutexes before any option handling: '-h'/usage() allocates via
+  // mymalloc, which locks the 'mem' mutex.
+  initlocks ();
+#endif
+
   for (i = 1; i < argc; i++) {
 #ifdef PALSAT
     if (!strcmp (argv[i], "-t")) { i++; continue; }
@@ -744,7 +750,6 @@ int main (int argc, char** argv) {
       die ("invalid argument in '-t %s' (try '-h')", argv[i]);
     threadset = 1;
   }
-  initlocks ();
   start = currentime ();
   if (threadset)
     msg ("using %d solver instances and %d worker threads ('-t %d')",
