@@ -1,0 +1,11 @@
+# rndlit comparison: default weight-transfer rule vs pure-power (wtpow=675),
+# each with and without --rndlit (scan neighbors of one random falsified
+# literal of the sink instead of all of them).
+#   def        = current solver defaults (wtmul=167, wtadd=167, wtpow=0)
+#   p675       = wtadd=0, wtmul=0, wtpow=675  ->  w = source^0.675
+# Everything else left at solver defaults.
+# name	args
+def
+def_rnd	--rndlit=1
+p675	--wtadd=0 --wtmul=0 --wtpow=675
+p675_rnd	--wtadd=0 --wtmul=0 --wtpow=675 --rndlit=1
