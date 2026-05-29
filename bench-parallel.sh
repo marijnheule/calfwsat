@@ -186,34 +186,38 @@ do_aggregate() {
   fi
 
   {
-    echo "config,instance,vars,seed,result,rc,wall,best"
+    echo "config,instance,vars,seed,result,rc,wall,best,flips"
     ls "$ROW_DIR"/*.row 2>/dev/null | sort | while read -r f; do cat "$f"; done
   } > "$CSV"
   local nrows=$(($(wc -l < "$CSV") - 1))
 
+  # Summary columns: PAR-2 (from wall) plus mean/median flips over ALL runs.
   awk -F, -v T="$TIMEOUT_SEC" '
     NR==1 { next }
-    { cfg=$1; res=$5; wall=$7+0
+    { cfg=$1; res=$5; wall=$7+0; flips=$9+0
       n[cfg]++
-      if (res == "SAT") { s[cfg]++; ws[cfg] += wall; walls[cfg] = walls[cfg] " " wall }
-      par_sum[cfg] += (res == "SAT" ? wall : 2*T) }
+      if (res == "SAT") s[cfg]++
+      par_sum[cfg] += (res == "SAT" ? wall : 2*T)
+      fsum[cfg] += flips
+      flist[cfg] = flist[cfg] " " flips }
     END {
       for (c in n) {
         ss = s[c] ? s[c] : 0; tt = n[c] - ss
-        mean_w = ss ? ws[c]/ss : 0; par2 = par_sum[c] / n[c]
-        nw = split(walls[c], arr, " "); m = 0
-        for (i = 1; i <= nw; i++) if (arr[i] != "") { m++; v[m] = arr[i] }
+        par2 = par_sum[c] / n[c]
+        mean_f = n[c] ? fsum[c]/n[c] : 0
+        nf = split(flist[c], arr, " "); m = 0
+        for (i = 1; i <= nf; i++) if (arr[i] != "") { m++; v[m] = arr[i] }
         for (i = 1; i <= m; i++) for (j = i+1; j <= m; j++)
-          if (v[i]+0 > v[j]+0) { t = v[i]; v[i] = v[j]; v[j] = t }
-        median = m == 0 ? 0 : (m % 2 == 1 ? v[(m+1)/2] : (v[m/2] + v[m/2+1])/2)
-        printf "%-30s %6d %6d %6d %10.2f %10.2f %10.2f\n", \
-          c, n[c], ss, tt, par2, mean_w, median
+          if (v[i]+0 > v[j]+0) { tmp = v[i]; v[i] = v[j]; v[j] = tmp }
+        median_f = m == 0 ? 0 : (m % 2 == 1 ? v[(m+1)/2] : (v[m/2] + v[m/2+1])/2)
+        printf "%-30s %6d %6d %6d %10.2f %16.0f %16.0f\n", \
+          c, n[c], ss, tt, par2, mean_f, median_f
         delete v
       } }
   ' "$CSV" | sort -k5 -n > "$SUMMARY.body" 2>/dev/null
   {
-    printf "%-30s %6s %6s %6s %10s %10s %10s\n" \
-      "config" "runs" "SAT" "TO" "PAR-2" "mean_w" "median_w"
+    printf "%-30s %6s %6s %6s %10s %16s %16s\n" \
+      "config" "runs" "SAT" "TO" "PAR-2" "mean_flips" "median_flips"
     cat "$SUMMARY.body" 2>/dev/null
   } > "$SUMMARY"
   rm -f "$SUMMARY.body"
@@ -345,7 +349,7 @@ run_one() {
     $cargs "$inst" "$seed" > "$log" 2>&1
   local rc=$?
 
-  local st res wall best vars
+  local st res wall best vars flips
   st=$(grep -E "^s " "$log" | head -1)
   case "$st" in
     *SATISFIABLE*)   res=SAT ;;
@@ -356,10 +360,12 @@ run_one() {
   [ -z "$wall" ] && wall=$TIMEOUT_SEC
   best=$(grep "final worker" "$log" | sed 's/.*minimum of \([0-9]*\).*/\1/' | sort -n | head -1)
   vars=$(grep -m1 "^p " "$inst" 2>/dev/null | awk '{print $3}')
+  flips=$(grep "total flips" "$log" | sed -E 's/.*total flips ([0-9]+).*/\1/' | head -1)
+  [ -z "$flips" ] && flips=0
 
   # Write atomically: write to tmp then rename.
-  printf "%s,%s,%s,%s,%s,%s,%s,%s\n" \
-    "$cname" "$inst_base" "${vars:-0}" "$seed" "$res" "$rc" "$wall" "${best:-}" > "${row}.tmp"
+  printf "%s,%s,%s,%s,%s,%s,%s,%s,%s\n" \
+    "$cname" "$inst_base" "${vars:-0}" "$seed" "$res" "$rc" "$wall" "${best:-}" "$flips" > "${row}.tmp"
   mv -f "${row}.tmp" "$row"
 }
 

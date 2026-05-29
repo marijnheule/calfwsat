@@ -325,12 +325,18 @@ static void stats () {
   msg ("total process time of %.2f seconds", t);
   msg ("utilization %.1f%% for %d threads",
     (w ? 100.0*t/w/(double)threads : 0), threads);
+  {
+    long long total_flips = 0;
+    for (i = 0; i < threads; i++) total_flips += yals_flips (worker[i].yals);
+    msg ("total flips %lld", total_flips);
+  }
   msg ("");
   yals_print_length_weights (WINNER);
 #else
   msg ("");
   msg ("final minimum of %d unsatisfied hard constraints", yals_minimum (yals));
   if (verbose) yals_stats (yals);
+  msg ("total flips %lld", yals_flips (yals));
   yals_print_length_weights (yals);
   msg ("total process time of %.2f seconds", getime ());
   // printf ("\nc Columns: |pick_method| |flips| |unsat| |min_usnat| |alg_switch| |inner_restarts| |fres_fact| |forced_res| |restarts_time| |time| |max_memory|\n");

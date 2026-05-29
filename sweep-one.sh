@@ -11,8 +11,8 @@
 #   bash sweep-one.sh ntil-40.knf
 #
 # Hardcoded defaults (edit at top of script to change):
-#   configs:   bench/configs-wtpow.tsv  (wtpow sweep: default + p600..p850)
-#   seeds:     51..100
+#   configs:   bench/configs-rndlit.tsv  (default vs wtpow=675, each +/- rndlit)
+#   seeds:     1..100
 #   timeout:   900s per run
 #   threads:   8 per palsat invocation
 #   parallel:  auto = cores / threads
@@ -25,11 +25,11 @@ set -uo pipefail
 # -------- defaults (edit here, or override via env vars) ----------
 # Any of these can be overridden by setting an env var when invoking:
 #   TIMEOUT=300 SEEDS="1,2,3" bash sweep-one.sh <formula>
-SEEDS_DEFAULT="${SEEDS:-$(seq 51 100 | paste -sd, -)}"
+SEEDS_DEFAULT="${SEEDS:-$(seq 1 100 | paste -sd, -)}"
 TIMEOUT_DEFAULT="${TIMEOUT:-900}"
 THREADS_DEFAULT="${THREADS:-8}"
 CUTOFF_DEFAULT="${CUTOFF:-20000}"
-CONFIGS_REL="${CONFIGS:-bench/configs-wtpow.tsv}"
+CONFIGS_REL="${CONFIGS:-bench/configs-rndlit.tsv}"
 # ------------------------------------------------------------------
 
 FORMULA="${1:?usage: $0 <formula.knf>}"
@@ -94,7 +94,7 @@ MD="$OUT_DIR/email.md"
   echo "- seeds: $NSEEDS ($SEEDS_DEFAULT)"
   echo "- timeout: ${TIMEOUT_DEFAULT}s per run"
   echo
-  echo "| config | runs | SAT | TO | PAR-2 | mean_w | median_w |"
+  echo "| config | runs | SAT | TO | PAR-2 | mean_flips | median_flips |"
   echo "|---|---:|---:|---:|---:|---:|---:|"
   awk 'NR>1 {
     printf "| %s | %s | %s | %s | %s | %s | %s |\n",
