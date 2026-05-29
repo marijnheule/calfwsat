@@ -325,10 +325,13 @@ static void stats () {
   msg ("total process time of %.2f seconds", t);
   msg ("utilization %.1f%% for %d threads",
     (w ? 100.0*t/w/(double)threads : 0), threads);
+  msg ("");
+  yals_print_length_weights (WINNER);
 #else
   msg ("");
   msg ("final minimum of %d unsatisfied hard constraints", yals_minimum (yals));
   if (verbose) yals_stats (yals);
+  yals_print_length_weights (yals);
   msg ("total process time of %.2f seconds", getime ());
   // printf ("\nc Columns: |pick_method| |flips| |unsat| |min_usnat| |alg_switch| |inner_restarts| |fres_fact| |forced_res| |restarts_time| |time| |max_memory|\n");
   // yals_print_stats (yals);

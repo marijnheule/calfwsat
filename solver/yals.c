@@ -5788,6 +5788,69 @@ void yals_print_stats (Yals * yals)
   //printf ("c stats |%ld ", yals->stats.flips);
 }
 
+/*------------------------------------------------------------------------*/
+/* Report the average DDFW weight of constraints grouped by length, for    */
+/* clauses and cardinality constraints separately. Printed once when the   */
+/* solver ends. For palsat, call this on the winning thread's Yals.        */
+/*------------------------------------------------------------------------*/
+void yals_print_length_weights (Yals * yals)
+{
+  int i, len, maxlen;
+  int * cnt;
+  double * sum;
+  const int * p;
+
+  // ---- clauses (length = number of literals) ----
+  maxlen = 0;
+  for (i = 0; i < yals->nclauses; i++) {
+    len = 0;
+    for (p = yals_lits (yals, i); *p; p++) len++;
+    if (len > maxlen) maxlen = len;
+  }
+  if (yals->nclauses > 0) {
+    NEWN (cnt, maxlen + 1);
+    NEWN (sum, maxlen + 1);
+    for (len = 0; len <= maxlen; len++) { cnt[len] = 0; sum[len] = 0.0; }
+    for (i = 0; i < yals->nclauses; i++) {
+      len = 0;
+      for (p = yals_lits (yals, i); *p; p++) len++;
+      cnt[len]++;
+      sum[len] += yals->ddfw.ddfw_clause_weights[i];
+    }
+    for (len = 0; len <= maxlen; len++)
+      if (cnt[len])
+        yals_msg (yals, 0,
+          "avg ddfw weight, clause length %d: %.4f over %d clauses",
+          len, sum[len] / (double) cnt[len], cnt[len]);
+    DELN (cnt, maxlen + 1);
+    DELN (sum, maxlen + 1);
+  }
+
+  // ---- cardinality constraints (length = number of literals) ----
+  maxlen = 0;
+  for (i = 0; i < yals->card_nclauses; i++) {
+    len = yals_card_length (yals, i);
+    if (len > maxlen) maxlen = len;
+  }
+  if (yals->card_nclauses > 0) {
+    NEWN (cnt, maxlen + 1);
+    NEWN (sum, maxlen + 1);
+    for (len = 0; len <= maxlen; len++) { cnt[len] = 0; sum[len] = 0.0; }
+    for (i = 0; i < yals->card_nclauses; i++) {
+      len = yals_card_length (yals, i);
+      cnt[len]++;
+      sum[len] += yals->ddfw.ddfw_card_weights[i];
+    }
+    for (len = 0; len <= maxlen; len++)
+      if (cnt[len])
+        yals_msg (yals, 0,
+          "avg ddfw weight, card length %d: %.4f over %d cardinality constraints",
+          len, sum[len] / (double) cnt[len], cnt[len]);
+    DELN (cnt, maxlen + 1);
+    DELN (sum, maxlen + 1);
+  }
+}
+
 /*
 
   Note: uvars does not contain only falsified literals

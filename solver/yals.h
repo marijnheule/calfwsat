@@ -464,6 +464,10 @@ int yals_nunsat_external (Yals *yals);
 
 void yals_stats (Yals *);
 
+/* Average DDFW weight per constraint length (clauses and cardinality
+   constraints separately). For palsat, call on the winning thread. */
+void yals_print_length_weights (Yals *);
+
 /*------------------------------------------------------------------------*/
 
 void yals_seterm (Yals *, int (*term)(void*), void*);
