@@ -1,14 +1,12 @@
-# Sweep of wtpow (narrowed range).
+# Sweep of wtpow (confirmation run around the p~0.66-0.70 region).
 # "default" = current solver defaults (wtmul=167, wtadd=167, wtpow=0).
 # pXXX configs set wtadd=0, wtmul=0, so the transfer rule reduces to w = source^p
-# with p = wtpow/1000. wtpow in {650, 670, 690, 710, 730, 750, 770}.
+# with p = wtpow/1000. wtpow in {660, 670, 680, 690, 700}.
 # Everything else left at solver defaults.
 # name	args
 default
-p650	--wtadd=0 --wtmul=0 --wtpow=650
+p660	--wtadd=0 --wtmul=0 --wtpow=660
 p670	--wtadd=0 --wtmul=0 --wtpow=670
+p680	--wtadd=0 --wtmul=0 --wtpow=680
 p690	--wtadd=0 --wtmul=0 --wtpow=690
-p710	--wtadd=0 --wtmul=0 --wtpow=710
-p730	--wtadd=0 --wtmul=0 --wtpow=730
-p750	--wtadd=0 --wtmul=0 --wtpow=750
-p770	--wtadd=0 --wtmul=0 --wtpow=770
+p700	--wtadd=0 --wtmul=0 --wtpow=700
