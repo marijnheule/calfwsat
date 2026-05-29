@@ -3808,17 +3808,30 @@ int yals_ddfw_get_max_weight_sat_clause (Yals *yals, int cidx, int constraint_ty
     lits = yals_card_lits (yals, cidx);
   } else {yals_abort (yals, "incorrect constraint type");}
 
+  // --rndlit: instead of scanning the neighbors of every falsified literal of
+  // the sink, pick one falsified literal uniformly at random and only scan its
+  // neighbors. rndlit_target is the index (among falsified lits) to process.
+  int rndlit_target = -1, rndlit_seen = -1;
+  if (yals->opts.rndlit.val) {
+    int nfalse = 0, * rp = lits, rl;
+    while ((rl = *rp++)) if (!yals_val (yals, rl)) nfalse++;
+    if (!nfalse) return -1;
+    rndlit_target = yals_rand_mod (yals, nfalse);
+  }
+
   // loop over neighbors
   //   constraints with same literal same polarity
   while ((lit=*lits++))
   {
-    // skip satisfied lits from cardinality constraints 
+    // skip satisfied lits from cardinality constraints
     //   (could technically get an iterator over only falsified 
     //   lits since the cardinality constraints are sorted,
     //   don't this would save much time unless constraints
     //   were huge)
-    if (yals_val (yals, lit)) continue; 
-    
+    if (yals_val (yals, lit)) continue;
+    // rndlit: skip every falsified literal except the randomly chosen one
+    if (rndlit_target >= 0 && ++rndlit_seen != rndlit_target) continue;
+
     // neighbor clauses
     occs = yals_occs (yals, lit);
     for (p = occs; (occ = *p) >= 0; p++) {
@@ -3871,6 +3884,8 @@ int yals_ddfw_get_max_weight_sat_clause (Yals *yals, int cidx, int constraint_ty
         }
       }
     }
+    // rndlit: only the one chosen literal's neighbors are examined
+    if (rndlit_target >= 0) break;
   }
 
   best_w = 0.0; // reset best weight for pass of neighbors+
