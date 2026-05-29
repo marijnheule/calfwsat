@@ -317,6 +317,18 @@ typedef struct DDFW {
 
   double * card_clause_calculated_weights; // cache of calculted weightes (not in use)
 
+  // --litheap: per-literal max-weight neighbor heaps (mixed clause/card).
+  // See the "--litheap" block in yals.c for the encoding.
+  int nbr_built;
+  int nbr_E, nbr_nlits, nbr_ncons;
+  int * nbr_con;     // [E] edge -> unified constraint id (clause u<nclauses; else card)
+  int * nbr_lit;     // [E] edge -> literal position (get_pos)
+  int * nbr_gpos;    // [E] edge -> its slot in nbr_heap
+  int * nbr_heap;    // [E] heap slot -> edge id (per-literal max-heaps)
+  int * nbr_cstart;  // [ncons+1] constraint -> first edge (constraint-major)
+  int * nbr_lstart;  // [nlits+1] literal position -> first heap slot
+  int * nbr_scratch; // frontier buffer for lazy eligibility search
+
 } DDFW;
 
 // structure for stack constaining falsified constraints,

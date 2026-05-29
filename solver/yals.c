@@ -863,6 +863,179 @@ void yals_flip_value_of_lit (Yals * yals, int lit) {
 }
 
 
+/*------------------------------------------------------------------------*/
+/* --litheap: per-literal max-weight neighbor heaps (option A).             */
+/*                                                                          */
+/* For each literal we keep one max-heap over the constraints (clauses AND  */
+/* cardinality constraints, mixed) that contain it, keyed by the current    */
+/* DDFW weight. yals_ddfw_get_max_weight_sat_clause can then peek each       */
+/* falsified literal's heaviest neighbor instead of scanning all of its     */
+/* occurrences. Heaps are maintained only on weight changes (transfers);    */
+/* satisfaction is a dynamic, weight-uncorrelated predicate, so it is       */
+/* checked lazily at query time (the top may be unsatisfied).               */
+/*                                                                          */
+/* Encoding: a "unified" constraint id u is a clause cidx if u < nclauses,  */
+/* else cardinality cidx (u - nclauses). Each (constraint, literal) pair is  */
+/* an "edge"; edges are numbered constraint-major (so a constraint's edges  */
+/* are contiguous) and partitioned into per-literal heaps held in nbr_heap. */
+/*------------------------------------------------------------------------*/
+
+static inline double yals_nbr_weight (Yals * yals, int u) {
+  return (u < yals->nclauses)
+    ? yals->ddfw.ddfw_clause_weights [u]
+    : yals->ddfw.ddfw_card_weights [u - yals->nclauses];
+}
+
+static void yals_nbr_siftup (Yals * yals, int g) {
+  int * heap = yals->ddfw.nbr_heap, * gpos = yals->ddfw.nbr_gpos, * con = yals->ddfw.nbr_con;
+  int e = heap[g], lo = yals->ddfw.nbr_lstart[yals->ddfw.nbr_lit[e]];
+  double w = yals_nbr_weight (yals, con[e]);
+  while (g > lo) {
+    int par = lo + (g - lo - 1) / 2, pe = heap[par];
+    if (yals_nbr_weight (yals, con[pe]) >= w) break;
+    heap[g] = pe; gpos[pe] = g; g = par;
+  }
+  heap[g] = e; gpos[e] = g;
+}
+
+static void yals_nbr_siftdown (Yals * yals, int g) {
+  int * heap = yals->ddfw.nbr_heap, * gpos = yals->ddfw.nbr_gpos, * con = yals->ddfw.nbr_con;
+  int e = heap[g], p = yals->ddfw.nbr_lit[e];
+  int lo = yals->ddfw.nbr_lstart[p], hi = yals->ddfw.nbr_lstart[p+1];
+  double w = yals_nbr_weight (yals, con[e]);
+  for (;;) {
+    int l = lo + 2*(g - lo) + 1, r = l + 1, best = g; double bw = w, cw;
+    if (l < hi && (cw = yals_nbr_weight (yals, con[heap[l]])) > bw) { best = l; bw = cw; }
+    if (r < hi && (cw = yals_nbr_weight (yals, con[heap[r]])) > bw) { best = r; bw = cw; }
+    if (best == g) break;
+    int be = heap[best]; heap[g] = be; gpos[be] = g; g = best;
+  }
+  heap[g] = e; gpos[e] = g;
+}
+
+// A single constraint's weight changed: re-sift each of its edges.
+static void yals_nbr_update (Yals * yals, int u) {
+  if (!yals->ddfw.nbr_built) return;
+  for (int e = yals->ddfw.nbr_cstart[u]; e < yals->ddfw.nbr_cstart[u+1]; e++) {
+    yals_nbr_siftup (yals, yals->ddfw.nbr_gpos[e]);
+    yals_nbr_siftdown (yals, yals->ddfw.nbr_gpos[e]);
+  }
+}
+
+// Best (max-weight) *eligible* neighbor of lit: satisfied and >= initial
+// weight. Returns the per-type cidx and sets *ret_con_type, or -1 if none.
+// Explores the max-heap in decreasing-weight order (no mutation), so the
+// first eligible node found is the maximum-weight eligible one.
+static int yals_nbr_best (Yals * yals, int lit, int * ret_con_type) {
+  int p = get_pos (lit);
+  int lo = yals->ddfw.nbr_lstart[p], hi = yals->ddfw.nbr_lstart[p+1];
+  if (hi <= lo) return -1;
+  int relative = (yals->opts.maxs_init_weight_relative.val && yals->using_maxs_weights);
+  int * heap = yals->ddfw.nbr_heap, * con = yals->ddfw.nbr_con;
+  int * fr = yals->ddfw.nbr_scratch, frn = 0;
+  fr[frn++] = lo;
+  while (frn > 0) {
+    int bi = 0; double bw = yals_nbr_weight (yals, con[heap[fr[0]]]);
+    for (int i = 1; i < frn; i++) {
+      double w = yals_nbr_weight (yals, con[heap[fr[i]]]);
+      if (w > bw) { bw = w; bi = i; }
+    }
+    int s = fr[bi]; fr[bi] = fr[--frn];
+    int u = con[heap[s]];
+    if (u < yals->nclauses) {
+      double thr = (relative && !yals->hard_clause_ids[u])
+                   ? PEEK (yals->maxs_clause_weights, u)
+                   : (double) yals->opts.init_clause_weight.val;
+      if (yals_satcnt (yals, u) > 0 &&
+          (yals->opts.ignorewtcriteria.val || yals->ddfw.ddfw_clause_weights[u] >= thr)) {
+        *ret_con_type = TYPECLAUSE; return u;
+      }
+    } else {
+      int c = u - yals->nclauses;
+      double thr = (relative && !yals->hard_card_ids[c])
+                   ? PEEK (yals->maxs_card_weights, c)
+                   : (double) yals->opts.init_card_weight.val;
+      if (yals_card_satcnt (yals, c) >= yals_card_bound (yals, c) &&
+          (yals->opts.ignorewtcriteria.val || yals->ddfw.ddfw_card_weights[c] >= thr)) {
+        *ret_con_type = TYPECARDINALITY; return c;
+      }
+    }
+    int li = lo + 2*(s - lo) + 1, ri = li + 1;
+    if (li < hi) fr[frn++] = li;
+    if (ri < hi) fr[frn++] = ri;
+  }
+  return -1;
+}
+
+// Re-establish heap order for every per-literal partition (used after a
+// bulk weight change, e.g. reset_weights_on_restart). Membership unchanged.
+static void yals_nbr_reheapify (Yals * yals) {
+  if (!yals->ddfw.nbr_built) return;
+  for (int p = 0; p < yals->ddfw.nbr_nlits; p++) {
+    int lo = yals->ddfw.nbr_lstart[p], hi = yals->ddfw.nbr_lstart[p+1], n = hi - lo;
+    for (int i = n/2 - 1; i >= 0; i--) yals_nbr_siftdown (yals, lo + i);
+  }
+}
+
+static void yals_nbr_free (Yals * yals) {
+  if (!yals->ddfw.nbr_built) return;
+  free (yals->ddfw.nbr_con);   free (yals->ddfw.nbr_lit);
+  free (yals->ddfw.nbr_gpos);  free (yals->ddfw.nbr_heap);
+  free (yals->ddfw.nbr_cstart); free (yals->ddfw.nbr_lstart);
+  free (yals->ddfw.nbr_scratch);
+  yals->ddfw.nbr_built = 0;
+}
+
+static void yals_nbr_build (Yals * yals) {
+  int ncl = yals->nclauses, ncard = yals->card_nclauses;
+  int ncons = ncl + ncard, nlits = 2 * yals->nvars;
+  int * cstart = malloc ((ncons + 1) * sizeof (int));
+  int * lstart = calloc (nlits + 1, sizeof (int));
+  int E = 0;
+  const int * pl;
+  for (int u = 0; u < ncl; u++) {
+    cstart[u] = E;
+    for (pl = yals_lits (yals, u); *pl; pl++) { E++; lstart[get_pos (*pl) + 1]++; }
+  }
+  for (int u = 0; u < ncard; u++) {
+    cstart[ncl + u] = E;
+    int len = yals_card_length (yals, u);
+    pl = yals_card_lits (yals, u);
+    for (int j = 0; j < len; j++) { E++; lstart[get_pos (pl[j]) + 1]++; }
+  }
+  cstart[ncons] = E;
+  for (int i = 0; i < nlits; i++) lstart[i+1] += lstart[i];
+
+  int * con = malloc (E * sizeof (int)), * litp = malloc (E * sizeof (int));
+  int * gpos = malloc (E * sizeof (int)), * heap = malloc (E * sizeof (int));
+  int * fill = malloc (nlits * sizeof (int));
+  for (int i = 0; i < nlits; i++) fill[i] = lstart[i];
+  int e = 0, maxocc = 1;
+  for (int u = 0; u < ncl; u++)
+    for (pl = yals_lits (yals, u); *pl; pl++) {
+      int pp = get_pos (*pl); con[e] = u; litp[e] = pp;
+      int g = fill[pp]++; heap[g] = e; gpos[e] = g; e++;
+    }
+  for (int u = 0; u < ncard; u++) {
+    int len = yals_card_length (yals, u);
+    pl = yals_card_lits (yals, u);
+    for (int j = 0; j < len; j++) {
+      int pp = get_pos (pl[j]); con[e] = ncl + u; litp[e] = pp;
+      int g = fill[pp]++; heap[g] = e; gpos[e] = g; e++;
+    }
+  }
+  free (fill);
+  for (int i = 0; i < nlits; i++) { int c = lstart[i+1] - lstart[i]; if (c > maxocc) maxocc = c; }
+
+  yals->ddfw.nbr_con = con; yals->ddfw.nbr_lit = litp;
+  yals->ddfw.nbr_gpos = gpos; yals->ddfw.nbr_heap = heap;
+  yals->ddfw.nbr_cstart = cstart; yals->ddfw.nbr_lstart = lstart;
+  yals->ddfw.nbr_E = E; yals->ddfw.nbr_ncons = ncons; yals->ddfw.nbr_nlits = nlits;
+  yals->ddfw.nbr_scratch = malloc ((maxocc + 2) * sizeof (int));
+  yals->ddfw.nbr_built = 1;
+  yals_nbr_reheapify (yals);
+}
+
 // reset stacks, ddfw weight change values, ddfw constraint weights (if option is set)
 void yals_reset_ddfw (Yals * yals)
 {
@@ -915,6 +1088,8 @@ void yals_reset_ddfw (Yals * yals)
       else
         yals->ddfw.ddfw_card_weights [i] = yals->opts.init_card_weight.val;
     }
+    // --litheap: weights changed in bulk; restore heap order.
+    if (yals->opts.litheap.val) yals_nbr_reheapify (yals);
   }
 }
 
@@ -3155,6 +3330,7 @@ void yals_del (Yals * yals) {
   DELN (yals->ddfw.uvars_heap.score, yals->nvars);
 
   // ddfw data structures allocated using malloc/calloc
+  yals_nbr_free (yals);
   free (yals->ddfw.cc_comp);
   free (yals->ddfw.max_weighted_neighbour);
   free (yals->ddfw.sat_count_in_clause);
@@ -3832,6 +4008,18 @@ int yals_ddfw_get_max_weight_sat_clause (Yals *yals, int cidx, int constraint_ty
     // rndlit: skip every falsified literal except the randomly chosen one
     if (rndlit_target >= 0 && ++rndlit_seen != rndlit_target) continue;
 
+    if (yals->opts.litheap.val) {
+      // --litheap: peek this literal's heaviest eligible neighbor via its
+      // max-heap (+ lazy skip) instead of scanning all of its occurrences.
+      int nbr_ct, cand = yals_nbr_best (yals, lit, &nbr_ct);
+      if (cand >= 0) {
+        double cw = (nbr_ct == TYPECLAUSE)
+          ? yals->ddfw.ddfw_clause_weights [cand]
+          : yals->ddfw.ddfw_card_weights [cand];
+        if (cw >= best_w) { source = cand; best_w = cw; *return_con_type = nbr_ct; }
+      }
+    } else {
+
     // neighbor clauses
     occs = yals_occs (yals, lit);
     for (p = occs; (occ = *p) >= 0; p++) {
@@ -3884,6 +4072,7 @@ int yals_ddfw_get_max_weight_sat_clause (Yals *yals, int cidx, int constraint_ty
         }
       }
     }
+    } // end --litheap else (occurrence-scan path)
     // rndlit: only the one chosen literal's neighbors are examined
     if (rndlit_target >= 0) break;
   }
@@ -4347,6 +4536,7 @@ void yals_ddfw_transfer_weights_for_clause (Yals *yals, int sink)
 
     yals->ddfw.ddfw_clause_weights [source] -= w; // difference 2
     yals->ddfw.ddfw_clause_weights [sink] += w;
+    if (yals->opts.litheap.val) { yals_nbr_update (yals, source); yals_nbr_update (yals, sink); }
 
     yals_ddfw_update_lit_weights_on_weight_transfer (yals, sink, source, constraint_type, TYPECLAUSE, w);
 
@@ -4354,13 +4544,14 @@ void yals_ddfw_transfer_weights_for_clause (Yals *yals, int sink)
     assert (yals_card_satcnt (yals, source) >= yals_card_bound (yals, source));
 
     LOGCARDCIDX (source, "Transfer weights from");
-    
+
     double w = yals_ddfw_get_weight (yals, source,sink, constraint_type,TYPECLAUSE);
 
     LOG ("Transferring %lf",w);
 
     yals->ddfw.ddfw_card_weights [source] -= w;
     yals->ddfw.ddfw_clause_weights [sink] += w;
+    if (yals->opts.litheap.val) { yals_nbr_update (yals, yals->nclauses + source); yals_nbr_update (yals, sink); }
 
     yals_ddfw_update_lit_weights_on_weight_transfer (yals, sink, source, constraint_type, TYPECLAUSE, w);
 
@@ -4416,6 +4607,7 @@ void yals_ddfw_transfer_weights_for_card (Yals *yals, int sink)
 
     yals->ddfw.ddfw_clause_weights [source] -= w; // difference 2
     yals->ddfw.ddfw_card_weights [sink] += w;
+    if (yals->opts.litheap.val) { yals_nbr_update (yals, source); yals_nbr_update (yals, yals->nclauses + sink); }
 
     yals_ddfw_update_lit_weights_on_weight_transfer (yals, sink, source, constraint_type, TYPECARDINALITY, w);
 
@@ -4423,13 +4615,14 @@ void yals_ddfw_transfer_weights_for_card (Yals *yals, int sink)
     assert (yals_card_satcnt (yals, source) >= yals_card_bound (yals, source));
 
     LOGCARDCIDX (source, "Transfer weights from");
-    
+
     double w = yals_ddfw_get_weight (yals, source,sink, constraint_type,TYPECARDINALITY);
 
     LOG ("Transferring %lf",w);
 
     yals->ddfw.ddfw_card_weights [source] -= w;
     yals->ddfw.ddfw_card_weights [sink] += w;
+    if (yals->opts.litheap.val) { yals_nbr_update (yals, yals->nclauses + source); yals_nbr_update (yals, yals->nclauses + sink); }
 
     yals_ddfw_update_lit_weights_on_weight_transfer (yals, sink, source, constraint_type, TYPECARDINALITY, w);
 
@@ -5127,6 +5320,10 @@ void yals_init_ddfw (Yals *yals)
   */
   yals->weight_transfer_soft = 0;
   yals->current_weight_transfer_soft = 0;
+
+  // --litheap: build per-literal neighbor heaps now that all weights are set.
+  yals->ddfw.nbr_built = 0;
+  if (yals->opts.litheap.val) yals_nbr_build (yals);
 
 }
 
