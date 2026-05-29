@@ -3,7 +3,7 @@
 # that moves weight between the positive- and negative-literal constraint
 # classes). clsselectp = paramval/100.
 #
-# Default aeq=ceq=0.167 (paramAeq=paramCeq=167, /1000 scale). Cache OFF,
+# Default aeq=ceq=0.167 (wtmul=wtadd=167, /1000 scale). Cache OFF,
 # cutoff=20000, 20 seeds, 900s timeout. 10 configs.
 # Default clsselectp = 12 (0.12).
 # name	args

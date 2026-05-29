@@ -51,7 +51,7 @@ This code extends the solver yal-lin (Md Solimul Chowdhury, Cayden Codel, Marijn
 static void yals_check_global_best_weight_invariant (Yals * yals) {
   #ifndef NDEBUG
   if (!yals->opts.checking.val) return;
-  if (yals->opts.maxs_hard_stochastic_selection.val > 1 || yals->opts.maxs_soft_stochastic_selection.val > 1) return;
+  if (yals->opts.hard_stochastic_selection.val > 1 || yals->opts.maxs_soft_stochastic_selection.val > 1) return;
 
   int max_var = -1, var, true_lit, false_lit;
   double max_gain = INT_MIN*1.0, flip_gain;
@@ -139,7 +139,7 @@ static void yals_check_global_weight_invariant (Yals * yals) {
       LOGCIDX (cidx, "UNSAT Weight %lf",yals->ddfw.ddfw_clause_weights[cidx]);
     }
     actual_total_weight += yals->ddfw.ddfw_clause_weights[cidx];
-    expected_total_weight += yals->opts.ddfw_init_clause_weight.val; // each clause started with this
+    expected_total_weight += yals->opts.init_clause_weight.val; // each clause started with this
 
     // look at actual unsat and sat1 weights
     unsigned sat;
@@ -164,7 +164,7 @@ static void yals_check_global_weight_invariant (Yals * yals) {
       LOGCARDCIDX (cidx, "UNSAT Weight %lf",yals->ddfw.ddfw_card_weights[cidx]); 
     }
     actual_total_weight += yals->ddfw.ddfw_card_weights[cidx];
-    expected_total_weight += yals->opts.ddfw_init_card_weight.val; // each cardinality constraint started with this
+    expected_total_weight += yals->opts.init_card_weight.val; // each cardinality constraint started with this
 
     // look at actual unsat and sat1 weights
     unsigned sat;
@@ -267,12 +267,12 @@ void yals_maxs_check_global_weight_invariant (Yals * yals) {
 
     double maxs_weight = 1.0;
 
-    if (!yals->opts.ddfw_maxs_init_weight_relative.val && soft)
+    if (!yals->opts.maxs_init_weight_relative.val && soft)
       maxs_weight = PEEK (yals->maxs_clause_weights, cidx);
 
-    if (yals->opts.ddfw_maxs_init_weight_relative.val && soft) {
+    if (yals->opts.maxs_init_weight_relative.val && soft) {
       expected_total_weight += PEEK (yals->maxs_clause_weights, cidx);
-    } else expected_total_weight += yals->opts.ddfw_init_clause_weight.val; // each clause started with this
+    } else expected_total_weight += yals->opts.init_clause_weight.val; // each clause started with this
     
     actual_total_weight += yals->ddfw.ddfw_clause_weights[cidx];
     
@@ -311,12 +311,12 @@ void yals_maxs_check_global_weight_invariant (Yals * yals) {
 
     double maxs_weight = 1.0;
 
-    if (!yals->opts.ddfw_maxs_init_weight_relative.val && soft)
+    if (!yals->opts.maxs_init_weight_relative.val && soft)
       maxs_weight = PEEK (yals->maxs_card_weights, cidx);
 
-    if (yals->opts.ddfw_maxs_init_weight_relative.val && soft) {
+    if (yals->opts.maxs_init_weight_relative.val && soft) {
       expected_total_weight += PEEK (yals->maxs_card_weights, cidx);
-    } else expected_total_weight += yals->opts.ddfw_init_card_weight.val; // each clause started with this
+    } else expected_total_weight += yals->opts.init_card_weight.val; // each clause started with this
 
     actual_total_weight += yals->ddfw.ddfw_card_weights[cidx];
 

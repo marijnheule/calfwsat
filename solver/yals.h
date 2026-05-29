@@ -284,7 +284,6 @@ typedef struct DDFW {
 
   int pick_method; 
   double sum_uwr;
-  double urandp;
   double clsselectp;
   double ddfwstartth;
   int guaranteed_uwrvs, missed_guaranteed_uwvars;
@@ -355,7 +354,7 @@ typedef struct Yals {
   DDFW ddfw;
   int inner_restart;
   STACK (int) clause_size;
-  int wid, nthreads;
+  int wid;
   int consecutive_non_improvement, last_flip_unsat_count;
 
   /*

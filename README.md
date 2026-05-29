@@ -126,11 +126,11 @@ Options with values:
 
 `--card_compute=1` cardinality constraint ddfw weight computation rule (1: linear, 2: exponential, 3: quadratic, 4: choice of exponent). For SAT problems, exponential or quadratic may be better.
 
-`--ddfw_init_card_weight=35` the initial ddfw weight for cardinality constriants. This should change depending on the weight of soft constraints.
+`--init_card_weight=35` the initial ddfw weight for cardinality constriants. This should change depending on the weight of soft constraints.
 
 `--sat_ddfw_init_card_weight=8` the initial ddfw weight for cardinality constriants. This value is for SAT problems, not MaxSAT problems.
 
-`--maxs_hard_stochastic_selection=7` All constraints (SAT) hard constraints (MaxSAT) make weighted random choice from top K variables with best ddfw weight changce. Set to 0/1 for picking best variable every time.
+`--hard_stochastic_selection=7` All constraints (SAT) hard constraints (MaxSAT) make weighted random choice from top K variables with best ddfw weight changce. Set to 0/1 for picking best variable every time.
 
 Pure MaxSAT specific:
 
@@ -141,7 +141,7 @@ Pure MaxSAT specific:
 
 Options that are on `1` or off `0`:
 
-`--ddfw_neighbors_plus=1` extends the definition of neighbor for problems with few neighbors like Middle Mile. For SAT problems, disabling this may be better.
+`--neighbors_plus=1` extends the definition of neighbor for problems with few neighbors like Middle Mile. For SAT problems, disabling this may be better.
 
 `--reset_weights_on_restart=1` resets ddfw weights during a restart. For SAT problems, disabling this may be better.
 

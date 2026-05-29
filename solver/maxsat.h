@@ -411,7 +411,7 @@ int yals_batt_best_hard_score (Yals * yals) {
   double score = 0.0;
   double best_score = INT_MIN*1.0;
 
-  if (yals->opts.maxs_hard_stochastic_selection.val) {
+  if (yals->opts.hard_stochastic_selection.val) {
 
     CLEAR (yals->lit_scores);
 

@@ -1,16 +1,16 @@
 # Sweep the cardinality penalty at a 2-violation (d=2).
-# card_compute=4 (default): weight = c_weight * d^exp, exp = ddfw_card_exp/10 + 1.
-# Default ddfw_card_exp=20 -> exp=3 (cubic) -> weight at d=2 is 2^3 = 8.
-# Each config sets ddfw_card_exp so 2^exp ~= the target 2-violation value below.
+# card_compute=4 (default): weight = c_weight * d^exp, exp = card_exp/10 + 1.
+# Default card_exp=20 -> exp=3 (cubic) -> weight at d=2 is 2^3 = 8.
+# Each config sets card_exp so 2^exp ~= the target 2-violation value below.
 # Cache off, cutoff=20000, componentlock off, pos=1.0 (all defaults).
 # name	args
-viol04	--ddfw_card_exp=10
-viol05	--ddfw_card_exp=13
-viol06	--ddfw_card_exp=16
-viol07	--ddfw_card_exp=18
-viol08	--ddfw_card_exp=20
-viol09	--ddfw_card_exp=22
-viol10	--ddfw_card_exp=23
-viol11	--ddfw_card_exp=25
-viol12	--ddfw_card_exp=26
-viol13	--ddfw_card_exp=27
+viol04	--card_exp=10
+viol05	--card_exp=13
+viol06	--card_exp=16
+viol07	--card_exp=18
+viol08	--card_exp=20
+viol09	--card_exp=22
+viol10	--card_exp=23
+viol11	--card_exp=25
+viol12	--card_exp=26
+viol13	--card_exp=27

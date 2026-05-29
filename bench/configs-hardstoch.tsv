@@ -1,0 +1,12 @@
+# Sweep of --hard_stochastic_selection (top-K stochastic variable selection
+# for All/Hard constraints). Default is 7; this sweep validates that choice.
+# K<=1 = pure greedy (always best-scoring var); K>1 = roulette-wheel over top K.
+# Everything else left at solver defaults.
+k01	--hard_stochastic_selection=1
+k02	--hard_stochastic_selection=2
+k03	--hard_stochastic_selection=3
+k05	--hard_stochastic_selection=5
+k07	--hard_stochastic_selection=7
+k10	--hard_stochastic_selection=10
+k15	--hard_stochastic_selection=15
+k20	--hard_stochastic_selection=20

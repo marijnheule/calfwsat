@@ -11,9 +11,9 @@
 #   bash sweep-one.sh ntil-40.knf
 #
 # Hardcoded defaults (edit at top of script to change):
-#   configs:   bench/configs-sweep4.tsv  (15 configs incl. no_cache + default)
-#   seeds:     1,2,3,4,5
-#   timeout:   60s per run
+#   configs:   bench/configs-wtpow.tsv  (wtpow sweep: default + p600..p850)
+#   seeds:     1..20
+#   timeout:   900s per run
 #   threads:   8 per palsat invocation
 #   parallel:  auto = cores / threads
 #
@@ -29,7 +29,7 @@ SEEDS_DEFAULT="${SEEDS:-$(seq 1 20 | paste -sd, -)}"
 TIMEOUT_DEFAULT="${TIMEOUT:-900}"
 THREADS_DEFAULT="${THREADS:-8}"
 CUTOFF_DEFAULT="${CUTOFF:-20000}"
-CONFIGS_REL="${CONFIGS:-bench/configs-cardexp.tsv}"
+CONFIGS_REL="${CONFIGS:-bench/configs-wtpow.tsv}"
 # ------------------------------------------------------------------
 
 FORMULA="${1:?usage: $0 <formula.knf>}"

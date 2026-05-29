@@ -127,7 +127,7 @@ def run(name, args):
     if soft_eps > 0:
       command += " --maxs_soft_eps={} ".format(soft_eps)
     if neighbors_plus:
-      command += " --ddfw_neighbors_plus=1 "
+      command += " --neighbors_plus=1 "
     if ignore_weight:
       command += " --ignorewtcriteria=1 "
     if soft_transfer:
@@ -135,9 +135,9 @@ def run(name, args):
     if soft_takes_hard:
       command += " --maxs_soft_takes_hard=1 "
     if wt_exp is not None:
-        command += " --ddfw_card_exp={} ".format(wt_exp)
+        command += " --card_exp={} ".format(wt_exp)
     if init_card_wt is not None:
-      command += " --ddfw_init_card_weight={} ".format(init_card_wt)
+      command += " --init_card_weight={} ".format(init_card_wt)
     if all_transfer is not None:
       command += " --wt_transfer_all={} ".format(all_transfer)  
     if transfer_slow is not None:
@@ -145,9 +145,9 @@ def run(name, args):
     if hard_takes_soft is not None:
         command += " --maxs_hard_takes_soft=0 "
     if rand_uvar is not None:
-        command += " --ddfw_random_select={} ".format(rand_uvar)
+        command += " --random_select={} ".format(rand_uvar)
     if sel_exp is not None:
-        command += " --ddfw_select_exp={} ".format(sel_exp)
+        command += " --select_exp={} ".format(sel_exp)
     if card_wt_rule is not None:
         command += " --card_wtrule={} ".format(card_wt_rule)
     if inner_bound is not None:
@@ -161,11 +161,11 @@ def run(name, args):
     if outer_bound is not None:
         command += " --maxs_outer_restart={} ".format(outer_bound)
     if hard_stochastic_selection is not None:
-        command += " --maxs_hard_stochastic_selection={} ".format(hard_stochastic_selection)
+        command += " --hard_stochastic_selection={} ".format(hard_stochastic_selection)
     if init_cls_wt is not None:
-        command += " --ddfw_init_clause_weight={} ".format(init_cls_wt)
+        command += " --init_clause_weight={} ".format(init_cls_wt)
     if init_cls_relative is not None:
-        command += " --ddfw_maxs_init_weight_relative=1 "
+        command += " --maxs_init_weight_relative=1 "
     if cls_no_maxs_multiply is not None:
         command += " --ddfw_maxs_no_max_weight_multiply=1 "
     if select_random_sat is not None:

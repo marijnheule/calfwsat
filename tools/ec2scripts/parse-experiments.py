@@ -217,7 +217,7 @@ def get_configuration (line) :
       config_name += "_select=" + str ( stoch_sel )
       config_dic['stoch_sel'] = stoch_sel
 
-    k_exp = get_argument (line, "--ddfw_card_exp=")
+    k_exp = get_argument (line, "--card_exp=")
     if k_exp is not None:
       config_name += "_ex=" + str ( k_exp )
       config_dic['k_exp'] = k_exp
@@ -227,17 +227,17 @@ def get_configuration (line) :
       config_name += "_tall=" + str ( transfer_all )
       config_dic['t_all'] = transfer_all
 
-    init_card = get_argument (line, "--ddfw_init_card_weight=")
+    init_card = get_argument (line, "--init_card_weight=")
     if init_card is not None:
       config_name += "_initCard=" + str ( init_card )
       config_dic['init_card'] = init_card
 
-    v = get_argument (line, "--ddfw_random_select=")
+    v = get_argument (line, "--random_select=")
     if v is not None:
       config_name += "_rsel=" + str ( v )
       config_dic['rsel'] = v
 
-    v = get_argument (line, "--ddfw_select_exp=")
+    v = get_argument (line, "--select_exp=")
     if v is not None:
       config_name += "_selExp=" + str ( v )
       config_dic['selExp'] = v
@@ -267,7 +267,7 @@ def get_configuration (line) :
       config_name += "_outRes=" + str ( v )
       config_dic['outRes'] = v
 
-    v = get_argument (line, "--maxs_hard_stochastic_selection=")
+    v = get_argument (line, "--hard_stochastic_selection=")
     if v is not None:
       config_name += "_hardSel=" + str ( v )
       config_dic['hardSel'] = v
@@ -277,7 +277,7 @@ def get_configuration (line) :
       config_name += "_flipStep=" + str ( v )
       config_dic['flipStep'] = v
 
-    v = get_argument (line, "--ddfw_init_clause_weight=")
+    v = get_argument (line, "--init_clause_weight=")
     if v is not None:
       config_name += "_initCls=" + str ( v )
       config_dic['initCls'] = v
@@ -296,7 +296,7 @@ def get_configuration (line) :
     if "--maxs_hard_takes_soft=0" in line:
       config_name += "_Nhtks"
 
-    if "--ddfw_neighbors_plus=1" in line:
+    if "--neighbors_plus=1" in line:
       config_name += "_neigh"
     if "--ignorewtcriteria=1" in line:
       config_name += "_ignr"

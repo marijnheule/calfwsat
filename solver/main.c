@@ -503,7 +503,6 @@ static void * run (void * p) {
   int res, widx = w - worker;
   assert (0 <= widx), assert (widx < threads);
   yals_set_wid (w->yals, widx);
-  yals_set_threadspecvals (w->yals, widx, threads);
   res = yals_sat (w->yals);
   if (res && setdone (widx, res) == widx)
     msg ("worker %d wins with result %d", widx, res);
@@ -792,20 +791,14 @@ int main (int argc, char** argv) {
     
     else if (!strcmp (argv[i], "--greedy")) setopt ("ddfwpicklit", 1);
     else if (!strcmp (argv[i], "--wrand")) setopt ("ddfwpicklit", 2);
-    else if (!strcmp (argv[i], "--threadspec")) setopt ("threadspec", 1);
-    else if (!strcmp (argv[i], "--csptmax")) setopt ("csptmax", atoll (argv[++i]));
-    else if (!strcmp (argv[i], "--csptmin")) setopt ("csptmin", atoll (argv[++i]));
 
-    else if (!strcmp (argv[i], "--urandp")) { setopt ("urandp", atoll (argv[++i]));}
 
     else if (!strcmp (argv[i], "--computeneiinit")) setopt ("computeneiinit", 1);
     else if (!strcmp (argv[i], "--ignorewtcriteria")) setopt ("ignorewtcriteria", 1);
     else if (!strcmp (argv[i], "--clsselectp")) setopt ("clsselectp", atoll (argv[++i]));
-    else if (!strcmp (argv[i], "--wpercentage")) setopt ("wpercentage", atoll (argv[++i]));
-    else if (!strcmp (argv[i], "--paramCeq")) setopt ("paramCeq", atoll (argv[++i]));
-    else if (!strcmp (argv[i], "--paramAeq")) setopt ("paramAeq", atoll (argv[++i]));
-    else if (!strcmp (argv[i], "--invwtfactor")) { setopt ("invwtfactor", atoll (argv[++i]));}
-    else if (!strcmp (argv[i], "--limofranda")) { setopt ("limofranda", atoll (argv[++i]));}
+    else if (!strcmp (argv[i], "--wtadd")) setopt ("wtadd", atoll (argv[++i]));
+    else if (!strcmp (argv[i], "--wtmul")) setopt ("wtmul", atoll (argv[++i]));
+    else if (!strcmp (argv[i], "--wtpow")) setopt ("wtpow", atoll (argv[++i]));
     else if (!strcmp (argv[i], "--nosidewaysmove")) setopt ("sidewaysmove", 0);
     else if (!strcmp (argv[i], "--innerrestart")) setopt ("innerrestartoff", 0);
     else if (!strcmp (argv[i], "--maxtries")) { setopt ("maxtries", atoll (argv[++i]));}
