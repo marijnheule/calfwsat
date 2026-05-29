@@ -923,13 +923,20 @@ static void yals_nbr_siftdown (Yals * yals, int g) {
   heap[g] = e; gpos[e] = g;
 }
 
-// A single constraint's weight changed: re-sift each of its edges.
-static void yals_nbr_update (Yals * yals, int u) {
+// A constraint's weight *decreased* (a donor source): it can only sink, so
+// sift each of its edges down. (siftup would be a guaranteed no-op.)
+static void yals_nbr_decreased (Yals * yals, int u) {
   if (!yals->ddfw.nbr_built) return;
-  for (int e = yals->ddfw.nbr_cstart[u]; e < yals->ddfw.nbr_cstart[u+1]; e++) {
-    yals_nbr_siftup (yals, yals->ddfw.nbr_gpos[e]);
+  for (int e = yals->ddfw.nbr_cstart[u]; e < yals->ddfw.nbr_cstart[u+1]; e++)
     yals_nbr_siftdown (yals, yals->ddfw.nbr_gpos[e]);
-  }
+}
+
+// A constraint's weight *increased* (a falsified sink): it can only rise, so
+// sift each of its edges up. (siftdown would be a guaranteed no-op.)
+static void yals_nbr_increased (Yals * yals, int u) {
+  if (!yals->ddfw.nbr_built) return;
+  for (int e = yals->ddfw.nbr_cstart[u]; e < yals->ddfw.nbr_cstart[u+1]; e++)
+    yals_nbr_siftup (yals, yals->ddfw.nbr_gpos[e]);
 }
 
 // Best (max-weight) *eligible* neighbor of lit: satisfied and >= initial
@@ -4542,7 +4549,7 @@ void yals_ddfw_transfer_weights_for_clause (Yals *yals, int sink)
 
     yals->ddfw.ddfw_clause_weights [source] -= w; // difference 2
     yals->ddfw.ddfw_clause_weights [sink] += w;
-    if (yals->opts.litheap.val) { yals_nbr_update (yals, source); yals_nbr_update (yals, sink); }
+    if (yals->opts.litheap.val) { yals_nbr_decreased (yals, source); yals_nbr_increased (yals, sink); }
 
     yals_ddfw_update_lit_weights_on_weight_transfer (yals, sink, source, constraint_type, TYPECLAUSE, w);
 
@@ -4557,7 +4564,7 @@ void yals_ddfw_transfer_weights_for_clause (Yals *yals, int sink)
 
     yals->ddfw.ddfw_card_weights [source] -= w;
     yals->ddfw.ddfw_clause_weights [sink] += w;
-    if (yals->opts.litheap.val) { yals_nbr_update (yals, yals->nclauses + source); yals_nbr_update (yals, sink); }
+    if (yals->opts.litheap.val) { yals_nbr_decreased (yals, yals->nclauses + source); yals_nbr_increased (yals, sink); }
 
     yals_ddfw_update_lit_weights_on_weight_transfer (yals, sink, source, constraint_type, TYPECLAUSE, w);
 
@@ -4613,7 +4620,7 @@ void yals_ddfw_transfer_weights_for_card (Yals *yals, int sink)
 
     yals->ddfw.ddfw_clause_weights [source] -= w; // difference 2
     yals->ddfw.ddfw_card_weights [sink] += w;
-    if (yals->opts.litheap.val) { yals_nbr_update (yals, source); yals_nbr_update (yals, yals->nclauses + sink); }
+    if (yals->opts.litheap.val) { yals_nbr_decreased (yals, source); yals_nbr_increased (yals, yals->nclauses + sink); }
 
     yals_ddfw_update_lit_weights_on_weight_transfer (yals, sink, source, constraint_type, TYPECARDINALITY, w);
 
@@ -4628,7 +4635,7 @@ void yals_ddfw_transfer_weights_for_card (Yals *yals, int sink)
 
     yals->ddfw.ddfw_card_weights [source] -= w;
     yals->ddfw.ddfw_card_weights [sink] += w;
-    if (yals->opts.litheap.val) { yals_nbr_update (yals, yals->nclauses + source); yals_nbr_update (yals, yals->nclauses + sink); }
+    if (yals->opts.litheap.val) { yals_nbr_decreased (yals, yals->nclauses + source); yals_nbr_increased (yals, yals->nclauses + sink); }
 
     yals_ddfw_update_lit_weights_on_weight_transfer (yals, sink, source, constraint_type, TYPECARDINALITY, w);
 
