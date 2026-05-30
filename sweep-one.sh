@@ -11,8 +11,8 @@
 #   bash sweep-one.sh ntil-40.knf
 #
 # Hardcoded defaults (edit at top of script to change):
-#   configs:   bench/configs-hardstoch.tsv  (--hard_stochastic_selection K-sweep)
-#   seeds:     1..100
+#   configs:   bench/configs-wtgrid-ab.tsv  (5x5 (wtmul,wtadd) grid)
+#   seeds:     1..50
 #   timeout:   900s per run
 #   threads:   8 per palsat invocation
 #   parallel:  auto = cores / threads
@@ -25,11 +25,11 @@ set -uo pipefail
 # -------- defaults (edit here, or override via env vars) ----------
 # Any of these can be overridden by setting an env var when invoking:
 #   TIMEOUT=300 SEEDS="1,2,3" bash sweep-one.sh <formula>
-SEEDS_DEFAULT="${SEEDS:-$(seq 1 100 | paste -sd, -)}"
+SEEDS_DEFAULT="${SEEDS:-$(seq 1 50 | paste -sd, -)}"
 TIMEOUT_DEFAULT="${TIMEOUT:-900}"
 THREADS_DEFAULT="${THREADS:-8}"
 CUTOFF_DEFAULT="${CUTOFF:-20000}"
-CONFIGS_REL="${CONFIGS:-bench/configs-hardstoch.tsv}"
+CONFIGS_REL="${CONFIGS:-bench/configs-wtgrid-ab.tsv}"
 # ------------------------------------------------------------------
 
 FORMULA="${1:?usage: $0 <formula.knf>}"

@@ -1,0 +1,39 @@
+# 5x5 grid over (a, b) parameterizing (wtmul, wtadd):
+#   wtmul = a + 167         a in {0, 50, 100, 150, 200}
+#   wtadd = -a - b          b in {0,  20,  40,  60,  80}
+#
+# Holds wtpow at its default (0 -> power term disabled). The cell a=0,b=0
+# is exactly the current solver default (wtmul=167, wtadd=0).
+#
+# All wtadd values are negative or zero, exploring whether a per-transfer
+# subtractive floor (c < 0) tightens the transfer rule -- recall
+#   c = init_weight * wtadd/1000
+#   w = source*(wtmul/1000) + c   (with wtpow=0, the power term is off)
+#
+# 25 configs. Name encodes a then b.
+# name		args
+a000_b00	--wtmul=167 --wtadd=0
+a000_b20	--wtmul=167 --wtadd=-20
+a000_b40	--wtmul=167 --wtadd=-40
+a000_b60	--wtmul=167 --wtadd=-60
+a000_b80	--wtmul=167 --wtadd=-80
+a050_b00	--wtmul=217 --wtadd=-50
+a050_b20	--wtmul=217 --wtadd=-70
+a050_b40	--wtmul=217 --wtadd=-90
+a050_b60	--wtmul=217 --wtadd=-110
+a050_b80	--wtmul=217 --wtadd=-130
+a100_b00	--wtmul=267 --wtadd=-100
+a100_b20	--wtmul=267 --wtadd=-120
+a100_b40	--wtmul=267 --wtadd=-140
+a100_b60	--wtmul=267 --wtadd=-160
+a100_b80	--wtmul=267 --wtadd=-180
+a150_b00	--wtmul=317 --wtadd=-150
+a150_b20	--wtmul=317 --wtadd=-170
+a150_b40	--wtmul=317 --wtadd=-190
+a150_b60	--wtmul=317 --wtadd=-210
+a150_b80	--wtmul=317 --wtadd=-230
+a200_b00	--wtmul=367 --wtadd=-200
+a200_b20	--wtmul=367 --wtadd=-220
+a200_b40	--wtmul=367 --wtadd=-240
+a200_b60	--wtmul=367 --wtadd=-260
+a200_b80	--wtmul=367 --wtadd=-280
