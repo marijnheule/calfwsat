@@ -11,7 +11,7 @@
 #   bash sweep-one.sh ntil-40.knf
 #
 # Hardcoded defaults (edit at top of script to change):
-#   configs:   bench/configs-wtgrid.tsv  (50-cell wtmul x wtpow grid, litheap on)
+#   configs:   bench/configs-wtgrid2.tsv  (40-cell wtmul x wtpow grid, budgets 540-620)
 #   seeds:     1..30
 #   timeout:   900s per run
 #   threads:   8 per palsat invocation
@@ -29,7 +29,7 @@ SEEDS_DEFAULT="${SEEDS:-$(seq 1 30 | paste -sd, -)}"
 TIMEOUT_DEFAULT="${TIMEOUT:-900}"
 THREADS_DEFAULT="${THREADS:-8}"
 CUTOFF_DEFAULT="${CUTOFF:-20000}"
-CONFIGS_REL="${CONFIGS:-bench/configs-wtgrid.tsv}"
+CONFIGS_REL="${CONFIGS:-bench/configs-wtgrid2.tsv}"
 # ------------------------------------------------------------------
 
 FORMULA="${1:?usage: $0 <formula.knf>}"
