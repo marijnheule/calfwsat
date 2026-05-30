@@ -3825,17 +3825,28 @@ double compute_degree_of_satisfaction (Yals *yals, int cidx)
 double linear_wt (Yals * yals, int source, int type_source)
 {
   double source_weight = 0.0;
+  double init_w = 0.0;
+  int relative = (yals->opts.maxs_init_weight_relative.val && yals->using_maxs_weights);
 
   if (type_source == TYPECLAUSE) {
     source_weight = yals->ddfw.ddfw_clause_weights [source];
+    init_w = (relative && !yals->hard_clause_ids[source])
+             ? PEEK (yals->maxs_clause_weights, source)
+             : (double) yals->opts.init_clause_weight.val;
   } else if (type_source == TYPECARDINALITY) {
     source_weight = yals->ddfw.ddfw_card_weights [source];
+    init_w = (relative && !yals->hard_card_ids[source])
+             ? PEEK (yals->maxs_card_weights, source)
+             : (double) yals->opts.init_card_weight.val;
   }
 
   // weight transfer: w = source_weight^p + a*source_weight + c
+  //   where p = wtpow/1000, a = wtmul/1000, c = init_w * wtadd/1000
+  // The additive term c scales with the source's initial weight so the
+  // baseline transfer is proportional to how heavy the source started.
   double p = (float) yals->opts.wtpow.val / 1000.0;
   double a = (float) yals->opts.wtmul.val / 1000.0;
-  double c = (float) yals->opts.wtadd.val / 1000.0;
+  double c = init_w * ((float) yals->opts.wtadd.val / 1000.0);
   return (double) (pow ((float) source_weight, (float) p)
                    + (float) source_weight * (float) a + (float) c);
 }
