@@ -4455,6 +4455,7 @@ int yals_ddfw_get_random_sat_clause (Yals * yals, int * constraint_type, int sin
 */
 double yals_ddfw_get_weight (Yals *yals, int source, int sink, int constraint_type_source, int constraint_type_sink) {
   double w = 0.0;
+  int wtini_hit = 0;
 
   // --wtini: if the source still has exactly its initial weight, transfer
   // initial_weight * wtini / 1000 instead of the linear-rule amount. For
@@ -4473,15 +4474,30 @@ double yals_ddfw_get_weight (Yals *yals, int source, int sink, int constraint_ty
                : (double) yals->opts.init_card_weight.val;
       cur_w = yals->ddfw.ddfw_card_weights [source];
     }
-    if (cur_w == init_w)
-      return init_w * (yals->opts.wtini.val / 1000.0);
+    if (cur_w == init_w) {
+      w = init_w * (yals->opts.wtini.val / 1000.0);
+      wtini_hit = 1;
+    }
   }
 
-  if (constraint_type_source == TYPECLAUSE)
-    w = linear_wt (yals, source, TYPECLAUSE);
-  else if (constraint_type_source == TYPECARDINALITY)
-    w = linear_wt (yals, source, TYPECARDINALITY);
-  else yals_abort (yals, "incorrect constraint type");
+  if (!wtini_hit) {
+    if (constraint_type_source == TYPECLAUSE)
+      w = linear_wt (yals, source, TYPECLAUSE);
+    else if (constraint_type_source == TYPECARDINALITY)
+      w = linear_wt (yals, source, TYPECARDINALITY);
+    else yals_abort (yals, "incorrect constraint type");
+  }
+
+  // --sourcecap: cap the transfer at source_weight * sourcecap/1000.
+  // 1000 = cap at the source's own weight (barely binds; prevents draining
+  // a source below zero). Smaller N = tighter cap.
+  {
+    double src_w = (constraint_type_source == TYPECLAUSE)
+                   ? yals->ddfw.ddfw_clause_weights [source]
+                   : yals->ddfw.ddfw_card_weights [source];
+    double cap = src_w * (yals->opts.sourcecap.val / 1000.0);
+    if (w > cap) w = cap;
+  }
 
   return w;
 }
@@ -6008,6 +6024,23 @@ void yals_print_length_weights (Yals * yals)
   int * cnt;
   double * sum;
   const int * p;
+
+  // Global min/max DDFW weight across clauses + cardinality constraints.
+  if (yals->nclauses + yals->card_nclauses > 0) {
+    double wmin = YALS_DOUBLE_MAX, wmax = -YALS_DOUBLE_MAX;
+    for (i = 0; i < yals->nclauses; i++) {
+      double w = yals->ddfw.ddfw_clause_weights[i];
+      if (w < wmin) wmin = w;
+      if (w > wmax) wmax = w;
+    }
+    for (i = 0; i < yals->card_nclauses; i++) {
+      double w = yals->ddfw.ddfw_card_weights[i];
+      if (w < wmin) wmin = w;
+      if (w > wmax) wmax = w;
+    }
+    yals_msg (yals, 0, "ddfw weight range at termination: min %.4f, max %.4f",
+              wmin, wmax);
+  }
 
   // ---- clauses (length = number of literals) ----
   maxlen = 0;
