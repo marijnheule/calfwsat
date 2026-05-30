@@ -1,5 +1,5 @@
 # pos sweep (v2): multiply the falsified-weight contribution of POSITIVE
-# constraints by pos = paramPos/1000 in the DDFW variable-selection score.
+# constraints by pos = paramPos/1000 in the variable-selection score.
 # Earlier sweep showed pos>1.0 clearly worse; this round probes the LOW range
 # (strongly de-emphasizing positive row/col constraints) plus one slightly-
 # above-1 point.

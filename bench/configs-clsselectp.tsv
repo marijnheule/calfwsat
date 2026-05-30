@@ -1,4 +1,4 @@
-# clsselectp sweep: probability of pulling DDFW weight from a RANDOM satisfied
+# clsselectp sweep: probability of pulling weight from a RANDOM satisfied
 # clause instead of the max-weight same-sign neighbor (also the only channel
 # that moves weight between the positive- and negative-literal constraint
 # classes). clsselectp = paramval/100.

@@ -1,4 +1,4 @@
-# DDFW weight transfer rule: w = source^p + a*source + c
+# Weight-transfer rule: w = source^p + a*source + c
 # Sweep:  a ∈ {0.19, 0.21, 0.23, 0.25, 0.27}  ×  c ∈ {0, 0.05, 0.10, 0.15, 0.20}
 # Cache OFF (default), cutoff = 20000 (default), 5 seeds per cell, 900s timeout.
 # 25 configs total, 125 runs per instance.

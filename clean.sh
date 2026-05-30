@@ -1,7 +1,7 @@
 #!/bin/sh
 
-# remove executable
-rm ddfw-card-sat
+# remove executable (no-op: solver `make clean` below already removes binaries)
+rm -f CaLFwSAT palsat
 
 # clean solver
 cd solver

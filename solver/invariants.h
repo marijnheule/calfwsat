@@ -60,7 +60,7 @@ static void yals_check_global_best_weight_invariant (Yals * yals) {
     true_lit = yals_val (yals, var) ? var : -var;
     false_lit = -true_lit;
 
-    // should always be a positive ddfw weight 
+    // should always be a positive weight
     assert (yals->ddfw.sat1_weights [get_pos (true_lit)] >= -0.1);
 
     flip_gain =

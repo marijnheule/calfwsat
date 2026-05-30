@@ -60,7 +60,7 @@ void * yals_realloc (Yals *, void*, size_t, size_t);
 
 void yals_srand (Yals *, unsigned long long);
 
-/* ddfw non-static methods */
+/* weight-transfer non-static methods */
 int get_pos (int lit);
 void yals_ddfw_update_lit_weights_on_make (Yals * yals, int cidx, int lit);
 void yals_ddfw_update_lit_weights_at_start (Yals * yals, int cidx, int satcnt, int crit);

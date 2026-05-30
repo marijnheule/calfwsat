@@ -208,7 +208,7 @@ typedef struct {
 typedef STACK (int) STACK_INT;
 
 
-// structure for DDFW algorithm
+// structure for weight-transfer algorithm
 typedef struct DDFW {
 
   LitClauses* lit_clauses_map;
@@ -481,7 +481,7 @@ int yals_nunsat_external (Yals *yals);
 
 void yals_stats (Yals *);
 
-/* Average DDFW weight per constraint length (clauses and cardinality
+/* Average weight per constraint length (clauses and cardinality
    constraints separately). For palsat, call on the winning thread. */
 void yals_print_length_weights (Yals *);
 

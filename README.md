@@ -2,8 +2,8 @@
 
 _This software is only intended for development or test workloads, and you should not use it for production workloads._
 
-A stochastic local search SAT Solver with native support for cardinality constraints based on the DDFW (divide and distribute fixed weights) algorithm.
-DDFW is a stochastic local search (SLS) algorithm used for solving satisfiable formulas in propostional logic. The typical input for SLS solvers is conjunctive normal form (CNF), i.e., a conjunction of clauses, and each clause is a disjunction of literals. We extend the input format to accept a conjunction of clauses and cardinality constraints, e.g., a subset of pseudo-Boolean (PB) formulas, as well as weighted clauses and weighted constraints.
+A stochastic local search SAT Solver with native support for cardinality constraints, built on a dynamic weight-transfer algorithm.
+This is a stochastic local search (SLS) algorithm used for solving satisfiable formulas in propositional logic. The typical input for SLS solvers is conjunctive normal form (CNF), i.e., a conjunction of clauses, and each clause is a disjunction of literals. We extend the input format to accept a conjunction of clauses and cardinality constraints, e.g., a subset of pseudo-Boolean (PB) formulas, as well as weighted clauses and weighted constraints.
 
 This solver was specifically developed for Pure Maximum Satisfiability (MaxSAT) optimization problems. These are problems with soft and hard constraints, where the soft constraints each have an associated cost. A solution to the problem must satsify all hard constraints. The cost of a solution is the sum of falsified soft constraints. The problem is Pure if the literals in the hard constraints all have the same polarity, and this is opposite the polarity of literals in the soft constraints.
 
@@ -124,13 +124,13 @@ Below are a list of a few important options for tuning on new benchmarks.
 
 Options with values:
 
-`--card_compute=1` cardinality constraint ddfw weight computation rule (1: linear, 2: exponential, 3: quadratic, 4: choice of exponent). For SAT problems, exponential or quadratic may be better.
+`--card_compute=1` cardinality constraint weight computation rule (1: linear, 2: exponential, 3: quadratic, 4: choice of exponent). For SAT problems, exponential or quadratic may be better.
 
-`--init_card_weight=35` the initial ddfw weight for cardinality constriants. This should change depending on the weight of soft constraints.
+`--init_card_weight=35` the initial weight for cardinality constriants. This should change depending on the weight of soft constraints.
 
-`--sat_ddfw_init_card_weight=8` the initial ddfw weight for cardinality constriants. This value is for SAT problems, not MaxSAT problems.
+`--sat_ddfw_init_card_weight=8` the initial weight for cardinality constriants. This value is for SAT problems, not MaxSAT problems.
 
-`--hard_stochastic_selection=7` All constraints (SAT) hard constraints (MaxSAT) make weighted random choice from top K variables with best ddfw weight changce. Set to 0/1 for picking best variable every time.
+`--hard_stochastic_selection=7` All constraints (SAT) hard constraints (MaxSAT) make weighted random choice from top K variables with best weight change. Set to 0/1 for picking best variable every time.
 
 Pure MaxSAT specific:
 
@@ -143,7 +143,7 @@ Options that are on `1` or off `0`:
 
 `--neighbors_plus=1` extends the definition of neighbor for problems with few neighbors like Middle Mile. For SAT problems, disabling this may be better.
 
-`--reset_weights_on_restart=1` resets ddfw weights during a restart. For SAT problems, disabling this may be better.
+`--reset_weights_on_restart=1` resets constraint weights during a restart. For SAT problems, disabling this may be better.
 
 # Debugging
 

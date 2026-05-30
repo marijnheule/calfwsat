@@ -542,14 +542,14 @@ double yals_card_calculate_weight (Yals * yals, int bound, int nsat, double c_we
   return w;
 }
 
-// get unsat ddfw weight for a cardinality constraint
+// get unsat weight for a cardinality constraint
 double yals_card_get_calculated_weight (Yals * yals, int cidx) {
   int bound = yals_card_bound (yals, cidx);
   int nsat = yals->ddfw.card_sat_count_in_clause[cidx];
   return yals_card_calculate_weight (yals, bound, nsat, yals->ddfw.ddfw_card_weights [cidx], cidx);
 }
 
-// get unsat ddfw weight for a cardinality constraint if an additional literal was satisfied
+// get unsat weight for a cardinality constraint if an additional literal was satisfied
 double yals_card_get_calculated_weight_change_pos (Yals * yals, int cidx) {
   int bound = yals_card_bound (yals, cidx);
   int nsat = yals->ddfw.card_sat_count_in_clause[cidx];
@@ -751,7 +751,7 @@ void yals_flip_value_of_lit (Yals * yals, int lit) {
 /*                                                                          */
 /* For each literal we keep one max-heap over the constraints (clauses AND  */
 /* cardinality constraints, mixed) that contain it, keyed by the current    */
-/* DDFW weight. yals_ddfw_get_max_weight_sat_clause can then peek each       */
+/* weight. yals_ddfw_get_max_weight_sat_clause can then peek each            */
 /* falsified literal's heaviest neighbor instead of scanning all of its     */
 /* occurrences. Heaps are maintained only on weight changes (transfers);    */
 /* satisfaction is a dynamic, weight-uncorrelated predicate, so it is       */
@@ -770,7 +770,7 @@ static inline double yals_nbr_weight (Yals * yals, int u) {
 }
 
 // Ranking used throughout: a constraint ranks above another if it has greater
-// DDFW weight, with ties broken by smaller unified constraint id. This is a
+// weight, with ties broken by smaller unified constraint id. This is a
 // total order (no ties), so the scan and the heap always select the same
 // source -- the search path is identical with and without --litheap.
 // e1, e2 are edge ids.
@@ -986,7 +986,7 @@ static void yals_nbr_build (Yals * yals) {
   yals_nbr_reheapify (yals);
 }
 
-// reset stacks, ddfw weight change values, ddfw constraint weights (if option is set)
+// reset stacks, weight change values, constraint weights (if option is set)
 void yals_reset_ddfw (Yals * yals)
 {
   CLEAR (yals->ddfw.uvars);
@@ -1154,7 +1154,7 @@ void yals_make_clauses_after_flipping_lit (Yals * yals, int lit) {
     bound = yals_card_bound (yals, cidx);
     oldnsat = yals_card_satcnt (yals, cidx);
 
-    // get all old/new/changed ddfw weights necessary for update
+    // get all old/new/changed weights necessary for update
     card_old_unsat_weight = yals_card_get_calculated_weight (yals, cidx);
     card_old_critical_weight = yals_card_get_calculated_weight_change_neg (yals, cidx);
 
@@ -1332,7 +1332,7 @@ void yals_break_clauses_after_flipping_lit (Yals * yals, int lit) {
     bound = yals_card_bound (yals, cidx);
     oldnsat = yals_card_satcnt (yals, cidx);
 
-    // get all old/new/changed ddfw weights necessary for update
+    // get all old/new/changed weights necessary for update
     card_old_unsat_weight = yals_card_get_calculated_weight (yals, cidx);
     card_old_critical_weight = yals_card_get_calculated_weight_change_neg (yals, cidx);
 
@@ -3238,7 +3238,7 @@ void yals_del (Yals * yals) {
     DELN (yals->ddfw.uvars_heap_soft.score, yals->nvars);
   }
 
-  //ddfw
+  // weight-transfer state
   RELEASE (yals->ddfw.satisfied_clauses);
   RELEASE (yals->ddfw.helper_hash_changed_idx);
   RELEASE (yals->ddfw.helper_hash_changed_idx1);
@@ -3252,7 +3252,7 @@ void yals_del (Yals * yals) {
   DELN (yals->ddfw.uvars_heap.pos, yals->nvars);
   DELN (yals->ddfw.uvars_heap.score, yals->nvars);
 
-  // ddfw data structures allocated using malloc/calloc
+  // weight-transfer data structures allocated using malloc/calloc
   yals_nbr_free (yals);
   yals_oldsrc_free (yals);
   free (yals->ddfw.cc_comp);
@@ -3891,7 +3891,7 @@ int yals_ddfw_get_max_weight_sat_clause (Yals *yals, int cidx, int constraint_ty
   // so both pick the same source -> identical search path with/without litheap.
   int best_uid = INT_MAX;
 
-  // soft constraints are using their MaxSAT weights as DDFW weights
+  // soft constraints are using their MaxSAT weights as constraint weights
   int relative = (yals->opts.maxs_init_weight_relative.val && yals->using_maxs_weights);
 
   // check if source can be hard or soft
@@ -4759,7 +4759,7 @@ DONE:
   return res;
 }
 
-// score used for DDFW SAT algorithm
+// score used for weight-transfer SAT algorithm
 double basic_ddfw_score (Yals * yals, int var) {
   int true_lit = yals_val (yals, var) ? var : -var;
   int false_lit = -true_lit;
@@ -5158,7 +5158,7 @@ void yals_stats (Yals * yals) {
     s->maxs_time.hard_var_selection, yals_pct(s->maxs_time.hard_var_selection,s->time.total));
 }
 
-/** ---------------- Start of DDFW ------------------------ **/
+/** ---------------- Start of weight-transfer algorithm ------------------------ **/
 
 void set_options (Yals * yals)
 {
@@ -5971,7 +5971,7 @@ void yals_print_stats (Yals * yals)
 }
 
 /*------------------------------------------------------------------------*/
-/* Report the average DDFW weight of constraints grouped by length, for    */
+/* Report the average weight of constraints grouped by length, for         */
 /* clauses and cardinality constraints separately. Printed once when the   */
 /* solver ends. For palsat, call this on the winning thread's Yals.        */
 /*------------------------------------------------------------------------*/
@@ -5982,7 +5982,7 @@ void yals_print_length_weights (Yals * yals)
   double * sum;
   const int * p;
 
-  // Global min/max DDFW weight across clauses + cardinality constraints.
+  // Global min/max weight across clauses + cardinality constraints.
   if (yals->nclauses + yals->card_nclauses > 0) {
     double wmin = YALS_DOUBLE_MAX, wmax = -YALS_DOUBLE_MAX;
     for (i = 0; i < yals->nclauses; i++) {

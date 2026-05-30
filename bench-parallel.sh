@@ -116,7 +116,7 @@ case "$OUT_DIR" in
 esac
 
 # auto-detect parallelism. Prefer PHYSICAL cores so we don't oversubscribe
-# via SMT/hyperthreads (palsat's DDFW is memory-bandwidth sensitive and rarely
+# via SMT/hyperthreads (palsat's weight transfer is memory-bandwidth sensitive and rarely
 # benefits from SMT). Fallback chain: lscpu (Linux) -> sysctl (macOS) -> nproc.
 detect_physical_cores() {
   local n=

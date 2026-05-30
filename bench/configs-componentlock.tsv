@@ -1,4 +1,4 @@
-# componentlock A/B: restrict DDFW weight transfer to within shared-literal
+# componentlock A/B: restrict weight transfer to within shared-literal
 # connected components. On ntil this yields exactly 2 components (positive
 # row/col cardinality vs negative no-triple clauses), so it eliminates ALL
 # pos<->neg weight transfer (the ~2.5% cross-polarity flow we measured).

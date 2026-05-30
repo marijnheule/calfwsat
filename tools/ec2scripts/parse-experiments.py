@@ -948,7 +948,7 @@ def run(name, args):
 
     ## Tikz plot for specific formula
     # ##
-    # f = "mm-SR03.wknf" # wknf for ddfw, wcard for carlsat
+    # f = "mm-SR03.wknf" # wknf for weight-transfer solver, wcard for carlsat
     # d = seed_best[f]
     # min_list = data[d[1]][(f,d[2])]['min cost list']
     # print( add_line_prefix ('softblue','x',None,None))

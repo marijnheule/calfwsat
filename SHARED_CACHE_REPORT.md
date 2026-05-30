@@ -37,7 +37,7 @@ much stronger, and the cache's apparent advantage disappeared.
 ## Feature description
 
 palsat is the parallel-portfolio variant of CaLFwSAT: N worker threads, each
-running the same stochastic local search (DDFW) on the same formula, with
+running the same stochastic local search (weight-transfer algorithm) on the same formula, with
 different RNG seeds. Historically the only cross-worker signal was the
 "done" flag — the first worker to find SAT terminated the others.
 

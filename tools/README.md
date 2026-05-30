@@ -5,7 +5,7 @@ This is an AWS-ARG-ATS-Science intern project developed by the intern
 Joseph Reeves (jsreeves@) and mentor Benjamin Kiesl-Reiter (benkiesl@).
 
 Stochastic Local Search SAT Solver 
-DDFW with Native Support for Cardinality Constraints
+Weight-transfer algorithm with Native Support for Cardinality Constraints
 ===============================================================================
 
 ## check-sat
