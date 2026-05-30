@@ -31,9 +31,7 @@ This code extends the solver yal-lin (Md Solimul Chowdhury, Cayden Codel, Marijn
 #define STRATSTEMPLATE \
   STRAT (cached,1); \
   STRAT (correct,1); \
-  STRAT (pol,1); \
-  STRAT (uni,1); \
-  STRAT (weight,1);
+  STRAT (pol,1);
 
 #define STRAT(NAME,ENABLED) int NAME
 
@@ -355,9 +353,9 @@ typedef struct Yals {
   Word * vals, * best, * tmp, * clear, * set, *curr; int nvarwords;
   STACK(int) cdb, trail, phases, clause, mins;
   int satcntbytes; union { U1 * satcnt1; U2 * satcnt2; U4 * satcnt4; };
-  int * occs, noccs; unsigned * weights;
+  int * occs, noccs;
   int * pos, * lits; Lnk ** lnk;
-  int * crit; unsigned * weightedbreak;
+  int * crit;
   int nclauses, nbin, ntrn, minlen, maxlen; double avglen;
   STACK(unsigned) breaks; STACK(double) scores; STACK(int) cands;
   STACK(Word*) cache; int cachesizetarget; STACK(Word) sigs;

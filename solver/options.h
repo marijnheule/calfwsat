@@ -60,10 +60,8 @@ This code extends the solver yal-lin (Md Solimul Chowdhury, Cayden Codel, Marijn
   OPT (sidewaysmove,1,0,1,"enable sideways move"); \
   OPT (termint,1000,0,INT_MAX,"termination call back check interval"); \
   OPT (toggleuniform,0,0,1,"toggle uniform strategy"); \
-  OPT (uni,0,-1,1,"weighted=0,uni=1,antiuni=-1 clause weights"); \
   OPT (unirestarts,0,0,INT_MAX,"max number restarts for uniform formulas"); \
   OPT (verbose,0,0,5,"set verbose level"); \
-  OPT (weight,5,1,8,"maximum clause weight"); \
   OPT (witness,1,0,1,"print witness"); \
   OPT (card_compute,4,1,6,"card ddfw weight computation rule (1: linear, 2: exponential, 3: quadratic, 4: choice of exponent from option ddfw_cad_exp)"); \
   OPT (neighbors_plus,0,0,1,"ddfw look for neighbors+ before random sat"); \

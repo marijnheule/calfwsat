@@ -99,97 +99,6 @@ static inline int yals_best (Yals * yals, int lit) {
 // Weighted break score API used in probSAT
 // This would be used for a fast descent
 
-// These functions should not be called when in ddfw mode
-// i.e., !yals->ddfw.ddfw_active
-
-
-static void yals_inc_weighted_break (Yals * yals, int lit, int len) {
-  //double s = yals_time (yals);
-  int idx = ABS (lit), pos;
-  unsigned w;
-  assert (yals->crit);
-  assert_valid_idx (idx);
-  assert_valid_len (len);
-  pos = 2*idx + (lit < 0);
-  w = yals->weights[len]; // TODO avoid mem if uniform
-  yals->weightedbreak[pos] += w;
-  assert (yals->weightedbreak[pos] >= w);
-  INC (weight);
-  //yals->ddfw.init_neighborhood_time += yals_time (yals) - s; 
-}
-
-// TODO merge these functions and simply call with clause type as additional argument
-// increment a single literal break weight
-static void yals_card_inc_weighted_break (Yals * yals, int lit, int len) {
-  int idx = ABS (lit), pos;
-  unsigned w;
-  assert (yals->crit);
-  assert_valid_idx (idx);
-  assert_valid_card_len (len);
-  pos = 2*idx + (lit < 0);
-  w = yals->weights[len]; // TODO avoid mem if uniform
-  yals->weightedbreak[pos] += w;
-  assert (yals->weightedbreak[pos] >= w);
-  INC (weight);
-}
-
-/*
-  Every falsified literal carries weight of cardinality constraint.
-  This is true when the constraint is falsified. 
-*/
-static void yals_card_inc_all_weighted_break (Yals * yals, int cidx, int len) {
-  //double s = yals_time (yals);
-  int *begin, *end;
-  yals_card_sat_iters (yals, cidx, &begin, &end);
-  // yals_msg (yals, 5, "satcnt for sat_iters %d cidx %d begin %d", yals_card_satcnt (yals, cidx), cidx, *begin);
-
-  yals_msg (yals, 4, "init weight %d cidx %d", *begin, cidx);
-
-  for (; begin != end; begin++) {
-    yals_msg (yals, 4, "init weight %d cidx %d pointer %p", *begin, cidx, begin);
-    yals_card_inc_weighted_break (yals, *begin, len); 
-  }
-}
-
-static void yals_dec_weighted_break (Yals * yals, int lit, int len) {
-  //double s = yals_time (yals);
-  int idx = ABS (lit), pos;
-  unsigned w;
-  assert (yals->crit);
-  assert_valid_idx (idx);
-  assert_valid_len (len);
-  pos = 2*idx + (lit < 0);
-  w = yals->weights[len]; // TODO avoid mem if uniform
-  assert (yals->weightedbreak[pos] >= w);
-  yals->weightedbreak[pos] -= w;
-  INC (weight);
-  //yals->ddfw.init_neighborhood_time += yals_time (yals) - s;
-}
-
-// decrement a single literal
-static void yals_card_dec_weighted_break (Yals * yals, int lit, int len) {
-  //double s = yals_time (yals);
-  int idx = ABS (lit), pos;
-  unsigned w;
-  assert (yals->crit);
-  assert_valid_idx (idx);
-  assert_valid_card_len (len);
-  pos = 2*idx + (lit < 0);
-  w = yals->weights[len]; // TODO avoid mem if uniform
-  assert (yals->weightedbreak[pos] >= w);
-  yals->weightedbreak[pos] -= w;
-  INC (weight);
-  //yals->ddfw.init_neighborhood_time += yals_time (yals) - s;
-}
-
-// decrement a single literal
-static void yals_card_dec_all_weighted_break (Yals * yals, int cidx, int len, int avoid_lit) {
-  int *begin, *end;
-  yals_card_sat_iters (yals, cidx, &begin, &end);
-  for (; begin != end; begin++)
-    yals_card_dec_weighted_break (yals, *begin, len); 
-}
-
 /*------------------------------------------------------------------------*/
 
 // number of satisfied literals in a clause
@@ -344,11 +253,6 @@ static unsigned yals_incsatcnt (Yals * yals, int cidx, int lit, int len) {
   yals->stats.inc[res]++;
 #endif
   if (yals->crit) {
-    if (!yals->ddfw.ddfw_active)
-    {
-      if (res == 1) yals_dec_weighted_break (yals, yals->crit[cidx], len); // no longer critical
-      else if (!res) yals_inc_weighted_break (yals, lit, len); // now critical
-    }
     yals->crit[cidx] ^= lit;
     assert (res || yals->crit[cidx] == lit);
   }
@@ -400,14 +304,6 @@ static unsigned yals_card_incsatcnt (Yals * yals, int cidx, int lit, int len) {
 // #endif
   if (yals->card_crit) {
     bound = yals_card_bound (yals, cidx);
-    if (!yals->ddfw.ddfw_active)
-    { 
-      if (oldnsat == bound) { // 2) remove weights 
-        yals_card_dec_all_weighted_break (yals, cidx, len, lit);
-      } else if ( oldnsat < bound ) { // 3) add weight of new literal
-        yals_card_inc_weighted_break (yals, lit, len);
-      }
-    }
     if ( res <= bound ) { // add new lit to correct position
       yals_card_new_sat (yals, cidx, lit);
     }
@@ -439,11 +335,6 @@ static unsigned yals_decsatcnt (Yals * yals, int cidx, int lit, int len) {
   if (yals->crit) {
     int other = yals->crit[cidx] ^ lit;
     yals->crit[cidx] = other;
-    if (!yals->ddfw.ddfw_active)
-    {
-      if (res == 1) yals_inc_weighted_break (yals, other, len); // becomes critical
-      else if (!res) yals_dec_weighted_break (yals, lit, len); // becomes falsified
-    }
     assert (res || !yals->crit[cidx]);
   }
   return res;
@@ -496,14 +387,6 @@ static unsigned yals_card_decsatcnt (Yals * yals, int cidx, int lit, int len) {
     bound = yals_card_bound (yals, cidx);
     if (oldnsat == bound + 1)  // 2) becomes critical
         yals_card_sort_sat ( yals, cidx);
-    if (!yals->ddfw.ddfw_active)
-    { 
-      if (oldnsat == bound + 1) { // 2) becomes critical
-        yals_card_inc_all_weighted_break (yals, cidx, len); // initialize all weights
-      } else if ( oldnsat <= bound ) { // 3) remove weight of flipped literal
-        yals_card_dec_weighted_break (yals, lit, len);
-      }
-    }
     // new literal moves position
       if ( oldnsat <= (bound + 1) ) { // 3) move literal to correct spot
         yals_card_new_unsat (yals, cidx, lit);
@@ -2338,18 +2221,6 @@ static void yals_log_assignment (Yals * yals) {
 #endif
 }
 
-static unsigned yals_len_to_weight (Yals * yals, int len) {
-  const int uni = yals->strat.uni;
-  const int weight = yals->strat.weight;
-  unsigned w;
-
-  if (uni > 0) w = weight;
-  else if (uni < 0) w = MIN (len, weight);
-  else w = MAX (weight - len, 1);
-
-  return w;
-}
-
 /*
   Given an assignment, initialize weights and satcnt for all constraints.
 
@@ -2363,11 +2234,6 @@ void yals_update_sat_and_unsat (Yals * yals) {
   yals_reset_unsat (yals);
 
   yals_reset_ddfw (yals);
-  
-  for (len = 1; len <= MAXLEN; len++)
-    yals->weights[len] = yals_len_to_weight (yals, len); // probsat weights by length
-  if (yals->crit)
-    memset (yals->weightedbreak, 0, 2*yals->nvars*sizeof(int));
 
   LOG ("UPDATE clauses");
   for (cidx = 0; cidx < yals->nclauses; cidx++) {
@@ -2393,15 +2259,12 @@ void yals_update_sat_and_unsat (Yals * yals) {
 
     len = p - lits;
     cappedlen = MIN (len, MAXLEN);
-    LOGCIDX (cidx,
-       "sat count %u length %d weight %u for",
-       satcnt, len, yals->weights[cappedlen]);
+    LOGCIDX (cidx, "sat count %u length %d for", satcnt, len);
     yals_setsatcnt (yals, cidx, satcnt);
     if (!satcnt) {
       yals_enqueue (yals, cidx, TYPECLAUSE);
       LOGCIDX (cidx, "broken");
-    } else if (yals->crit && satcnt == 1 && !yals->ddfw.ddfw_active)
-      yals_inc_weighted_break (yals, yals->crit[cidx], cappedlen);
+    }
   }
 
   LOG ("UPDATE constraints");
@@ -2435,8 +2298,6 @@ void yals_update_sat_and_unsat (Yals * yals) {
       yals_enqueue (yals, cidx, TYPECARDINALITY);
       LOGCARDCIDX (cidx, "broken");
     }
-    if (yals->crit && satcnt <= bound && !yals->ddfw.ddfw_active) // satisfied literals are all critical
-      yals_card_inc_all_weighted_break (yals, cidx, cappedlen);
 
     //if (!yals->ddfw.init_weight_done)
     yals_card_ddfw_update_lit_weights_at_start (yals, cidx, satcnt, bound);
@@ -2584,8 +2445,6 @@ static void yals_connect (Yals * yals) {
     }
   }
   assert (lits == COUNT (yals->cdb));
-
-  NEWN (yals->weights, MAXLEN + 1);
 
   NEWN (count, 2*nvars);
   count += nvars;
@@ -2779,7 +2638,6 @@ static void yals_connect (Yals * yals) {
       "dynamically computing break values on-the-fly "
       "using critical literals");
     NEWN (yals->crit, nclauses);
-    NEWN (yals->weightedbreak, 2*nvars);
   } else
     yals_msg (yals, 1, "eagerly computing break values");
 
@@ -3332,11 +3190,9 @@ void yals_del (Yals * yals) {
   else DELN (yals->pos, yals->nclauses);
   DELN (yals->lits, yals->nclauses);
   if (yals->crit) DELN (yals->crit, yals->nclauses);
-  if (yals->weightedbreak) DELN (yals->weightedbreak, 2*yals->nvars);
   if (yals->satcntbytes == 1) DELN (yals->satcnt1, yals->nclauses);
   else if (yals->satcntbytes == 2) DELN (yals->satcnt2, yals->nclauses);
   else DELN (yals->satcnt4, yals->nclauses);
-  if (yals->weights) DELN (yals->weights, MAXLEN + 1);
   DELN (yals->vals, yals->nvarwords);
   DELN (yals->best, yals->nvarwords);
   DELN (yals->tmp, yals->nvarwords);
@@ -3677,8 +3533,6 @@ static void yals_fix_strategy (Yals * yals) {
   if (yals->uniform) {
     yals->strat.correct = 1;
     yals->strat.pol = 0;
-    yals->strat.uni = 1;
-    yals->strat.weight = 1;
     yals_print_strategy (yals, "fixed strategy:", 2);
   }
 }
