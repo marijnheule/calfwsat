@@ -4462,36 +4462,26 @@ int yals_ddfw_get_random_sat_clause (Yals * yals, int * constraint_type, int sin
 double yals_ddfw_get_weight (Yals *yals, int source, int sink, int constraint_type_source, int constraint_type_sink) {
   double w = 0.0;
 
-  // transfer large quantity of weight if you are still keeping initial weight
-  if (yals->opts.wt_transfer_all.val) {
-    double percent_take = yals->opts.wt_transfer_all.val / 10.0; // percentage to tranfer
-    if (!yals->opts.maxs_init_weight_relative.val && yals->using_maxs_weights) {
-      if (constraint_type_source == TYPECLAUSE && 
-      yals->opts.init_clause_weight.val == yals->ddfw.ddfw_clause_weights [source])
-        return percent_take * yals->opts.init_clause_weight.val;
-      else if (constraint_type_source == TYPECARDINALITY && 
-      yals->opts.init_card_weight.val == yals->ddfw.ddfw_card_weights [source])
-        return percent_take * yals->opts.init_card_weight.val;
-    } else {
-      int soft = 0;
-      if (constraint_type_source == TYPECLAUSE) {
-        if (yals->using_maxs_weights && !yals->hard_clause_ids[source])
-          soft = 1;
-        if (soft && PEEK (yals->maxs_clause_weights, source) == yals->ddfw.ddfw_clause_weights [source])
-          return percent_take * yals->ddfw.ddfw_clause_weights [source];
-        else if (!soft && yals->opts.init_clause_weight.val == yals->ddfw.ddfw_clause_weights [source])
-          return percent_take * yals->opts.init_clause_weight.val;
-      } else if (constraint_type_source == TYPECARDINALITY) {
-        if (yals->using_maxs_weights && !yals->hard_card_ids[source])
-          soft = 1;
-        if (soft && PEEK (yals->maxs_card_weights, source) == yals->ddfw.ddfw_card_weights [source])
-          return percent_take * yals->ddfw.ddfw_card_weights [source];
-        else if (!soft && yals->opts.init_card_weight.val == yals->ddfw.ddfw_card_weights [source])
-          return percent_take * yals->opts.init_card_weight.val;
-      }
+  // --wtini: if the source still has exactly its initial weight, transfer
+  // initial_weight * wtini / 1000 instead of the linear-rule amount. For
+  // MaxSAT-relative soft constraints "initial weight" is the MaxSAT weight.
+  if (yals->opts.wtini.val) {
+    int relative = (yals->opts.maxs_init_weight_relative.val && yals->using_maxs_weights);
+    double init_w = 0.0, cur_w = 0.0;
+    if (constraint_type_source == TYPECLAUSE) {
+      init_w = (relative && !yals->hard_clause_ids[source])
+               ? PEEK (yals->maxs_clause_weights, source)
+               : (double) yals->opts.init_clause_weight.val;
+      cur_w = yals->ddfw.ddfw_clause_weights [source];
+    } else if (constraint_type_source == TYPECARDINALITY) {
+      init_w = (relative && !yals->hard_card_ids[source])
+               ? PEEK (yals->maxs_card_weights, source)
+               : (double) yals->opts.init_card_weight.val;
+      cur_w = yals->ddfw.ddfw_card_weights [source];
     }
+    if (cur_w == init_w)
+      return init_w * (yals->opts.wtini.val / 1000.0);
   }
-
 
   if (constraint_type_source == TYPECLAUSE)
     w = linear_wt (yals, source, TYPECLAUSE);

@@ -222,11 +222,6 @@ def get_configuration (line) :
       config_name += "_ex=" + str ( k_exp )
       config_dic['k_exp'] = k_exp
 
-    transfer_all = get_argument (line, "--wt_transfer_all=")
-    if transfer_all is not None:
-      config_name += "_tall=" + str ( transfer_all )
-      config_dic['t_all'] = transfer_all
-
     init_card = get_argument (line, "--init_card_weight=")
     if init_card is not None:
       config_name += "_initCard=" + str ( init_card )

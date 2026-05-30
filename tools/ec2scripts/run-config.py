@@ -138,8 +138,6 @@ def run(name, args):
         command += " --card_exp={} ".format(wt_exp)
     if init_card_wt is not None:
       command += " --init_card_weight={} ".format(init_card_wt)
-    if all_transfer is not None:
-      command += " --wt_transfer_all={} ".format(all_transfer)  
     if transfer_slow is not None:
         command += " --maxs_transfer_slow=1 "
     if hard_takes_soft is not None:
