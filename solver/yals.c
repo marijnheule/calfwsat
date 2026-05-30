@@ -1011,12 +1011,26 @@ static void yals_oldsrc_build (Yals * yals) {
   yals->ddfw.oldsrc_ncons = ncons;
   yals->ddfw.oldsrc_prev = malloc (ncons * sizeof (int));
   yals->ddfw.oldsrc_next = malloc (ncons * sizeof (int));
-  for (int u = 0; u < ncons; u++) {
-    yals->ddfw.oldsrc_prev[u] = u - 1;            // -1 for u=0
-    yals->ddfw.oldsrc_next[u] = (u == ncons - 1) ? -1 : u + 1;
+  if (ncons <= 0) {
+    yals->ddfw.oldsrc_head = yals->ddfw.oldsrc_tail = -1;
+    return;
   }
-  yals->ddfw.oldsrc_head = (ncons > 0) ? 0 : -1;
-  yals->ddfw.oldsrc_tail = ncons - 1;
+  // Initial list order is a random permutation seeded by the solver's RNG
+  // (so the same --seed reproduces it, but the order varies across seeds).
+  int * perm = malloc (ncons * sizeof (int));
+  for (int i = 0; i < ncons; i++) perm[i] = i;
+  for (int i = ncons - 1; i > 0; i--) {
+    int j = yals_rand_mod (yals, i + 1);
+    int tmp = perm[i]; perm[i] = perm[j]; perm[j] = tmp;
+  }
+  for (int i = 0; i < ncons; i++) {
+    int u = perm[i];
+    yals->ddfw.oldsrc_prev[u] = (i == 0)         ? -1 : perm[i-1];
+    yals->ddfw.oldsrc_next[u] = (i == ncons - 1) ? -1 : perm[i+1];
+  }
+  yals->ddfw.oldsrc_head = perm[0];
+  yals->ddfw.oldsrc_tail = perm[ncons - 1];
+  free (perm);
 }
 
 static void yals_oldsrc_free (Yals * yals) {
