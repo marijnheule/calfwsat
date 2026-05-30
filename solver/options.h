@@ -30,7 +30,7 @@ This code extends the solver yal-lin (Md Solimul Chowdhury, Cayden Codel, Marijn
   OPT (cachemin,1,0,(1<<10),"minimum cache size of saved assignments"); \
   OPT (clsselectp, 12 , 1, 100, "Clause selection probability for weight transfer in ddfw."); \
   OPT (rndlit,0,0,1,"max-weight source selection: scan neighbors of only one randomly chosen falsified literal of the sink"); \
-  OPT (litheap,0,0,1,"maintain per-literal max-weight neighbor heaps to speed up max-weight source selection"); \
+  OPT (litheap,1,0,1,"maintain per-literal max-weight neighbor heaps to speed up max-weight source selection"); \
   OPT (computeneiinit,0 , 0, 1, "Compute the ddfw clause neighborhood initially for palsat"); \
   OPT (correct,0,0,1,"correct CB value depending on maximum length"); \
   OPT (crit,1,0,1,"dynamic break values (using critical lits)"); \
