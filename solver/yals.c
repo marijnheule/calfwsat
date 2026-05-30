@@ -1001,6 +1001,44 @@ static void yals_nbr_free (Yals * yals) {
   yals->ddfw.nbr_built = 0;
 }
 
+/*------------------------------------------------------------------------*/
+/* --oldestsource: LRU list over all constraints (unified ids).           */
+/* Head = least-recently used as a source. Moved on every source pick.    */
+/*------------------------------------------------------------------------*/
+
+static void yals_oldsrc_build (Yals * yals) {
+  int ncons = yals->nclauses + yals->card_nclauses;
+  yals->ddfw.oldsrc_ncons = ncons;
+  yals->ddfw.oldsrc_prev = malloc (ncons * sizeof (int));
+  yals->ddfw.oldsrc_next = malloc (ncons * sizeof (int));
+  for (int u = 0; u < ncons; u++) {
+    yals->ddfw.oldsrc_prev[u] = u - 1;            // -1 for u=0
+    yals->ddfw.oldsrc_next[u] = (u == ncons - 1) ? -1 : u + 1;
+  }
+  yals->ddfw.oldsrc_head = (ncons > 0) ? 0 : -1;
+  yals->ddfw.oldsrc_tail = ncons - 1;
+}
+
+static void yals_oldsrc_free (Yals * yals) {
+  free (yals->ddfw.oldsrc_prev); yals->ddfw.oldsrc_prev = NULL;
+  free (yals->ddfw.oldsrc_next); yals->ddfw.oldsrc_next = NULL;
+}
+
+// Move unified id u to the tail (most-recently used). O(1).
+static inline void yals_oldsrc_move_to_tail (Yals * yals, int u) {
+  int * prev = yals->ddfw.oldsrc_prev, * next = yals->ddfw.oldsrc_next;
+  if (u == yals->ddfw.oldsrc_tail) return;       // already at tail
+  int p = prev[u], n = next[u];
+  // unlink u
+  if (p >= 0) next[p] = n; else yals->ddfw.oldsrc_head = n;
+  if (n >= 0) prev[n] = p;                       // n exists since u != tail
+  // append at tail
+  int t = yals->ddfw.oldsrc_tail;
+  prev[u] = t; next[u] = -1;
+  if (t >= 0) next[t] = u; else yals->ddfw.oldsrc_head = u;
+  yals->ddfw.oldsrc_tail = u;
+}
+
 static void yals_nbr_build (Yals * yals) {
   int ncl = yals->nclauses, ncard = yals->card_nclauses;
   int ncons = ncl + ncard, nlits = 2 * yals->nvars;
@@ -3346,6 +3384,7 @@ void yals_del (Yals * yals) {
 
   // ddfw data structures allocated using malloc/calloc
   yals_nbr_free (yals);
+  yals_oldsrc_free (yals);
   free (yals->ddfw.cc_comp);
   free (yals->ddfw.max_weighted_neighbour);
   free (yals->ddfw.sat_count_in_clause);
@@ -4356,6 +4395,43 @@ int yals_ddfw_get_random_sat_clause (Yals * yals, int * constraint_type, int sin
     
     LOG ("Get random SAT clause");
 
+    // --oldestsource: walk the LRU list head->tail, return the first satisfied,
+    // hard/soft- and componentlock-compatible source that passes the --suppress
+    // weight floor. Replaces the random rejection-sampling loop below.
+    if (yals->opts.oldestsource.val) {
+      int * next = yals->ddfw.oldsrc_next;
+      for (int u = yals->ddfw.oldsrc_head; u >= 0; u = next[u]) {
+        if (u < yals->nclauses) {
+          int clause = u;
+          source_hard = yals->hard_clause_ids[clause];
+          if ((source_hard && !takes_hard) || (!source_hard && !takes_soft)) continue;
+          if (sink_comp >= 0 && yals_cc_comp_of (yals, clause, TYPECLAUSE) != sink_comp) continue;
+          if (yals_satcnt (yals, clause) <= 0) continue;
+          if (yals->opts.suppress.val) {
+            int wt_ok = (relative && !source_hard)
+              ? yals->ddfw.ddfw_clause_weights[clause] > PEEK (yals->maxs_clause_weights, clause)
+              : yals->ddfw.ddfw_clause_weights[clause] >= yals->opts.init_clause_weight.val;
+            if (!wt_ok) continue;
+          }
+          *constraint_type = TYPECLAUSE; return clause;
+        } else {
+          int card = u - yals->nclauses;
+          source_hard = yals->hard_card_ids[card];
+          if ((source_hard && !takes_hard) || (!source_hard && !takes_soft)) continue;
+          if (sink_comp >= 0 && yals_cc_comp_of (yals, card, TYPECARDINALITY) != sink_comp) continue;
+          if (yals_card_satcnt (yals, card) < yals_card_bound (yals, card)) continue;
+          if (yals->opts.suppress.val) {
+            int wt_ok = (relative && !source_hard)
+              ? yals->ddfw.ddfw_card_weights[card] > PEEK (yals->maxs_card_weights, card)
+              : yals->ddfw.ddfw_card_weights[card] >= yals->opts.init_card_weight.val;
+            if (!wt_ok) continue;
+          }
+          *constraint_type = TYPECARDINALITY; return card;
+        }
+      }
+      return -1;
+    }
+
     while (source < 0) {
       cnt++;
       if (cnt > cnt_cutoff) { // if looping a lot just abort
@@ -4535,8 +4611,12 @@ void yals_ddfw_transfer_weights_for_clause (Yals *yals, int sink)
   }
 
   yals->ddfw.total_transfers++;
+  // --oldestsource: mark source as just-used (move to tail of LRU list).
+  if (yals->opts.oldestsource.val)
+    yals_oldsrc_move_to_tail (yals,
+      (constraint_type == TYPECLAUSE) ? source : yals->nclauses + source);
 
-  assert (!yals_satcnt (yals, sink)); 
+  assert (!yals_satcnt (yals, sink));
 
   if (constraint_type == TYPECLAUSE) {
     assert (yals_satcnt (yals, source)); // difference 1
@@ -4606,6 +4686,10 @@ void yals_ddfw_transfer_weights_for_card (Yals *yals, int sink)
   }
 
   yals->ddfw.total_transfers++;
+  // --oldestsource: mark source as just-used (move to tail of LRU list).
+  if (yals->opts.oldestsource.val)
+    yals_oldsrc_move_to_tail (yals,
+      (constraint_type == TYPECLAUSE) ? source : yals->nclauses + source);
 
   assert (yals_card_satcnt (yals, sink)  < yals_card_bound (yals, sink));
 
@@ -5337,6 +5421,11 @@ void yals_init_ddfw (Yals *yals)
   // --litheap: build per-literal neighbor heaps now that all weights are set.
   yals->ddfw.nbr_built = 0;
   if (yals->opts.litheap.val) yals_nbr_build (yals);
+
+  // --oldestsource: LRU list of all constraints, head = least recently used.
+  yals->ddfw.oldsrc_prev = NULL;
+  yals->ddfw.oldsrc_next = NULL;
+  if (yals->opts.oldestsource.val) yals_oldsrc_build (yals);
 
 }
 

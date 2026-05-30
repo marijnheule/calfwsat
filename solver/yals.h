@@ -329,6 +329,13 @@ typedef struct DDFW {
   int * nbr_lstart;  // [nlits+1] literal position -> first heap slot
   int * nbr_scratch; // frontier buffer for lazy eligibility search
 
+  // --oldestsource: LRU doubly-linked list over all constraints (unified id =
+  // clause cidx for u<nclauses; card cidx + nclauses else). Head = least
+  // recently used as a source. Allocated only when --oldestsource is on.
+  int * oldsrc_prev;
+  int * oldsrc_next;
+  int oldsrc_head, oldsrc_tail, oldsrc_ncons;
+
 } DDFW;
 
 // structure for stack constaining falsified constraints,
