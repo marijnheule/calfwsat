@@ -79,6 +79,7 @@ This code extends the solver yal-lin (Md Solimul Chowdhury, Cayden Codel, Marijn
   OPT (maxs_soft_takes_hard,0,0,1,"soft constraints can take from hard in random transfer"); \
   OPT (maxs_hard_takes_soft,0,0,1,"hard constraints can take from soft in random transfer"); \
   OPT (wtini,0,0,1000,"if source still has exactly its initial weight, transfer initial_weight*wtini/1000 (instead of the linear rule)"); \
+  OPT (suppress,0,0,1,"random-source selection: if 1, require source to have weight >= initial weight (the previous behavior); if 0 (default), accept any satisfied source"); \
   OPT (card_exp,20,-INT_MAX,INT_MAX,"exp = <val> / 10 + 1 for card_compute=4"); \
   OPT (flip_gain_eps_e4,1000,0,INT_MAX,"if >0, snap |flip_gain| < val/10000 to 0 in basic_ddfw_score"); \
   OPT (maxs_transfer_slow,0,0,1,"transfer weights if no improvement on inner loop (slow), instead of every inner loop (fast)"); \

@@ -4392,17 +4392,14 @@ int yals_ddfw_get_random_sat_clause (Yals * yals, int * constraint_type, int sin
                 best_wt_cls = yals->ddfw.ddfw_clause_weights [clause];
               }
           }
-          if (relative && !source_hard) {
-            if (yals->ddfw.ddfw_clause_weights [clause] > PEEK (yals->maxs_clause_weights, clause)) {
-              source = clause;
-              *constraint_type = TYPECLAUSE;
-            }
-          } else {
-            if (yals->ddfw.ddfw_clause_weights [clause] >= yals->opts.init_clause_weight.val) {
-              source = clause;
-              *constraint_type = TYPECLAUSE;
-            }
-          }          
+          // --suppress: gate the "weight >= initial" acceptance criterion.
+          int wt_ok = (relative && !source_hard)
+            ? yals->ddfw.ddfw_clause_weights [clause] > PEEK (yals->maxs_clause_weights, clause)
+            : yals->ddfw.ddfw_clause_weights [clause] >= yals->opts.init_clause_weight.val;
+          if (!yals->opts.suppress.val || wt_ok) {
+            source = clause;
+            *constraint_type = TYPECLAUSE;
+          }
         }
       } else { // cardinality constraint
         int card = yals_rand_mod (yals, INT_MAX) % yals->card_nclauses;
@@ -4421,18 +4418,15 @@ int yals_ddfw_get_random_sat_clause (Yals * yals, int * constraint_type, int sin
               best_wt_card = yals->ddfw.ddfw_card_weights [card];
             }
           }
-          if (relative && !source_hard) {
-            if (yals->ddfw.ddfw_card_weights [card] > PEEK (yals->maxs_card_weights, card)) {
-              source = card;
-              *constraint_type = TYPECARDINALITY;
-            }
-          } else {
-            if (yals->ddfw.ddfw_card_weights [card] >= yals->opts.init_card_weight.val) {
-              source = card;
-              *constraint_type = TYPECARDINALITY;
-            }
+          // --suppress: gate the "weight >= initial" acceptance criterion.
+          int wt_ok = (relative && !source_hard)
+            ? yals->ddfw.ddfw_card_weights [card] > PEEK (yals->maxs_card_weights, card)
+            : yals->ddfw.ddfw_card_weights [card] >= yals->opts.init_card_weight.val;
+          if (!yals->opts.suppress.val || wt_ok) {
+            source = card;
+            *constraint_type = TYPECARDINALITY;
           }
-        } 
+        }
       }
     }
 
