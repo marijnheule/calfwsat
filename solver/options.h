@@ -68,7 +68,7 @@ This code extends the solver yal-lin (Md Solimul Chowdhury, Cayden Codel, Marijn
   OPT (maxs_hard_eps,0,0,INT_MAX,"pure maxsat hard epsilon"); \
   OPT (maxs_soft_eps,0,0,INT_MAX,"pure maxsat soft epsilon"); \
   OPT (maxs_soft_stochastic_selection,0,0,INT_MAX,"Soft Constraints: pick from top K variables with weighted stochastic selection"); \
-  OPT (hard_stochastic_selection,7,0,INT_MAX,"All/Hard Constraints: pick from top K variables with weighted stochastic selection"); \
+  OPT (hard_stochastic_selection,1,0,INT_MAX,"All/Hard Constraints: pick from top K variables with weighted stochastic selection"); \
   OPT (init_solution,0,0,1,"start from initial solution provided at <init.sol> [currently only in (Pure) MaxSAT]"); \
   OPT (init_clause_weight,100,1,INT_MAX,"initial clause weight"); \
   OPT (init_card_weight,100,1,INT_MAX,"initial cardinality constraint weight"); \

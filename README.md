@@ -130,7 +130,7 @@ Options with values:
 
 `--sat_ddfw_init_card_weight=8` the initial weight for cardinality constriants. This value is for SAT problems, not MaxSAT problems.
 
-`--hard_stochastic_selection=7` All constraints (SAT) hard constraints (MaxSAT) make weighted random choice from top K variables with best weight change. Set to 0/1 for picking best variable every time.
+`--hard_stochastic_selection=1` All constraints (SAT) hard constraints (MaxSAT) make weighted random choice from top K variables with best weight change. Set to 0/1 for picking best variable every time.
 
 Pure MaxSAT specific:
 
