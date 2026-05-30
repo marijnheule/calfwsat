@@ -3841,14 +3841,25 @@ double linear_wt (Yals * yals, int source, int type_source)
   }
 
   // weight transfer: w = source_weight^p + a*source_weight + c
-  //   where p = wtpow/1000, a = wtmul/1000, c = init_w * wtadd/1000
-  // The additive term c scales with the source's initial weight so the
-  // baseline transfer is proportional to how heavy the source started.
-  double p = (float) yals->opts.wtpow.val / 1000.0;
+  //   where a = wtmul/1000, c = init_w * wtadd/1000, and the exponent p
+  //   is chosen so that at source_weight = init_w the power-term equals
+  //   init_w * (wtpow/1000). Solving pow(init_w, p) = init_w*(wtpow/1000)
+  //   gives p = 1 + log(wtpow/1000) / log(init_w).
+  // Special cases:
+  //   wtpow == 0   -> power term contributes 0 (term disabled)
+  //   init_w <= 1  -> log(init_w) <= 0, no real p satisfies; skip term
+  //   wtpow == 1000 -> p = 1, term equals source_weight (linear point)
+  // All three normalized terms (pow, linear, additive) scale with init_w
+  // so the user reasons in fractions-of-init regardless of weight scale.
+  double pow_term = 0.0;
+  if (yals->opts.wtpow.val > 0 && init_w > 1.0) {
+    double r = (double) yals->opts.wtpow.val / 1000.0;
+    double p = 1.0 + log (r) / log (init_w);
+    pow_term = pow ((float) source_weight, (float) p);
+  }
   double a = (float) yals->opts.wtmul.val / 1000.0;
   double c = init_w * ((float) yals->opts.wtadd.val / 1000.0);
-  return (double) (pow ((float) source_weight, (float) p)
-                   + (float) source_weight * (float) a + (float) c);
+  return pow_term + (double) ((float) source_weight * (float) a + (float) c);
 }
 
 /*

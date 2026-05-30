@@ -42,7 +42,7 @@ This code extends the solver yal-lin (Md Solimul Chowdhury, Cayden Codel, Marijn
   OPT (ignorewtcriteria,0,0,1,"ignore the check with initial weight while deciding a neighboring satisfied clause during weight transfer"); \
   OPT (wtadd,0,0,1000,"weight transfer additive term c (c = init_weight * wtadd/1000)"); \
   OPT (wtmul,167,0,1000,"weight transfer multiplicative factor a (a = wtmul/1000)"); \
-  OPT (wtpow,0,0,1000,"weight transfer power term p (p = wtpow/1000)"); \
+  OPT (wtpow,0,0,1000,"weight transfer power term; exponent p chosen so pow(init_weight,p) = init_weight*wtpow/1000 (0 disables term; 1000 = linear)"); \
   OPT (paramPos,1000,0,5000,"falsified-weight multiplier for positive constraints (pos = paramPos/1000)"); \
   OPT (componentlock,0,0,1,"restrict weight transfer to within shared-literal connected components"); \
   OPT (hitlim,-1,-1,INT_MAX,"minimum hit limit"); \
