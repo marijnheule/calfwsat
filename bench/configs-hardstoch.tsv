@@ -1,12 +1,15 @@
 # Sweep of --hard_stochastic_selection (top-K stochastic variable selection
-# for All/Hard constraints). Default is 7; this sweep validates that choice.
-# K<=1 = pure greedy (always best-scoring var); K>1 = roulette-wheel over top K.
-# Everything else left at solver defaults.
-k01	--hard_stochastic_selection=1
-k02	--hard_stochastic_selection=2
-k03	--hard_stochastic_selection=3
-k05	--hard_stochastic_selection=5
-k07	--hard_stochastic_selection=7
-k10	--hard_stochastic_selection=10
-k15	--hard_stochastic_selection=15
-k20	--hard_stochastic_selection=20
+# for All/Hard constraints). Default K=7. K=1 = pure greedy (always best-
+# scoring var); K>1 = roulette-wheel over top K candidates.
+# Values: K in {1, 3, 5, 7, 9, 12, 16, 20, 25}. Everything else at solver
+# defaults. Name hs07 = current default.
+# name	args
+hs01	--hard_stochastic_selection=1
+hs03	--hard_stochastic_selection=3
+hs05	--hard_stochastic_selection=5
+hs07	--hard_stochastic_selection=7
+hs09	--hard_stochastic_selection=9
+hs12	--hard_stochastic_selection=12
+hs16	--hard_stochastic_selection=16
+hs20	--hard_stochastic_selection=20
+hs25	--hard_stochastic_selection=25
