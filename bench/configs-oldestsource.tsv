@@ -1,0 +1,5 @@
+# A/B: default vs --oldestsource (LRU source) + --suppress=0 (no weight floor).
+# Config 2 differs from default in TWO ways: oldestsource on AND suppress off.
+# name	args
+def
+old_nosup	--oldestsource --suppress=0
