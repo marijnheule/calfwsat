@@ -40,7 +40,7 @@ This code extends the solver yal-lin (Md Solimul Chowdhury, Cayden Codel, Marijn
   OPT (fixed,4,0,INT_MAX,"fixed default strategy frequency (1=always)"); \
   OPT (geomfreq,66,0,100,"geometric picking first frequency (percent)"); \
   OPT (ignorewtcriteria,0,0,1,"ignore the check with initial weight while deciding a neighboring satisfied clause during weight transfer"); \
-  OPT (wtadd,0,0,1000,"weight transfer additive term c (c = init_weight * wtadd/1000)"); \
+  OPT (wtadd,0,-1000,1000,"weight transfer additive term c (c = init_weight * wtadd/1000); negative subtracts from the transfer"); \
   OPT (wtmul,167,0,1000,"weight transfer multiplicative factor a (a = wtmul/1000)"); \
   OPT (wtpow,0,0,1000,"weight transfer power term; exponent p chosen so pow(init_weight,p) = init_weight*wtpow/1000 (0 disables term; 1000 = linear)"); \
   OPT (paramPos,1000,0,5000,"falsified-weight multiplier for positive constraints (pos = paramPos/1000)"); \
