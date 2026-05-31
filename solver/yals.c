@@ -1084,6 +1084,59 @@ static void yals_topk_rebuild_all (Yals * yals) {
   for (int p = 0; p < yals->ddfw.nbr_nlits; p++) yals_topk_rebuild_lit (yals, p);
 }
 
+// Test eligibility of a single unified-id constraint (satisfied AND
+// weight >= initial threshold, unless --ignorewtcriteria). Used by
+// yals_topk_best and the verify path. Sets *ret_con_type on success.
+static inline int yals_topk_eligible (Yals * yals, int u, int relative, int * ret_con_type) {
+  if (u < yals->nclauses) {
+    double thr = (relative && !yals->hard_clause_ids[u])
+                 ? PEEK (yals->maxs_clause_weights, u)
+                 : (double) yals->opts.init_clause_weight.val;
+    if (yals_satcnt (yals, u) > 0 &&
+        (yals->opts.ignorewtcriteria.val || yals->ddfw.ddfw_clause_weights[u] >= thr)) {
+      *ret_con_type = TYPECLAUSE; return 1;
+    }
+  } else {
+    int c = u - yals->nclauses;
+    double thr = (relative && !yals->hard_card_ids[c])
+                 ? PEEK (yals->maxs_card_weights, c)
+                 : (double) yals->opts.init_card_weight.val;
+    if (yals_card_satcnt (yals, c) >= yals_card_bound (yals, c) &&
+        (yals->opts.ignorewtcriteria.val || yals->ddfw.ddfw_card_weights[c] >= thr)) {
+      *ret_con_type = TYPECARDINALITY; return 1;
+    }
+  }
+  return 0;
+}
+
+// Reference scan: walk all edges of literal p, return the per-type cidx of
+// the actual max-weight eligible neighbor (by (weight, id) lex tie-break),
+// or -1 if none. Used by TOPK_VERIFY to check whether top-K's pick matches.
+// MATCHES yals_nbr_best's contract: returns per-type cidx (clause cidx if
+// TYPECLAUSE, card cidx if TYPECARDINALITY) -- NOT unified id.
+static int yals_topk_scan_best (Yals * yals, int lit, int * ret_con_type) {
+  int p = get_pos (lit);
+  int lo = yals->ddfw.nbr_lstart[p], hi = yals->ddfw.nbr_lstart[p+1];
+  int * con = yals->ddfw.nbr_con, * heap = yals->ddfw.nbr_heap;
+  int relative = (yals->opts.maxs_init_weight_relative.val && yals->using_maxs_weights);
+  int best_cidx = -1, best_ct = 0;
+  double best_w = 0.0; int best_uid = INT_MAX;
+  for (int s = lo; s < hi; s++) {
+    int u = con[heap[s]];
+    int ct;
+    if (!yals_topk_eligible (yals, u, relative, &ct)) continue;
+    int cidx = (ct == TYPECLAUSE) ? u : u - yals->nclauses;
+    double w = (ct == TYPECLAUSE) ? yals->ddfw.ddfw_clause_weights[cidx]
+                                  : yals->ddfw.ddfw_card_weights[cidx];
+    int uid = u;  // already unified id
+    if (w > best_w || (w == best_w && uid < best_uid)) {
+      best_cidx = cidx; best_ct = ct; best_w = w; best_uid = uid;
+    }
+  }
+  if (best_cidx >= 0) *ret_con_type = best_ct;
+  return best_cidx;
+}
+
 // Find max-weight ELIGIBLE neighbor of `lit`. Eligibility = satisfied AND
 // weight >= initial (unless --ignorewtcriteria). Returns the per-type cidx
 // and sets *ret_con_type. Returns -1 if no eligible source is found in the
@@ -1091,34 +1144,49 @@ static void yals_topk_rebuild_all (Yals * yals) {
 static int yals_topk_best (Yals * yals, int lit, int * ret_con_type) {
   int p = get_pos (lit);
   int * count = yals->ddfw.topk_count;
-  if (count[p] == 0) yals_topk_rebuild_lit (yals, p);
-  if (count[p] == 0) return -1;
+  yals->ddfw.topk_stat_q++;
+  if (count[p] == 0) {
+    yals_topk_rebuild_lit (yals, p);
+    yals->ddfw.topk_stat_rebuild++;
+  }
+  if (count[p] == 0) {
+    yals->ddfw.topk_stat_no_eligible++;
+    return -1;
+  }
 
   int K = yals->ddfw.topk_k;
   int * list = yals->ddfw.topk_list + p * K;
   int * con = yals->ddfw.nbr_con;
   int relative = (yals->opts.maxs_init_weight_relative.val && yals->using_maxs_weights);
+  // Match yals_nbr_best's contract: return per-type cidx, not unified id.
+  // For cards we'd be returning nclauses+cidx otherwise, which the caller
+  // indexes straight into ddfw_card_weights[] -- out of bounds, silent
+  // memory corruption, eventual SIGBUS on bigger formulas with card sources.
+  int found_cidx = -1, found_ct = 0;
+  int walked = 0;
   for (int i = 0; i < count[p]; i++) {
+    walked++;
     int u = con[list[i]];
-    if (u < yals->nclauses) {
-      double thr = (relative && !yals->hard_clause_ids[u])
-                   ? PEEK (yals->maxs_clause_weights, u)
-                   : (double) yals->opts.init_clause_weight.val;
-      if (yals_satcnt (yals, u) > 0 &&
-          (yals->opts.ignorewtcriteria.val || yals->ddfw.ddfw_clause_weights[u] >= thr)) {
-        *ret_con_type = TYPECLAUSE; return u;
-      }
-    } else {
-      int c = u - yals->nclauses;
-      double thr = (relative && !yals->hard_card_ids[c])
-                   ? PEEK (yals->maxs_card_weights, c)
-                   : (double) yals->opts.init_card_weight.val;
-      if (yals_card_satcnt (yals, c) >= yals_card_bound (yals, c) &&
-          (yals->opts.ignorewtcriteria.val || yals->ddfw.ddfw_card_weights[c] >= thr)) {
-        *ret_con_type = TYPECARDINALITY; return c;
-      }
+    int ct;
+    if (yals_topk_eligible (yals, u, relative, &ct)) {
+      found_cidx = (ct == TYPECLAUSE) ? u : u - yals->nclauses;
+      found_ct = ct; break;
     }
   }
+  yals->ddfw.topk_stat_walked += walked;
+  if (found_cidx >= 0) {
+    yals->ddfw.topk_stat_eligible++;
+    *ret_con_type = found_ct;
+    // TOPK_VERIFY: compare against reference scan, count divergences
+    if (yals->ddfw.topk_verify) {
+      int ref_ct, ref = yals_topk_scan_best (yals, lit, &ref_ct);
+      if (ref != found_cidx || ref_ct != found_ct) {
+        yals->ddfw.topk_stat_diverged++;
+      }
+    }
+    return found_cidx;
+  }
+  yals->ddfw.topk_stat_no_eligible++;
   return -1;
 }
 
@@ -1132,6 +1200,19 @@ static void yals_topk_build (Yals * yals) {
   yals->ddfw.topk_count = calloc (nlits, sizeof (int));
   yals->ddfw.topk_pos = malloc (E * sizeof (int));
   for (int i = 0; i < E; i++) yals->ddfw.topk_pos[i] = -1;
+  // Zero diagnostics + read TOPK_VERIFY env var (set to 1 to compare each
+  // top-K pick against a fresh full literal scan -- slow but reveals when
+  // the approximation diverges from the actual max-weight eligible source).
+  yals->ddfw.topk_stat_q = 0;
+  yals->ddfw.topk_stat_rebuild = 0;
+  yals->ddfw.topk_stat_eligible = 0;
+  yals->ddfw.topk_stat_no_eligible = 0;
+  yals->ddfw.topk_stat_walked = 0;
+  yals->ddfw.topk_stat_diverged = 0;
+  {
+    const char * v = getenv ("TOPK_VERIFY");
+    yals->ddfw.topk_verify = (v && *v && *v != '0');
+  }
   yals->ddfw.topk_built = 1;
   yals_topk_rebuild_all (yals);
 }
@@ -5131,6 +5212,28 @@ void yals_stats (Yals * yals) {
   yals_msg (yals, 0,
     "%lld outer restarts",
     (long long) s->restart.outer.count);
+  // --topk diagnostics
+  if (yals->opts.topk.val > 0 && yals->ddfw.topk_built) {
+    int64_t q  = yals->ddfw.topk_stat_q;
+    int64_t rb = yals->ddfw.topk_stat_rebuild;
+    int64_t el = yals->ddfw.topk_stat_eligible;
+    int64_t ne = yals->ddfw.topk_stat_no_eligible;
+    int64_t wk = yals->ddfw.topk_stat_walked;
+    int64_t dv = yals->ddfw.topk_stat_diverged;
+    yals_msg (yals, 0,
+      "topk K=%d queries=%lld eligible=%lld(%.1f%%) no_eligible=%lld(%.1f%%) rebuild=%lld(%.2f%%) avg_walk=%.2f",
+      yals->ddfw.topk_k,
+      (long long) q,
+      (long long) el, yals_pct (el, q),
+      (long long) ne, yals_pct (ne, q),
+      (long long) rb, yals_pct (rb, q),
+      (q ? (double) wk / (double) q : 0.0));
+    if (yals->ddfw.topk_verify) {
+      yals_msg (yals, 0,
+        "topk VERIFY: diverged=%lld of %lld eligible queries (%.2f%%) -- topk pick != full-scan max",
+        (long long) dv, (long long) el, yals_pct (dv, el));
+    }
+  }
   sum = s->strat.def + s->strat.rnd;
   yals_msg (yals, 0,
     "default strategy %lld %.0f%%, random strategy %lld %.0f%%",
