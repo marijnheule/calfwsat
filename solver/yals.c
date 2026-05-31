@@ -5787,7 +5787,7 @@ void yals_print_length_weights (Yals * yals)
       if (w < wmin) wmin = w;
       if (w > wmax) wmax = w;
     }
-    yals_msg (yals, 0, "ddfw weight range at termination: min %.4f, max %.4f",
+    yals_msg (yals, 0, "weight range at termination: min %.4f, max %.4f",
               wmin, wmax);
   }
 
@@ -5811,7 +5811,7 @@ void yals_print_length_weights (Yals * yals)
     for (len = 0; len <= maxlen; len++)
       if (cnt[len])
         yals_msg (yals, 0,
-          "avg ddfw weight, clause length %d: %.4f over %d clauses",
+          "avg weight, clause length %d: %.4f over %d clauses",
           len, sum[len] / (double) cnt[len], cnt[len]);
     DELN (cnt, maxlen + 1);
     DELN (sum, maxlen + 1);
@@ -5835,7 +5835,7 @@ void yals_print_length_weights (Yals * yals)
     for (len = 0; len <= maxlen; len++)
       if (cnt[len])
         yals_msg (yals, 0,
-          "avg ddfw weight, card length %d: %.4f over %d cardinality constraints",
+          "avg weight, card length %d: %.4f over %d cardinality constraints",
           len, sum[len] / (double) cnt[len], cnt[len]);
     DELN (cnt, maxlen + 1);
     DELN (sum, maxlen + 1);
@@ -6003,7 +6003,7 @@ int yals_inner_loop_max_tries (Yals * yals)
           yals->stats.maxs_time.var_selection += yals_time_phase (yals) - start;
           // may add sideways flips here
           if (lit) {
-            LOG ("picking from ddfw heap");
+            LOG ("picking from heap");
           }
           else {
             yals_ddfw_transfer_weights (yals);
