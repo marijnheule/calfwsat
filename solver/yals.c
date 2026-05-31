@@ -3501,58 +3501,6 @@ static void yals_pick_strategy (Yals * yals) {
   yals_print_strategy (yals, "picked strategy:", 2);
 }
 
-static int yals_inner_restart_interval (Yals * yals) {
-  int res = yals->opts.restart.val;
-  if (res < yals->nvars/2) res = yals->nvars/2;
-  return res;
-}
-
-static int yals_inc_inner_restart_interval (Yals * yals) {
-  int64_t interval;
-  int res;
-
-  if (yals->opts.restart.val > 0) {
-    if (yals->opts.reluctant.val) {
-      if (!yals->limits.restart.inner.rds.u)
-yals->limits.restart.inner.rds.u =
- yals->limits.restart.inner.rds.v = 1;
-      interval = yals->limits.restart.inner.rds.v;
-      interval *= yals_inner_restart_interval (yals);
-      yals_rds (&yals->limits.restart.inner.rds);
-    } else {
-      if (!yals->limits.restart.inner.interval)
-yals->limits.restart.inner.interval =
- yals_inner_restart_interval (yals);
-      interval = yals->limits.restart.inner.interval;
-      if (yals->limits.restart.inner.interval <= YALS_INT64_MAX/2)
-yals->limits.restart.inner.interval *= 2;
-      else yals->limits.restart.inner.interval = YALS_INT64_MAX;
-    }
-  } else interval = YALS_INT64_MAX;
-
-  yals_msg (yals, 2, "next restart interval %lld", interval);
-
-  if (YALS_INT64_MAX - yals->stats.flips >= interval)
-    yals->limits.restart.inner.lim = yals->stats.flips + interval;
-  else
-    yals->limits.restart.inner.lim = YALS_INT64_MAX;
-
-  yals_msg (yals, 2,
-    "next restart at %lld",
-    yals->limits.restart.inner.lim);
-
-  res = (yals->stats.restart.inner.maxint < interval);
-  if (res) {
-    yals->stats.restart.inner.maxint = interval;
-    yals_msg (yals, 2, "new maximal restart interval %lld", interval);
-  }
-  return res;
-}
-
-static int yals_need_to_restart_inner (Yals * yals) {
-  return yals->inner_restart && yals->stats.flips >= yals->limits.restart.inner.lim;
-}
-
 void save_current_assignment (Yals *yals)
 {
   size_t bytes = yals->nvarwords * sizeof (Word);
@@ -3564,17 +3512,15 @@ void save_current_assignment (Yals *yals)
 
 static void yals_restart_inner (Yals * yals) {
   double start;
-  // assert (yals_need_to_restart_inner (yals)); // disabled because we are only doing max tries right now
   start = yals_time (yals);
   yals->stats.restart.inner.count++;
-  if ((yals_inc_inner_restart_interval (yals) && yals->opts.verbose.val) ||
-      yals->opts.verbose.val >= 2) {
+  if (yals->opts.verbose.val >= 2) {
       if (yals->using_maxs_weights)
         yals_maxs_report (yals, "restart %lld", yals->stats.restart.inner.count);
-      else 
+      else
     yals_report (yals, "restart %lld", yals->stats.restart.inner.count);
       }
-  
+
   if (yals->using_maxs_weights) {
     if (yals->stats.maxs_best_cost < yals->stats.maxs_last) {
       yals->stats.pick.keep++;
@@ -3657,15 +3603,6 @@ static int yals_done (Yals * yals) {
   }
   return 0;
 }
-
-static void yals_init_inner_restart_interval (Yals * yals) {
-  memset (&yals->limits.restart.inner, 0, sizeof yals->limits.restart.inner);
-  yals->limits.restart.inner.lim = yals->stats.flips;
-  yals->stats.restart.inner.maxint = 0;
-}
-
-
-
 
 /*
 
@@ -4911,9 +4848,8 @@ void yals_stats (Yals * yals) {
     "restart time %.3f seconds %.0f%%",
     s->time.restart, yals_pct (s->time.restart, s->time.total));
   yals_msg (yals, 0,
-    "%lld inner restarts, %lld maximum interval",
-    (long long) s->restart.inner.count,
-    (long long) s->restart.inner.maxint);
+    "%lld inner restarts",
+    (long long) s->restart.inner.count);
   yals_msg (yals, 0,
     "%lld outer restarts",
     (long long) s->restart.outer.count);
@@ -5086,7 +5022,7 @@ void yals_stats (Yals * yals) {
 
 void set_options (Yals * yals)
 {
-  yals->inner_restart = !yals->opts.innerrestartoff.val;
+  (void) yals;
 }
 
 void yals_init_ddfw (Yals *yals)

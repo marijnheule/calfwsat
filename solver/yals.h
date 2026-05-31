@@ -76,8 +76,6 @@ do { \
 
 #define INC(NAME) ADD (NAME, 1)
 
-typedef struct RDS { unsigned u, v; } RDS;
-
 typedef struct RNG { unsigned z, w; } RNG;
 
 typedef struct Mem {
@@ -114,7 +112,7 @@ typedef struct Stats {
   int64_t flips, bzflips, hits, unsum, get_random_sat_cnt, get_random_sat_missed;
   struct {
     struct { int64_t count; } outer;
-    struct { int64_t count, maxint; } inner;
+    struct { int64_t count; } inner;
   } restart;
   struct { struct { int chunks, lnks; } max; int64_t unfair; } queue;
   struct { int64_t inserted, replaced, skipped; } cache;
@@ -141,9 +139,6 @@ typedef struct Limits {
   int64_t mems;
 #endif
   int64_t flips;
-  struct {
-    struct { int64_t lim; union { int64_t interval; RDS rds; }; } inner;
-  } restart;
   struct { int min; } report;
   int term;
 } Limits;
@@ -366,7 +361,6 @@ typedef struct Yals {
   FPU fpu;
   Exp exp;
   DDFW ddfw;
-  int inner_restart;
   STACK (int) clause_size;
   int wid;
   int consecutive_non_improvement, last_flip_unsat_count;
@@ -958,12 +952,6 @@ static inline char * yals_strdup (Yals * yals, const char * str) {
 static inline void yals_strdel (Yals * yals, char * str) {
   assert (str);
   yals_free (yals, str, strlen (str) + 1);
-}
-
-/*------------------------------------------------------------------------*/
-
-static inline void yals_rds (RDS * r) {
-  if ((r->u & -r->u) == r->v) r->u++, r->v = 1; else r->v *= 2;
 }
 
 /*------------------------------------------------------------------------*/
