@@ -11,7 +11,7 @@
 #   bash sweep-one.sh ntil-40.knf
 #
 # Hardcoded defaults (edit at top of script to change):
-#   configs:   bench/configs-wtgrid-xy.tsv  (5x3 fine grid around wtmul=250, wtadd=-100)
+#   configs:   bench/configs-fixed.tsv  (--fixed strategy-randomization frequency sweep)
 #   seeds:     1..50
 #   timeout:   900s per run
 #   threads:   8 per palsat invocation
@@ -29,7 +29,7 @@ SEEDS_DEFAULT="${SEEDS:-$(seq 1 50 | paste -sd, -)}"
 TIMEOUT_DEFAULT="${TIMEOUT:-900}"
 THREADS_DEFAULT="${THREADS:-8}"
 CUTOFF_DEFAULT="${CUTOFF:-20000}"
-CONFIGS_REL="${CONFIGS:-bench/configs-wtgrid-xy.tsv}"
+CONFIGS_REL="${CONFIGS:-bench/configs-fixed.tsv}"
 # ------------------------------------------------------------------
 
 FORMULA="${1:?usage: $0 <formula.knf>}"

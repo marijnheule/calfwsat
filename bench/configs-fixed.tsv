@@ -1,0 +1,26 @@
+# Sweep of --fixed (strategy randomization frequency at inner restart).
+#
+# yals_pick_strategy picks the "default strategy" with probability 1/fixed
+# and the "random strategy" otherwise. The random strategy randomizes
+# strat.cached (use shared cache: yes/no) and strat.pol (-1/0/+1 polarity
+# for the post-restart initial assignment).
+#
+# Default fixed=4 => 25% default, 75% random per restart. fixed=1 => always
+# default (no randomization at all -- the candidate "less randomness wins"
+# setting that mirrors the recent --hard_stochastic_selection=1 default flip).
+#
+# Larger values approach "always default" asymptotically (1/fixed -> 0).
+# Sweep: fixed in {1, 2, 4, 8, 16, 32}. f04 is the current default.
+#
+# If fixed=1 wins, the entire strategy-randomization subsystem becomes
+# removable as a bundle (~80 lines: --fixed itself, yals_set_random_strategy,
+# yals_is_default_strategy, yals_print_strategy, yals_rand_opt, STRATSTEMPLATE
+# RANDSTRAT/ISDEFSTRAT/PRINTSTRAT machinery, stats.strat.{def,rnd}).
+#
+# name	args
+f01	--fixed=1
+f02	--fixed=2
+f04	--fixed=4
+f08	--fixed=8
+f16	--fixed=16
+f32	--fixed=32
