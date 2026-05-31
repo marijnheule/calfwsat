@@ -1302,7 +1302,6 @@ void yals_break_clauses_after_flipping_lit (Yals * yals, int lit) {
   card_new_critical_weight, card_critical_weight_change, card_old_unsat_weight;
   int bound, oldnsat;
   int soft = 0;
-  double maxs_weight = 1.0;
 #if !defined(NDEBUG) || !defined(NYALSTATS)
   int broken = 0;
 #endif
@@ -1310,20 +1309,17 @@ void yals_break_clauses_after_flipping_lit (Yals * yals, int lit) {
   for (p = occs; (occ = *p) >= 0; p++) {
     len = occ & LENMASK;
     cidx = occ >> LENSHIFT;
-    maxs_weight = 1.0;
     if (yals_decsatcnt (yals, cidx, -lit, len))
     { // clause still sat
        if (yals->ddfw.sat_count_in_clause [cidx] == 1) { // 2 to 1
-
-        soft = 0;
-        if (yals->using_maxs_weights && !yals->hard_clause_ids[cidx]) {
-          soft = 1;
-          if (!yals->opts.maxs_init_weight_relative.val)
-            maxs_weight = PEEK (yals->maxs_clause_weights, cidx);
-        }
-
+        // Route through the soft path if this is a MaxSAT soft clause; we
+        // don't multiply by maxs_weight here because the value being added
+        // is the dynamic ddfw_clause_weight, which is already scaled in
+        // relative mode (and the non-relative branch was assigning a local
+        // that nothing read -- removed).
+        soft = (yals->using_maxs_weights && !yals->hard_clause_ids[cidx]);
         // sat1_weights [get_pos(yals->crit[cidx])] += yals->ddfw.ddfw_clause_weights [cidx];
-        yals_ddfw_update_var_weight (yals, yals->crit[cidx], soft,1, yals->ddfw.ddfw_clause_weights [cidx]);
+        yals_ddfw_update_var_weight (yals, yals->crit[cidx], soft, 1, yals->ddfw.ddfw_clause_weights [cidx]);
        }
       continue;
     }
@@ -1383,16 +1379,21 @@ void yals_break_clauses_after_flipping_lit (Yals * yals, int lit) {
     bound = yals_card_bound (yals, cidx);
     oldnsat = yals_card_satcnt (yals, cidx);
 
-    // get all old/new/changed weights necessary for update
+    // Note: card_old_critical_weight = _change_neg(d_old) = w(d_old+1) - w(d_old)
+    // which equals card_unsat_weight_change (computed below from the two
+    // calculate_weight calls). The previous author noted "caused error" when
+    // exploiting this identity -- that came from _change_neg's nsat==0 early
+    // return, but here -lit is currently satisfying the constraint so old
+    // nsat >= 1 and the substitution is safe. Saves one weight query per
+    // touched cardinality constraint.
     card_old_unsat_weight = yals_card_get_calculated_weight (yals, cidx);
-    card_old_critical_weight = yals_card_get_calculated_weight_change_neg (yals, cidx);
 
     // decrement satcnt of cardinality constraint, move lit to correct partition
     yals_card_decsatcnt (yals, cidx,-lit, len);
-    
+
     card_new_unsat_weight = yals_card_get_calculated_weight (yals, cidx);
-    card_unsat_weight_change =  card_new_unsat_weight - card_old_unsat_weight;
-    // card_old_critical_weight = card_unsat_weight_change; // caused error for some reason
+    card_unsat_weight_change = card_new_unsat_weight - card_old_unsat_weight;
+    card_old_critical_weight = card_unsat_weight_change;
     card_new_critical_weight = yals_card_get_calculated_weight_change_neg (yals, cidx);
 
     card_critical_weight_change = card_new_critical_weight - card_old_critical_weight;
