@@ -990,23 +990,37 @@ static void yals_topk_bubble_down (Yals * yals, int p, int e) {
 }
 
 // Insert edge e into literal p's list. Precondition: pos[e] == -1.
-// If list is full, evict the smallest iff e is strictly heavier.
+//
+// Rule: require e to be strictly better (heavier, or equal-weight + smaller
+// uid) than the current smallest in the list, REGARDLESS of whether the list
+// has spare capacity. The only exception is an empty list (no smallest to
+// compare against), where we add unconditionally.
+//
+// This avoids the structural divergence trap: if count<K accepted any sink
+// unconditionally, the list smallest could drop below the threshold that
+// previously rejected an outsider, and that outsider would sit ignored
+// (its weight didn't change, so no re-check fires). With this rule the
+// list smallest is monotonically non-decreasing between rebuilds.
 static void yals_topk_insert (Yals * yals, int p, int e) {
   int K = yals->ddfw.topk_k;
   int * list = yals->ddfw.topk_list + p * K;
   int * pos = yals->ddfw.topk_pos;
   int * count = yals->ddfw.topk_count;
+  if (count[p] == 0) {
+    list[0] = e; pos[e] = 0;
+    count[p] = 1;
+    return;
+  }
+  int last = list[count[p] - 1];
+  if (!yals_nbr_better (yals, e, last)) return;
   if (count[p] < K) {
     int i = count[p]++;
     list[i] = e; pos[e] = i;
     yals_topk_bubble_up (yals, p, e);
   } else {
-    int last = list[K - 1];
-    if (yals_nbr_better (yals, e, last)) {
-      pos[last] = -1;
-      list[K - 1] = e; pos[e] = K - 1;
-      yals_topk_bubble_up (yals, p, e);
-    }
+    pos[last] = -1;
+    list[K - 1] = e; pos[e] = K - 1;
+    yals_topk_bubble_up (yals, p, e);
   }
 }
 
@@ -1052,10 +1066,15 @@ static void yals_topk_decreased (Yals * yals, int u) {
     int p = lit_of[e];
     if (pos[e] < 0) continue;
     yals_topk_bubble_down (yals, p, e);
-    // If we ended up at the bottom of a list with > 1 entry, the entry
-    // above is strictly heavier (bubble_down would have swapped otherwise),
-    // so e is genuinely now the smallest. Evict.
-    if (pos[e] == count[p] - 1 && count[p] > 1)
+    // If we ended up at the bottom of the list, evict. With count > 1 the
+    // entry above is strictly heavier (bubble_down would have swapped
+    // otherwise), so e is genuinely the smallest. With count == 1 we evict
+    // unconditionally on any source-decrease: this is the only mechanism
+    // that triggers the empty-list rebuild, which re-discovers heavy
+    // outsiders that were rejected at a stale higher threshold and never
+    // re-checked. Without this, a literal's list can get stuck at a single
+    // low-weight entry while much heavier outsiders sit ignored.
+    if (pos[e] == count[p] - 1)
       yals_topk_remove (yals, p, e);
   }
 }
