@@ -313,11 +313,9 @@ typedef struct DDFW {
   int nbr_E, nbr_nlits, nbr_ncons;
   int * nbr_con;     // [E] edge -> unified constraint id (clause u<nclauses; else card)
   int * nbr_lit;     // [E] edge -> literal position (get_pos)
-  int * nbr_gpos;    // [E] edge -> its slot in nbr_heap
-  int * nbr_heap;    // [E] heap slot -> edge id (per-literal max-heaps)
+  int * nbr_heap;    // [E] edge enumeration by literal (slots [lstart[p], lstart[p+1]) hold edges with literal p, in arrival order)
   int * nbr_cstart;  // [ncons+1] constraint -> first edge (constraint-major)
-  int * nbr_lstart;  // [nlits+1] literal position -> first heap slot
-  int * nbr_scratch; // frontier buffer for lazy eligibility search
+  int * nbr_lstart;  // [nlits+1] literal position -> first slot in nbr_heap
 
   // --topk: per-literal top-K list of heaviest neighbors (shares cstart,
   // lstart, con, lit with the nbr_* graph but uses its own list/pos arrays).
@@ -326,6 +324,14 @@ typedef struct DDFW {
   int * topk_list;   // [nlits * K] flat array; slots p*K .. p*K + count[p] hold the entries (edge ids), sorted by (weight, id) descending
   int * topk_count;  // [nlits] current size per literal (0..K)
   int * topk_pos;    // [E] edge -> index within owning literal's slice (0..K-1), -1 if not in list
+  // Diagnostics (printed by yals_print_stats when --topk>0).
+  int64_t topk_stat_q;             // total yals_topk_best queries
+  int64_t topk_stat_rebuild;       // queries that triggered an empty-list rebuild
+  int64_t topk_stat_eligible;      // queries that returned an eligible source
+  int64_t topk_stat_no_eligible;   // queries that returned -1 (caller falls through to scan)
+  int64_t topk_stat_walked;        // sum of positions visited across all queries (sum of 1..count for each query)
+  int64_t topk_stat_diverged;      // (TOPK_VERIFY=1 env var) queries where top-K pick != full-scan pick
+  int topk_verify;                 // set from TOPK_VERIFY env at build time
 
   // --oldestsource: LRU doubly-linked list over all constraints (unified id =
   // clause cidx for u<nclauses; card cidx + nclauses else). Head = least
