@@ -142,7 +142,6 @@ typedef struct Limits {
 #endif
   int64_t flips;
   struct {
-    struct { int64_t lim, interval; } outer;
     struct { int64_t lim; union { int64_t interval; RDS rds; }; } inner;
   } restart;
   struct { int min; } report;

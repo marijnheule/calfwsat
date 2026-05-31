@@ -3507,13 +3507,6 @@ static int yals_inner_restart_interval (Yals * yals) {
   return res;
 }
 
-static int64_t yals_outer_restart_interval (Yals * yals) {
-  int64_t res = yals_inner_restart_interval (yals);
-  res *= yals->opts.restartouterfactor.val;
-  assert (res >= 0);
-  return res;
-}
-
 static int yals_inc_inner_restart_interval (Yals * yals) {
   int64_t interval;
   int res;
@@ -3558,10 +3551,6 @@ yals->limits.restart.inner.interval *= 2;
 
 static int yals_need_to_restart_inner (Yals * yals) {
   return yals->inner_restart && yals->stats.flips >= yals->limits.restart.inner.lim;
-}
-
-static int yals_need_to_restart_outer (Yals * yals) {
-  return yals->stats.flips >= yals->limits.restart.outer.lim;
 }
 
 void save_current_assignment (Yals *yals)
@@ -4625,49 +4614,7 @@ void yals_ddfw_transfer_weights (Yals *yals)
   yals->stats.maxs_time.weight_transfer += yals_time (yals) - start;
 }
 
-static void yals_init_outer_restart_interval (Yals * yals) {
-  if (yals->opts.restartouter.val) {
-    yals->limits.restart.outer.interval = yals_outer_restart_interval (yals);
-    yals->limits.restart.outer.lim =
-      yals->stats.flips + yals->limits.restart.outer.interval;
-    yals_msg (yals, 1,
-      "initial outer restart limit at %lld flips",
-      yals->limits.restart.outer.lim);
-  } else {
-    yals_msg (yals, 1, "outer restarts disabled");
-    yals->limits.restart.outer.lim = YALS_INT64_MAX;
-  }
-}
-
-static void yals_restart_outer (Yals * yals) {
-  double start = yals_time (yals);
-  unsigned long long seed;
-  int64_t interval;
-  yals->stats.restart.outer.count++;
-  seed = yals_rand (yals);
-  seed |= ((unsigned long long) yals_rand (yals)) << 32;
-  yals_srand (yals, seed);
-  interval = yals->limits.restart.outer.interval;
-  if (yals->limits.restart.outer.interval <= YALS_INT64_MAX/2)
-    yals->limits.restart.outer.interval *= 2;
-  else yals->limits.restart.outer.interval = YALS_INT64_MAX;
-  if (YALS_INT64_MAX - yals->stats.flips >= interval)
-    yals->limits.restart.outer.lim = yals->stats.flips + interval;
-  else
-    yals->limits.restart.outer.lim = YALS_INT64_MAX;
-  yals_msg (yals, 1,
-    "starting next outer restart round %lld after %.2f seconds",
-    (long long) yals->stats.restart.outer.count, yals_sec (yals));
-  yals_msg (yals, 1, "current seed %llu", seed);
-  yals_msg (yals, 1,
-    "next outer restart limit %lld",
-    (long long) yals->limits.restart.outer.lim);
-  yals_reset_cache (yals);
-  yals->stats.time.restart += yals_time (yals) - start;
-}
-
 static void yals_outer_loop (Yals * yals) {
-  yals_init_outer_restart_interval (yals);
   // for (;;) {
     yals_set_default_strategy (yals);
     yals_pick_assignment (yals, 1);
@@ -4968,9 +4915,8 @@ void yals_stats (Yals * yals) {
     (long long) s->restart.inner.count,
     (long long) s->restart.inner.maxint);
   yals_msg (yals, 0,
-    "%lld outer restarts, %lld maximum interval",
-    (long long) s->restart.outer.count,
-    (long long) yals->limits.restart.outer.interval);
+    "%lld outer restarts",
+    (long long) s->restart.outer.count);
   sum = s->strat.def + s->strat.rnd;
   yals_msg (yals, 0,
     "default strategy %lld %.0f%%, random strategy %lld %.0f%%",

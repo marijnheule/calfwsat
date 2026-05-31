@@ -50,8 +50,6 @@ This code extends the solver yal-lin (Md Solimul Chowdhury, Cayden Codel, Marijn
   OPT (reluctant,1,0,1,"reluctant doubling of restart interval"); \
   OPT (restart,100000,0,INT_MAX,"basic (inner) restart interval"); \
   OPT (innerrestartoff, 1 ,0,1,"disable inner restart"); \
-  OPT (restartouter,0,0,1,"enable restart outer"); \
-  OPT (restartouterfactor,100,1,INT_MAX,"outer restart interval factor"); \
   OPT (setfpu,1,0,1,"set FPU to use double precision on Linux"); \
   OPT (termint,1000,0,INT_MAX,"termination call back check interval"); \
   OPT (verbose,0,0,5,"set verbose level"); \
