@@ -50,7 +50,7 @@ This code extends the solver yal-lin (Md Solimul Chowdhury, Cayden Codel, Marijn
   OPT (termint,1000,0,INT_MAX,"termination call back check interval"); \
   OPT (verbose,0,0,5,"set verbose level"); \
   OPT (witness,1,0,1,"print witness"); \
-  OPT (card_compute,4,1,6,"cardinality constraint weight computation rule (1: linear, 2: exponential, 3: quadratic, 4: choice of exponent from option card_exp)"); \
+  OPT (card_compute,4,1,4,"cardinality constraint weight computation rule (1: linear c*d, 2: exponential c^d capped at d=7, 3: quadratic c*d^2, 4: cubic c*d^3)"); \
   OPT (neighbors_plus,0,0,1,"look for neighbors+ before random sat"); \
   OPT (maxs_hard_eps,0,0,INT_MAX,"pure maxsat hard epsilon"); \
   OPT (maxs_soft_eps,0,0,INT_MAX,"pure maxsat soft epsilon"); \
@@ -67,7 +67,6 @@ This code extends the solver yal-lin (Md Solimul Chowdhury, Cayden Codel, Marijn
   OPT (suppress,1,0,1,"random-source selection: if 1 (default), require source to have weight >= initial weight; if 0, accept any satisfied source"); \
   OPT (oldestsource,0,0,1,"random-source selection: instead of random, pick the satisfied source that has been least-recently used as a source (LRU)"); \
   OPT (sourcecap,500,0,1000,"cap per-transfer amount at source_weight*sourcecap/1000 (1000 = cap at source weight, the loosest binding; 0 = no transfer)"); \
-  OPT (card_exp,20,-INT_MAX,INT_MAX,"exp = <val> / 10 + 1 for card_compute=4"); \
   OPT (flip_gain_eps_e4,1000,0,INT_MAX,"if >0, snap |flip_gain| < val/10000 to 0 in basic score"); \
   OPT (maxs_transfer_slow,0,0,1,"transfer weights if no improvement on inner loop (slow), instead of every inner loop (fast)"); \
   OPT (select_exp,1,1,INT_MAX,"exponent for weighting variable values in stochastic selection"); \

@@ -492,52 +492,45 @@ double yals_clause_calculate_weight (Yals * yals, int cidx) {
   Ideas: different weight depending on bound - nsat
     - would need something to remember the old weight, either function or array
 */
+// Per-constraint MaxSAT cost multiplier: only nontrivial for MaxSAT runs in
+// non-relative mode on soft constraints; everywhere else it's a no-op 1.0.
+static inline double yals_card_maxs_mult (Yals * yals, int cidx) {
+  if (yals->using_maxs_weights && !yals->opts.maxs_init_weight_relative.val
+      && !yals->hard_card_ids[cidx])
+    return PEEK (yals->maxs_card_weights, cidx);
+  return 1.0;
+}
+
 double yals_card_calculate_weight (Yals * yals, int bound, int nsat, double c_weight, int cidx) {
-  double w = 0.0;
-  double maxs_weight = 1.0;
-  
-  if (yals->using_maxs_weights && !yals->opts.maxs_init_weight_relative.val) {
-    if (!yals->hard_card_ids[cidx])
-      maxs_weight = PEEK (yals->maxs_card_weights, cidx);
-  }
+  int d = bound - nsat;
+  if (d <= 0) return 0.0;
 
   assert (c_weight > 0);
-  assert (maxs_weight > 0);
 
-  if (yals->opts.card_compute.val == 1) {
-    if (nsat < bound) {
-      w =  c_weight * (bound - nsat);
+  double w;
+  switch (yals->opts.card_compute.val) {
+    case 1:   // linear: c * d
+      w = c_weight * d;
+      break;
+    case 2: { // exponential: c^d, capped at d=7
+      if (c_weight < 1) c_weight = 1; // prevent fractions in the exponential
+      if (d >= 8) { w = WEIGHT_MAX; break; }
+      w = 1.0;
+      for (int i = 0; i < d; i++) w *= c_weight;
+      break;
     }
-  } else if (yals->opts.card_compute.val == 2) { 
-    if (nsat < bound) {
-      if (c_weight < 1) c_weight = 1; // prevent fractions in the exponential calculation
-      if ((bound - nsat) < 8) // cutoff on size of exponent
-        w =  pow(c_weight,(bound - nsat));
-      else 
-        w = WEIGHT_MAX;
-    }
-   } else if (yals->opts.card_compute.val == 3) { 
-    if (nsat < bound) {
-      w =  c_weight * pow((bound - nsat),2);
-    }
-   } else if (yals->opts.card_compute.val == 4) { 
-    if (nsat < bound) {
-      double exp = (yals->opts.card_exp.val) / 10.0 + 1;
-      w =  c_weight * pow((bound - nsat),exp);
-    }
-   } else {yals_abort (yals, "incorrect card_compute");}
-   /*
-    Possible options
-
-    w =  c_weight * (bound - nsat) * len;
-
-    w =  c_weight * (bound - nsat) * (len-bound);
-
-    w =  c_weight * (bound - nsat) * const
-   */
-  w = MIN(w,WEIGHT_MAX);
-  w = w * maxs_weight; // maxs weight multiplier
-  return w;
+    case 3:   // quadratic: c * d^2
+      w = c_weight * d * d;
+      break;
+    case 4:   // cubic: c * d^3
+      w = c_weight * d * d * d;
+      break;
+    default:
+      yals_abort (yals, "incorrect card_compute");
+      w = 0; // unreachable
+  }
+  if (w > WEIGHT_MAX) w = WEIGHT_MAX;
+  return w * yals_card_maxs_mult (yals, cidx);
 }
 
 // get unsat weight for a cardinality constraint
@@ -547,14 +540,36 @@ double yals_card_get_calculated_weight (Yals * yals, int cidx) {
   return yals_card_calculate_weight (yals, bound, nsat, yals->ddfw.ddfw_card_weights [cidx], cidx);
 }
 
-// get unsat weight for a cardinality constraint if an additional literal was satisfied
+// get unsat weight DECREASE when one more literal becomes satisfied
+//   = w(d) - w(d-1)   where d = bound - nsat
+// Closed-form derivatives avoid two function calls per query.
 double yals_card_get_calculated_weight_change_pos (Yals * yals, int cidx) {
   int bound = yals_card_bound (yals, cidx);
   int nsat = yals->ddfw.card_sat_count_in_clause[cidx];
-  double w = yals_card_calculate_weight (yals, bound, nsat, yals->ddfw.ddfw_card_weights [cidx], cidx);
-  double w_next = yals_card_calculate_weight (yals, bound, nsat+1, yals->ddfw.ddfw_card_weights [cidx], cidx);
-  assert (w - w_next >= 0);
-  return w - w_next;
+  int d = bound - nsat;
+  if (d <= 0) return 0.0;  // already (over)satisfied, w(d) = w(d-1) = 0
+  double c = yals->ddfw.ddfw_card_weights [cidx];
+  double diff;
+  switch (yals->opts.card_compute.val) {
+    case 1:   // d - (d-1) = 1     -> c
+      diff = c;
+      break;
+    case 3:   // d^2 - (d-1)^2 = 2d - 1
+      diff = c * (2*d - 1);
+      break;
+    case 4:   // d^3 - (d-1)^3 = 3d^2 - 3d + 1
+      diff = c * (3*d*d - 3*d + 1);
+      break;
+    case 2:   // exponential is capped/awkward; fall back to two pow-free calls
+    default: {
+      double w      = yals_card_calculate_weight (yals, bound, nsat,   c, cidx);
+      double w_next = yals_card_calculate_weight (yals, bound, nsat+1, c, cidx);
+      assert (w - w_next >= 0);
+      return w - w_next;
+    }
+  }
+  assert (diff >= 0);
+  return diff * yals_card_maxs_mult (yals, cidx);
 }
 
 /*
@@ -564,18 +579,37 @@ double yals_card_get_calculated_weight_change_pos (Yals * yals, int cidx) {
   i.e., yals_card_get_calculated_weight_change_neg () - yals_card_get_calculated_weight_change_pos () 
     presents the cost if a critical literal is flipped
 */
+// get unsat weight INCREASE when one fewer literal is satisfied
+//   = w(d+1) - w(d)   where d = bound - nsat
+// Closed-form derivatives avoid two function calls per query.
 double yals_card_get_calculated_weight_change_neg (Yals * yals, int cidx) {
   int bound = yals_card_bound (yals, cidx);
   int nsat = yals->ddfw.card_sat_count_in_clause[cidx];
-  double w = yals_card_calculate_weight (yals, bound, nsat, yals->ddfw.ddfw_card_weights [cidx], cidx);
-  double w_next = yals_card_calculate_weight (yals, bound, nsat-1, yals->ddfw.ddfw_card_weights [cidx], cidx);
-  
-  if (nsat == 0) {
-    return 0.0;
+  if (nsat == 0) return 0.0;  // can't lose another satisfier; keep original semantics
+  int d = bound - nsat;
+  if (d < 0) return 0.0;       // already so over-satisfied that w(d+1) = w(d) = 0
+  double c = yals->ddfw.ddfw_card_weights [cidx];
+  double diff;
+  switch (yals->opts.card_compute.val) {
+    case 1:   // (d+1) - d = 1     -> c
+      diff = c;
+      break;
+    case 3:   // (d+1)^2 - d^2 = 2d + 1
+      diff = c * (2*d + 1);
+      break;
+    case 4:   // (d+1)^3 - d^3 = 3d^2 + 3d + 1
+      diff = c * (3*d*d + 3*d + 1);
+      break;
+    case 2:
+    default: {
+      double w      = yals_card_calculate_weight (yals, bound, nsat,   c, cidx);
+      double w_next = yals_card_calculate_weight (yals, bound, nsat-1, c, cidx);
+      assert (w_next - w > -0.01);
+      return w_next - w;
+    }
   }
-  // yals_msg (yals, 1, "old %lf, new %lf",w, w_next);
-  assert (w_next - w > -0.01); // next weight is the same or larger
-  return w_next - w;
+  assert (diff >= 0);
+  return diff * yals_card_maxs_mult (yals, cidx);
 }
 
 
