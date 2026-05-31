@@ -30,7 +30,6 @@ This code extends the solver yal-lin (Md Solimul Chowdhury, Cayden Codel, Marijn
 
 #define STRATSTEMPLATE \
   STRAT (cached,1); \
-  STRAT (correct,1); \
   STRAT (pol,1);
 
 #define STRAT(NAME,ENABLED) int NAME

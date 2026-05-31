@@ -3531,7 +3531,6 @@ static void yals_pick_strategy (Yals * yals) {
 
 static void yals_fix_strategy (Yals * yals) {
   if (yals->uniform) {
-    yals->strat.correct = 1;
     yals->strat.pol = 0;
     yals_print_strategy (yals, "fixed strategy:", 2);
   }
