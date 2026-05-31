@@ -4233,9 +4233,12 @@ int yals_ddfw_get_max_weight_sat_clause (Yals *yals, int cidx, int constraint_ty
       }
       // else: top-K had no eligible source -> fall through to scan
     }
-    if (yals->opts.litheap.val) {
+    if (yals->opts.litheap.val && yals->opts.topk.val == 0) {
       // --litheap: peek this literal's heaviest eligible neighbor via its
       // max-heap (+ lazy skip) instead of scanning all of its occurrences.
+      // Gated on topk==0: when topk is enabled we DON'T maintain the nbr
+      // heap on transfers, so a stale heap walk would return wrong
+      // answers. Topk's fallthrough (returned -1) must go to the scan.
       int nbr_ct, cand = yals_nbr_best (yals, lit, &nbr_ct);
       if (cand >= 0) {
         double cw = (nbr_ct == TYPECLAUSE)
