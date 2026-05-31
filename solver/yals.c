@@ -1205,17 +1205,24 @@ void yals_make_clauses_after_flipping_lit (Yals * yals, int lit) {
     bound = yals_card_bound (yals, cidx);
     oldnsat = yals_card_satcnt (yals, cidx);
 
-    // get all old/new/changed weights necessary for update
+    // Compute upfront: w(d_old) and the derivative at d_old.
     card_old_unsat_weight = yals_card_get_calculated_weight (yals, cidx);
     card_old_critical_weight = yals_card_get_calculated_weight_change_neg (yals, cidx);
 
     // increment satcnt of cardinality constraint, move lit to correct partition
     yals_card_incsatcnt (yals, cidx, lit, len);
-    
+
+    // After incsatcnt: new_nsat = old_nsat + 1, so d_new = d_old - 1, and
+    // card_new_critical_weight = w(d_new+1) - w(d_new) = w(d_old) - w(d_old-1)
+    //                          = -(card_new_unsat - card_old_unsat)
+    //                          = -card_unsat_weight_change
+    // The previous author's "off by 4/3" note came from the old fractional
+    // card_exp (now hardcoded cubic), so this identity holds exactly for all
+    // remaining card_compute modes. Saves one _change_neg query per touched
+    // cardinality constraint.
     card_new_unsat_weight = yals_card_get_calculated_weight (yals, cidx);
-    card_unsat_weight_change =  card_new_unsat_weight - card_old_unsat_weight;
-    // card_new_critical_weight = -1.0 * card_unsat_weight_change; // caused error for some reason (off by 4/3)
-    card_new_critical_weight = yals_card_get_calculated_weight_change_neg (yals, cidx);
+    card_unsat_weight_change = card_new_unsat_weight - card_old_unsat_weight;
+    card_new_critical_weight = -card_unsat_weight_change;
 
     card_critical_weight_change = card_new_critical_weight - card_old_critical_weight;
 
