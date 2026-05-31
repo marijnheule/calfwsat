@@ -4344,16 +4344,19 @@ void yals_ddfw_transfer_weights_for_clause (Yals *yals, int sink)
 
   LOGCIDX (sink, "Transfer weight to");
 
-  // Find maximum weighted satisfied clause (source), which is in same sign neighborhood of cidx (sink)
-  // (same-sign neighbors share a literal with the sink, so are always in its component)
-  source = yals_ddfw_get_max_weight_sat_clause (yals, sink, TYPECLAUSE, &constraint_type);
-
-  if (source == -1)
-    yals->ddfw.source_not_selected++;
-
-  // If no such source is available (source=-1), then select a randomly satisfied clause as the source.
-  if ( source == -1  || ( ( (double) yals_rand_mod (yals, INT_MAX) / (double) INT_MAX) <= yals->ddfw.clsselectp)) {
+  // With probability clsselectp, skip the expensive max-weight neighbor scan
+  // and go straight to a random satisfied clause. Otherwise scan neighbors and
+  // fall back to the random path only if no neighbor source is found.
+  if (((double) yals_rand_mod (yals, INT_MAX) / (double) INT_MAX) <= yals->ddfw.clsselectp) {
     source = yals_ddfw_get_random_sat_clause (yals, &constraint_type, sink_comp);
+  } else {
+    // Find maximum weighted satisfied clause (source) in same-sign neighborhood
+    // of sink (same-sign neighbors share a literal, so are always in its component).
+    source = yals_ddfw_get_max_weight_sat_clause (yals, sink, TYPECLAUSE, &constraint_type);
+    if (source == -1) {
+      yals->ddfw.source_not_selected++;
+      source = yals_ddfw_get_random_sat_clause (yals, &constraint_type, sink_comp);
+    }
   }
 
   if (source == -1) {
@@ -4420,15 +4423,18 @@ void yals_ddfw_transfer_weights_for_card (Yals *yals, int sink)
 
   LOGCARDCIDX (sink, "Transfer weight to");
 
-  // Find maximum weighted satisfied clause (source), which is in same sign neighborhood of cidx (sink)
-  source = yals_ddfw_get_max_weight_sat_clause (yals, sink, TYPECARDINALITY, &constraint_type);
-
-  if (source == -1)
-    yals->ddfw.source_not_selected++;
-
-  // If no such source is available (source=-1), then select a randomly satisfied clause as the source.
-  if ( source == -1  || ( ( (double) yals_rand_mod (yals, INT_MAX) / (double) INT_MAX) <= yals->ddfw.clsselectp)) {
+  // With probability clsselectp, skip the expensive max-weight neighbor scan
+  // and go straight to a random satisfied clause. Otherwise scan neighbors and
+  // fall back to the random path only if no neighbor source is found.
+  if (((double) yals_rand_mod (yals, INT_MAX) / (double) INT_MAX) <= yals->ddfw.clsselectp) {
     source = yals_ddfw_get_random_sat_clause (yals, &constraint_type, sink_comp);
+  } else {
+    // Find maximum weighted satisfied clause (source) in same-sign neighborhood of sink.
+    source = yals_ddfw_get_max_weight_sat_clause (yals, sink, TYPECARDINALITY, &constraint_type);
+    if (source == -1) {
+      yals->ddfw.source_not_selected++;
+      source = yals_ddfw_get_random_sat_clause (yals, &constraint_type, sink_comp);
+    }
   }
 
   if (source == -1) {
