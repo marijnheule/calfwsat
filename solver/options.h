@@ -34,7 +34,6 @@ This code extends the solver yal-lin (Md Solimul Chowdhury, Cayden Codel, Marijn
   OPT (computeneiinit,0 , 0, 1, "Compute the clause neighborhood initially for palsat"); \
   OPT (crit,1,0,1,"dynamic break values (using critical lits)"); \
   OPT (cutoff,20000 , 0,INT_MAX,"flips per try (0 = unlimited; controls shared-cache cycle frequency)"); \
-  OPT (ddfwpicklit, 2,1,6,"1=best,4=wrand"); \
   OPT (defrag,1,0,1,"defragemtation of unsat queue"); \
   OPT (fixed,4,0,INT_MAX,"fixed default strategy frequency (1=always)"); \
   OPT (geomfreq,66,0,100,"geometric picking first frequency (percent)"); \

@@ -279,7 +279,6 @@ typedef struct DDFW {
   double time_ddfw;
   int flips_ddfw_temp, flips_ddfw;
 
-  int pick_method; 
   double sum_uwr;
   double clsselectp;
   double ddfwstartth;

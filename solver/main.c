@@ -339,7 +339,7 @@ static void stats () {
   msg ("total flips %lld", yals_flips (yals));
   yals_print_length_weights (yals);
   msg ("total process time of %.2f seconds", getime ());
-  // printf ("\nc Columns: |pick_method| |flips| |unsat| |min_usnat| |alg_switch| |inner_restarts| |fres_fact| |forced_res| |restarts_time| |time| |max_memory|\n");
+  // printf ("\nc Columns: |flips| |unsat| |min_usnat| |alg_switch| |inner_restarts| |fres_fact| |forced_res| |restarts_time| |time| |max_memory|\n");
   // yals_print_stats (yals);
   printf ("%f %.1f |\n", yals_process_time (), mem.max/(double)(1<<20) );
 #endif
@@ -803,10 +803,6 @@ int main (int argc, char** argv) {
       else seed = atoull (argv[i]), seedset = 1;
     }  
     
-    else if (!strcmp (argv[i], "--greedy")) setopt ("ddfwpicklit", 1);
-    else if (!strcmp (argv[i], "--wrand")) setopt ("ddfwpicklit", 2);
-
-
     else if (!strcmp (argv[i], "--computeneiinit")) setopt ("computeneiinit", 1);
     else if (!strcmp (argv[i], "--ignorewtcriteria")) setopt ("ignorewtcriteria", 1);
     else if (!strcmp (argv[i], "--clsselectp")) setopt ("clsselectp", atoll (argv[++i]));

@@ -5183,7 +5183,6 @@ void yals_stats (Yals * yals) {
 
 void set_options (Yals * yals)
 {
-  yals->ddfw.pick_method = yals->opts.ddfwpicklit.val;
   yals->inner_restart = !yals->opts.innerrestartoff.val;
 }
 
@@ -5779,35 +5778,6 @@ void yals_ddfw_update_lit_weights_on_break (Yals * yals, int cidx, int lit) {
   }
 }
 
-// outdated, now use a heap
-int yals_pick_literal_ddfw (Yals * yals)
-{ 
-  /* pick_method=1: selects the variable that reduces unsat weight the most
-    pick-method=2 (--wrand): selects an unsat reducing variable with a probability, proportal to its unsat weight reduction value.
-  */
-  LOG ("Pick literal ddfw");
-  if (yals->ddfw.pick_method == 1) 
-    return yals->ddfw.best_var;
-  else if (yals->ddfw.pick_method == 2) 
-  {
-      double drand = (double)  yals_rand_mod (yals, INT_MAX-1) / (double) (INT_MAX);
-      for (int i=0; i< yals->ddfw.uwrvs_size; i++)
-      {
-        double gain_ratio = (double) yals->ddfw.uwvars_gains [i] / (double) yals->ddfw.sum_uwr;
-        if (gain_ratio >= drand)
-          return  yals->ddfw.uwrvs[i];
-      }
-    return yals->ddfw.best_var;
-  } else {
-    return 0;
-  }
-
-
-  // random uwrvs selection
-  // int pos = yals_rand_mod (yals, yals->ddfw.uwrvs_size);
-  // lit = yals->ddfw.uwrvs[pos];
-}
-
 int compute_sat_count (Yals *yals, int cidx)
 {
     int satcnt = 0, lit;
@@ -5982,7 +5952,7 @@ void yals_print_stats (Yals * yals)
 {
   // double avg_len_consecutive_lm = (double) (yals->ddfw.consecutive_lm_length) / (double) (yals->ddfw.count_conscutive_lm);
   //  (double) (yals->ddfw.count_conscutive_lm);
-  // printf ("c stats | %d %d %d %d %d %d %d %d %f %d %d %d %d %d %d %d %f ", yals->ddfw.pick_method, yals->stats.flips, yals->ddfw.local_minima,   yals->ddfw.wt_count
+  // printf ("c stats | %d %d %d %d %d %d %d %d %f %d %d %d %d %d %d %d %f ", yals->stats.flips, yals->ddfw.local_minima,   yals->ddfw.wt_count
   //                 , yals->ddfw.missed_guaranteed_uwvars, yals->ddfw.sideways,
   //                 yals->ddfw.consecutive_lm_length, yals->ddfw.count_conscutive_lm,  avg_len_consecutive_lm, yals->ddfw.max_consecutive_lm_length, yals_nunsat (yals),     
   //                 yals_minimum (yals), yals->ddfw.alg_switch, yals->stats.restart.inner.count, 

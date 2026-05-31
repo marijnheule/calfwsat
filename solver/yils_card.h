@@ -67,7 +67,6 @@ void yals_ddfw_update_lit_weights_at_start (Yals * yals, int cidx, int satcnt, i
 void yals_ddfw_update_lit_weights_at_restart (Yals *yals);
 void yals_ddfw_compute_neighborhood_for_clause (Yals *yals, int cidx);
 void yals_ddfw_compute_uwrvs (Yals * yals);
-int yals_pick_literal_ddfw (Yals * yals);
 int yals_pick_non_increasing (Yals * yals);
 void yals_ddfw_init_build (Yals *yals);
 void compute_neighborhood_for_clause_init (Yals *yals, int cidx);
