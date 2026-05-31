@@ -1,0 +1,166 @@
+#!/usr/bin/env bash
+# repeat-one.sh
+#
+# Run palsat with default options on a single formula N times (seeds 1..N),
+# with a per-run wall-clock timeout. Launches runs in parallel up to the
+# machine's capacity and prints a summary table.
+#
+# Usage:
+#   bash repeat-one.sh <formula.knf> <timeout_sec> <N>
+#
+# Example:
+#   bash repeat-one.sh ntil-45.knf 900 100
+#
+# Tunables (env vars):
+#   PALSAT      path to palsat binary           (default ./solver/palsat)
+#   THREADS     threads each palsat uses        (default 8)
+#   PARALLEL    max concurrent palsat procs     (default auto: cores/threads)
+#
+# Output:
+#   bench-results/<basename>-repeat-<timestamp>/
+#     seed-NNN.log    per-run palsat stdout
+#     rows.txt        seed exitcode wall (raw per-run data)
+#     summary.txt     SAT/TO counts, PAR-2, mean/median flips and wall time
+#
+# Solver options: ALL DEFAULTS. The binary's compiled-in defaults are used.
+
+set -uo pipefail
+
+# -------- args --------
+[ $# -eq 3 ] || { echo "usage: $0 <formula.knf> <timeout_sec> <N>" >&2; exit 2; }
+FORMULA="$1"; TIMEOUT_SEC="$2"; N="$3"
+[ -r "$FORMULA" ] || { echo "error: cannot read formula '$FORMULA'" >&2; exit 2; }
+case "$TIMEOUT_SEC" in (*[!0-9]*|"") echo "timeout must be a positive integer" >&2; exit 2;; esac
+case "$N" in (*[!0-9]*|"") echo "N must be a positive integer" >&2; exit 2;; esac
+[ "$N" -ge 1 ] || { echo "N must be >= 1" >&2; exit 2; }
+
+# -------- tunables --------
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+PALSAT="${PALSAT:-$SCRIPT_DIR/solver/palsat}"
+THREADS="${THREADS:-8}"
+
+detect_physical_cores() {
+  local n=
+  if command -v lscpu >/dev/null 2>&1; then
+    n=$(lscpu -p 2>/dev/null | awk -F, '!/^#/ {print $2","$3}' | sort -u | wc -l | tr -d ' ')
+  fi
+  if [ -z "$n" ] || [ "$n" -lt 1 ]; then
+    n=$(sysctl -n hw.physicalcpu 2>/dev/null || true)
+  fi
+  if [ -z "$n" ] || [ "$n" -lt 1 ]; then
+    n=$(nproc 2>/dev/null || echo 1)
+  fi
+  echo "$n"
+}
+if [ -z "${PARALLEL:-}" ]; then
+  CORES=$(detect_physical_cores)
+  PARALLEL=$(( CORES / THREADS ))
+  [ "$PARALLEL" -lt 1 ] && PARALLEL=1
+fi
+
+# -------- setup --------
+[ -x "$PALSAT" ] || { echo "error: palsat not executable at $PALSAT" >&2; exit 2; }
+BASE="$(basename "$FORMULA" .knf)"; BASE="${BASE%.cnf}"
+TS="$(date +%Y%m%d-%H%M%S)"
+OUT_DIR="$SCRIPT_DIR/bench-results/${BASE}-repeat-${TS}"
+mkdir -p "$OUT_DIR"
+ROWS="$OUT_DIR/rows.txt"
+: >"$ROWS"
+
+echo "repeat-one: $FORMULA"
+echo "  N:          $N"
+echo "  timeout:    ${TIMEOUT_SEC}s per run"
+echo "  threads:    $THREADS per palsat"
+echo "  parallel:   $PARALLEL concurrent palsat processes"
+echo "  palsat:     $PALSAT"
+echo "  out:        $OUT_DIR"
+echo
+
+# -------- timeout binary detection --------
+TIMEOUT_BIN=""
+if command -v timeout  >/dev/null 2>&1; then TIMEOUT_BIN=timeout;
+elif command -v gtimeout >/dev/null 2>&1; then TIMEOUT_BIN=gtimeout;
+else echo "warning: no GNU timeout found; runs will not be killed at $TIMEOUT_SEC s" >&2; fi
+
+# -------- portable monotonic seconds --------
+now() { python3 -c 'import time;print(time.time())' 2>/dev/null || date +%s; }
+
+# -------- worker: runs one seed --------
+run_one() {
+  local seed="$1"
+  local log="$OUT_DIR/seed-${seed}.log"
+  local t0 t1 wall ec
+  t0=$(now)
+  if [ -n "$TIMEOUT_BIN" ]; then
+    "$TIMEOUT_BIN" -k 5 "$TIMEOUT_SEC" "$PALSAT" -t "$THREADS" "$FORMULA" "$seed" >"$log" 2>&1
+  else
+    "$PALSAT" -t "$THREADS" "$FORMULA" "$seed" >"$log" 2>&1
+  fi
+  ec=$?
+  t1=$(now)
+  wall=$(awk -v a="$t0" -v b="$t1" 'BEGIN { printf "%.3f", b-a }')
+  printf "%s %s %s\n" "$seed" "$ec" "$wall" >>"$ROWS"
+  printf "  seed=%-5s exit=%-3d wall=%ss\n" "$seed" "$ec" "$wall" >&2
+}
+
+# -------- launch loop: keep at most $PARALLEL workers alive --------
+seed=1
+while [ "$seed" -le "$N" ]; do
+  # Cap concurrency at $PARALLEL.
+  while [ "$(jobs -rp | wc -l | tr -d ' ')" -ge "$PARALLEL" ]; do
+    wait -n 2>/dev/null || sleep 0.2
+  done
+  run_one "$seed" &
+  seed=$(( seed + 1 ))
+done
+wait
+
+# -------- summary --------
+SUMMARY="$OUT_DIR/summary.txt"
+awk -v N="$N" -v TO="$TIMEOUT_SEC" -v OUT="$OUT_DIR" '
+BEGIN { nsat=0; nto=0; nother=0; par2=0; sumwall_sat=0; sumflips_sat=0 }
+{
+  seed=$1; ec=$2; wall=$3+0
+  sat=0; flips=0
+  cmd="grep -E \"^s SATISFIABLE|total flips\" " OUT "/seed-" seed ".log"
+  while ((cmd | getline line) > 0) {
+    if (line ~ /^s SATISFIABLE/) sat=1
+    else if (line ~ /total flips/) { gsub(/.*total flips +/, "", line); flips=line+0 }
+  }
+  close(cmd)
+  if (sat==1) {
+    nsat++; sumwall_sat += wall; sumflips_sat += flips
+    walls[nsat] = wall; flipsa[nsat] = flips
+    par2 += wall
+  } else if (ec==124 || ec==137 || wall >= TO-1) {
+    nto++; par2 += 2*TO
+  } else {
+    nother++; par2 += 2*TO  # treat unexpected exits as timeouts in PAR-2
+  }
+}
+function median_of(arr, n,    sorted, i, j, t) {
+  if (n==0) return 0
+  for (i=1;i<=n;i++) sorted[i]=arr[i]
+  for (i=1;i<n;i++) for (j=i+1;j<=n;j++) if (sorted[i]>sorted[j]) { t=sorted[i]; sorted[i]=sorted[j]; sorted[j]=t }
+  if (n%2==1) return sorted[(n+1)/2]
+  return (sorted[n/2] + sorted[n/2+1]) / 2.0
+}
+END {
+  mw = (nsat>0 ? sumwall_sat/nsat : 0)
+  mf = (nsat>0 ? sumflips_sat/nsat : 0)
+  medw = median_of(walls, nsat)
+  medf = median_of(flipsa, nsat)
+  printf "runs=%d  SAT=%d (%.1f%%)  TO=%d  other=%d\n", N, nsat, 100.0*nsat/N, nto, nother
+  printf "PAR-2 = %.2f s (lower is better; SAT=wall, TO=2*timeout)\n", par2/N
+  printf "wall sec  (sat-only):  mean %.2f  median %.2f\n", mw, medw
+  printf "flips     (sat-only):  mean %.0f  median %.0f\n", mf, medf
+}
+' "$ROWS" >"$SUMMARY"
+
+echo
+echo "==================== summary ===================="
+cat "$SUMMARY"
+echo
+echo "Per-seed logs:  $OUT_DIR/seed-*.log"
+echo "Raw rows:       $ROWS  (seed exitcode wall)"
+echo "Summary:        $SUMMARY"
