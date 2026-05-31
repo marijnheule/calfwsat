@@ -2367,7 +2367,7 @@ static void yals_init_weight_to_score_table (Yals * yals) {
 static void yals_connect (Yals * yals) {
   int idx, n, lit, nvars = yals->nvars, * count, cidx, sign;
   long long sumoccs, sumlen; int minoccs, maxoccs, minlen, maxlen;
-  int * occsptr, occs, len, lits, maxidx, nused, uniform;
+  int * occsptr, occs, len, lits, maxidx, nused;
   int nclauses, nbin, ntrn, nquad, nlarge;
   const int * p,  * q;
 
@@ -2514,19 +2514,6 @@ static void yals_connect (Yals * yals) {
       "%d quaterny %.0f%%, %d large clauses %.0f%%",
       nquad, yals_pct (nquad, yals->nclauses),
       nlarge, yals_pct (nlarge, yals->nclauses));
-  }
-
-  if (minlen == maxlen && !yals->opts.toggleuniform.val) uniform = 1;
-  else if (minlen != maxlen && yals->opts.toggleuniform.val) uniform = 1;
-  else uniform = 0;
-
-  if (uniform) {
-    yals_msg (yals, 1,
-      "using uniform strategy for clauses of length %d", maxlen);
-    yals->uniform = maxlen;
-  } else {
-    yals_msg (yals, 1, "using standard non-uniform strategy");
-    yals->uniform = 0;
   }
 
   yals_msg (yals, 1,
@@ -2796,19 +2783,6 @@ void yals_card_connect (Yals * yals) {
   //     "%d quaterny %.0f%%, %d large clauses %.0f%%",
   //     nquad, yals_pct (nquad, yals->nclauses),
   //     nlarge, yals_pct (nlarge, yals->nclauses));
-  // }
-
-  // if (minlen == maxlen && !yals->opts.toggleuniform.val) uniform = 1;
-  // else if (minlen != maxlen && yals->opts.toggleuniform.val) uniform = 1;
-  // else uniform = 0;
-
-  // if (uniform) {
-  //   yals_msg (yals, 1,
-  //     "using uniform strategy for clauses of length %d", maxlen);
-  //   yals->uniform = maxlen;
-  // } else {
-  //   yals_msg (yals, 1, "using standard non-uniform strategy");
-  //   yals->uniform = 0;
   // }
 
   // yals_msg (yals, 1,
@@ -3529,15 +3503,6 @@ static void yals_pick_strategy (Yals * yals) {
   yals_print_strategy (yals, "picked strategy:", 2);
 }
 
-static void yals_fix_strategy (Yals * yals) {
-  if (yals->uniform) {
-    yals->strat.pol = 0;
-    yals_print_strategy (yals, "fixed strategy:", 2);
-  }
-}
-
-/*------------------------------------------------------------------------*/
-
 static int yals_inner_restart_interval (Yals * yals) {
   int res = yals->opts.restart.val;
   if (res < yals->nvars/2) res = yals->nvars/2;
@@ -3594,9 +3559,6 @@ yals->limits.restart.inner.interval *= 2;
 }
 
 static int yals_need_to_restart_inner (Yals * yals) {
-  if (yals->uniform &&
-      yals->stats.restart.inner.count >= yals->opts.unirestarts.val)
-    return 0;
   return yals->inner_restart && yals->stats.flips >= yals->limits.restart.inner.lim;
 }
 
@@ -3634,7 +3596,6 @@ static void yals_restart_inner (Yals * yals) {
     } else {
       yals_cache_assignment (yals);
       yals_pick_strategy (yals);
-      yals_fix_strategy (yals);
       save_current_assignment (yals);
       yals_pick_assignment (yals, 0);
       // If a shared cache is attached (palsat), it may override the
@@ -3656,7 +3617,6 @@ static void yals_restart_inner (Yals * yals) {
     } else {
       yals_cache_assignment (yals);
       yals_pick_strategy (yals);
-      yals_fix_strategy (yals);
       save_current_assignment (yals);
       yals_pick_assignment (yals, 0);
       if (yals_shared_cache_cycle (yals)) {
@@ -4711,8 +4671,7 @@ static void yals_restart_outer (Yals * yals) {
 static void yals_outer_loop (Yals * yals) {
   yals_init_outer_restart_interval (yals);
   // for (;;) {
-    yals_set_default_strategy (yals);  // for probsat it appears
-    yals_fix_strategy (yals); // for probsat it appears
+    yals_set_default_strategy (yals);
     yals_pick_assignment (yals, 1);
     yals_update_sat_and_unsat (yals);
     yals->stats.tmp = INT_MAX;

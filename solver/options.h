@@ -57,8 +57,6 @@ This code extends the solver yal-lin (Md Solimul Chowdhury, Cayden Codel, Marijn
   OPT (setfpu,1,0,1,"set FPU to use double precision on Linux"); \
   OPT (sidewaysmove,1,0,1,"enable sideways move"); \
   OPT (termint,1000,0,INT_MAX,"termination call back check interval"); \
-  OPT (toggleuniform,0,0,1,"toggle uniform strategy"); \
-  OPT (unirestarts,0,0,INT_MAX,"max number restarts for uniform formulas"); \
   OPT (verbose,0,0,5,"set verbose level"); \
   OPT (witness,1,0,1,"print witness"); \
   OPT (card_compute,4,1,6,"cardinality constraint weight computation rule (1: linear, 2: exponential, 3: quadratic, 4: choice of exponent from option card_exp)"); \

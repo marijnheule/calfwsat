@@ -767,7 +767,6 @@ int main (int argc, char** argv) {
     Yals * y = yals_new_with_mem_mgr (0, mymalloc, myrealloc, myfree);
     yals_setmsglock (y, lockmsg, unlockmsg, 0);
     yals_seterm (y, terminate, 0);
-//   if (i % 4 == 3) yals_setopt (y, "toggleuniform", 1);
     sprintf (prefix, "c %02d ", i);
     yals_setprefix (y, prefix);
     yals_setime (y, getime);

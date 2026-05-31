@@ -347,7 +347,7 @@ typedef struct Yals {
   UNSAT_STACK unsat; // falsified hard (all if not MaxSAT) constraints
   int nvars, * refs; int64_t * flips;
   STACK(signed char) mark;
-  int trivial, mt, uniform, pick;
+  int trivial, mt, pick;
   Word * vals, * best, * tmp, * clear, * set, *curr; int nvarwords;
   STACK(int) cdb, trail, phases, clause, mins;
   int satcntbytes; union { U1 * satcnt1; U2 * satcnt2; U4 * satcnt4; };
