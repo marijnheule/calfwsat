@@ -18,11 +18,12 @@
 #
 # Output:
 #   bench-results/<basename>-repeat-<timestamp>/
-#     seed-NNN.log    per-run palsat stdout
-#     rows.txt        seed exitcode wall (raw per-run data)
-#     summary.txt     SAT/TO counts, PAR-2, mean+median wall and flips
+#     <basename>.<seed>.log   per-run palsat stdout (with -v)
+#     rows.txt                seed exitcode wall (raw per-run data)
+#     summary.txt             SAT/TO counts, PAR-2, mean+median wall and flips
 #
-# Solver options: ALL DEFAULTS. The binary's compiled-in defaults are used.
+# Solver options: ALL DEFAULTS (plus -v for verbose output in the per-seed
+# log files). The binary's compiled-in defaults are used.
 
 set -uo pipefail
 
@@ -69,14 +70,17 @@ PALSAT_ARGS=()
 if [ -n "${THREADS:-}" ]; then PALSAT_ARGS+=(-t "$THREADS"); fi
 
 # -------- sequential loop --------
+# Per-seed log filename: <basename>.<seed>.log  (BASE comes from the input
+# formula path; .knf / .cnf suffix stripped). e.g. ntil-45.1.log
+FORMULA_BASE_FOR_LOG="$BASE"
 seed=1
 while [ "$seed" -le "$N" ]; do
-  log="$OUT_DIR/seed-${seed}.log"
+  log="$OUT_DIR/${FORMULA_BASE_FOR_LOG}.${seed}.log"
   t0=$(now)
   if [ -n "$TIMEOUT_BIN" ]; then
-    "$TIMEOUT_BIN" -k 5 "$TIMEOUT_SEC" "$PALSAT" ${PALSAT_ARGS[@]+"${PALSAT_ARGS[@]}"} "$FORMULA" "$seed" >"$log" 2>&1
+    "$TIMEOUT_BIN" -k 5 "$TIMEOUT_SEC" "$PALSAT" -v ${PALSAT_ARGS[@]+"${PALSAT_ARGS[@]}"} "$FORMULA" "$seed" >"$log" 2>/dev/null
   else
-    "$PALSAT" ${PALSAT_ARGS[@]+"${PALSAT_ARGS[@]}"} "$FORMULA" "$seed" >"$log" 2>&1
+    "$PALSAT" -v ${PALSAT_ARGS[@]+"${PALSAT_ARGS[@]}"} "$FORMULA" "$seed" >"$log" 2>/dev/null
   fi
   ec=$?
   t1=$(now)
@@ -88,12 +92,12 @@ done
 
 # -------- summary --------
 SUMMARY="$OUT_DIR/summary.txt"
-awk -v N="$N" -v TO="$TIMEOUT_SEC" -v OUT="$OUT_DIR" '
+awk -v N="$N" -v TO="$TIMEOUT_SEC" -v OUT="$OUT_DIR" -v BASE="$BASE" '
 BEGIN { nsat=0; nto=0; nother=0; par2=0; sumwall_sat=0; sumflips_sat=0 }
 {
   seed=$1; ec=$2; wall=$3+0
   sat=0; flips=0
-  cmd="grep -E \"^s SATISFIABLE|total flips\" " OUT "/seed-" seed ".log"
+  cmd="grep -E \"^s SATISFIABLE|total flips\" " OUT "/" BASE "." seed ".log"
   while ((cmd | getline line) > 0) {
     if (line ~ /^s SATISFIABLE/) sat=1
     else if (line ~ /total flips/) { gsub(/.*total flips +/, "", line); flips=line+0 }
@@ -132,6 +136,6 @@ echo
 echo "==================== summary ===================="
 cat "$SUMMARY"
 echo
-echo "Per-seed logs:  $OUT_DIR/seed-*.log"
+echo "Per-seed logs:  $OUT_DIR/${BASE}.*.log"
 echo "Raw rows:       $ROWS  (seed exitcode wall)"
 echo "Summary:        $SUMMARY"
