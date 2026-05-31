@@ -2618,13 +2618,10 @@ static void yals_connect (Yals * yals) {
     "need %d bytes per clause for counting satisfied literals",
     yals->satcntbytes);
 
-  if (yals->opts.crit.val) {
-    yals_msg (yals, 1,
-      "dynamically computing break values on-the-fly "
-      "using critical literals");
-    NEWN (yals->crit, nclauses);
-  } else
-    yals_msg (yals, 1, "eagerly computing break values");
+  yals_msg (yals, 1,
+    "dynamically computing break values on-the-fly "
+    "using critical literals");
+  NEWN (yals->crit, nclauses);
 
   yals_init_weight_to_score_table (yals);
 }
@@ -2890,25 +2887,6 @@ void yals_card_connect (Yals * yals) {
   yals_msg (yals, 1,
     "need %d bytes per cardinality constraint for counting satisfied literals",
     yals->card_satcntbytes);
-
-  // if (yals->opts.crit.val) {
-
-    // always use critical
-    // yals_msg (yals, 1,
-    //   "dynamically computing break values on-the-fly "
-    //   "using critical literals");
-    // NEWN (yals->card_crit, yals->card_nclauses);
-    // for (cidx = 0; cidx < yals->nclauses; cidx++) {
-    //   bound = yals_card_bound (yals, cidx);
-    //   NEWN (yals->card_crit[cidx], bound);
-    //   while (bound) yals->card_crit[cidx][--bound] = 0;
-    // }
-    // NEWN (yals->weightedbreak, 2*nvars);
-  // } else
-  //   yals_msg (yals, 1, "eagerly computing break values");
-
-  // yals_init_weight_to_score_table (yals);
-
 }
 
 
