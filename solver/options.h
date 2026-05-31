@@ -31,7 +31,7 @@ This code extends the solver yal-lin (Md Solimul Chowdhury, Cayden Codel, Marijn
   OPT (clsselectp, 12 , 1, 100, "Clause selection probability for weight transfer."); \
   OPT (rndlit,0,0,1,"max-weight source selection: scan neighbors of only one randomly chosen falsified literal of the sink"); \
   OPT (topk,8,0,64,"per-literal top-K sorted list of heaviest neighbors (K=0 falls back to full scan)"); \
-  OPT (cutoff,20000 , 0,INT_MAX,"flips per try (0 = unlimited; controls shared-cache cycle frequency)"); \
+  OPT (cutoff,200000,0,INT_MAX,"flips per try (0 = unlimited; controls inner-restart and shared-cache cycle frequency)"); \
   OPT (defrag,1,0,1,"defragemtation of unsat queue"); \
   OPT (fixed,4,0,INT_MAX,"fixed default strategy frequency (1=always)"); \
   OPT (ignorewtcriteria,0,0,1,"ignore the check with initial weight while deciding a neighboring satisfied clause during weight transfer"); \
