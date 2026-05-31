@@ -939,6 +939,9 @@ static void yals_nbr_free (Yals * yals) {
 // Forward decl for yals_topk_build: it lazily ensures the shared graph is
 // built. yals_nbr_build is defined later in the file.
 static void yals_nbr_build (Yals * yals);
+// Forward decl: yals_topk_decreased calls rebuild_lit (defined later) when
+// an eviction empties the list, to repopulate eagerly.
+static void yals_topk_rebuild_lit (Yals * yals, int p);
 
 /*------------------------------------------------------------------------*/
 /* --topk: per-literal top-K sorted list of heaviest neighbors.           */
@@ -1069,18 +1072,30 @@ static void yals_topk_decreased (Yals * yals, int u) {
     // If we ended up at the bottom of the list, evict. With count > 1 the
     // entry above is strictly heavier (bubble_down would have swapped
     // otherwise), so e is genuinely the smallest. With count == 1 we evict
-    // unconditionally on any source-decrease: this is the only mechanism
-    // that triggers the empty-list rebuild, which re-discovers heavy
-    // outsiders that were rejected at a stale higher threshold and never
-    // re-checked. Without this, a literal's list can get stuck at a single
-    // low-weight entry while much heavier outsiders sit ignored.
-    if (pos[e] == count[p] - 1)
+    // unconditionally on any source-decrease.
+    if (pos[e] == count[p] - 1) {
       yals_topk_remove (yals, p, e);
+      // Eager rebuild: if eviction emptied the list, re-scan literal p's
+      // neighbors NOW to repopulate the true top-K. Without this, the next
+      // sink-event on an outsider would unconditionally add itself to the
+      // empty list (no smallest to compare), and a possibly-light first-add
+      // would set the floor low for subsequent inserts -- leaving heavier
+      // outsiders (that don't get sink events) silently ignored.
+      if (count[p] == 0) yals_topk_rebuild_lit (yals, p);
+    }
   }
 }
 
 // Rebuild literal p's top-K list by scanning all its edges. Used at build
-// time and as the empty-list recovery path inside yals_topk_best.
+// time and as the recovery path when topk_decreased empties the list.
+//
+// Note: cannot reuse yals_topk_insert here. That function's strict-better
+// rule is correct for runtime hooks (don't lower the smallest by adding
+// lighter outsiders), but it makes rebuild order-dependent and incomplete --
+// if the heaviest edge happens to come first, every subsequent lighter edge
+// would be rejected even when there's room. Rebuild needs the original
+// "fill while count < K, then replace-smallest" semantics so the final list
+// is the true top-K by weight regardless of iteration order.
 static void yals_topk_rebuild_lit (Yals * yals, int p) {
   int K = yals->ddfw.topk_k;
   int * list = yals->ddfw.topk_list + p * K;
@@ -1094,7 +1109,18 @@ static void yals_topk_rebuild_lit (Yals * yals, int p) {
   int lo = yals->ddfw.nbr_lstart[p], hi = yals->ddfw.nbr_lstart[p+1];
   for (int s = lo; s < hi; s++) {
     int e = yals->ddfw.nbr_heap[s];
-    yals_topk_insert (yals, p, e);
+    if (count[p] < K) {
+      int i = count[p]++;
+      list[i] = e; pos[e] = i;
+      yals_topk_bubble_up (yals, p, e);
+    } else {
+      int last = list[K - 1];
+      if (yals_nbr_better (yals, e, last)) {
+        pos[last] = -1;
+        list[K - 1] = e; pos[e] = K - 1;
+        yals_topk_bubble_up (yals, p, e);
+      }
+    }
   }
 }
 
