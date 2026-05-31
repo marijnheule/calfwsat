@@ -319,6 +319,14 @@ typedef struct DDFW {
   int * nbr_lstart;  // [nlits+1] literal position -> first heap slot
   int * nbr_scratch; // frontier buffer for lazy eligibility search
 
+  // --topk: per-literal top-K list of heaviest neighbors (shares cstart,
+  // lstart, con, lit with the nbr_* graph but uses its own list/pos arrays).
+  int topk_built;
+  int topk_k;        // K (entries per literal)
+  int * topk_list;   // [nlits * K] flat array; slots p*K .. p*K + count[p] hold the entries (edge ids), sorted by (weight, id) descending
+  int * topk_count;  // [nlits] current size per literal (0..K)
+  int * topk_pos;    // [E] edge -> index within owning literal's slice (0..K-1), -1 if not in list
+
   // --oldestsource: LRU doubly-linked list over all constraints (unified id =
   // clause cidx for u<nclauses; card cidx + nclauses else). Head = least
   // recently used as a source. Allocated only when --oldestsource is on.
