@@ -862,6 +862,17 @@ static inline double yals_time (Yals * yals) {
   else return yals_process_time ();
 }
 
+// Per-phase profiling timer. Returns 0 unless verbose printing is enabled,
+// skipping the getrusage syscall in production (verbose=0) runs. The
+// stats.{maxs_time,time.restart} fields it populates are only consumed by
+// yals_print_stats (at verbose>=0, they'll just print as 0.00 seconds when
+// the syscall was skipped). At ~14-18% of CPU in profiles before this gate,
+// it was the largest non-algorithmic cost.
+static inline double yals_time_phase (Yals * yals) {
+  if (yals->opts.verbose.val == 0) return 0.0;
+  return yals_time (yals);
+}
+
 static void yals_flush_time (Yals * yals) {
   double time, entered;
 #ifdef __GNUC__

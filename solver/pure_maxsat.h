@@ -149,7 +149,7 @@ static int yals_best_lit_on_init (Yals * yals, int cidx, int constraint_type ) {
 */
 void yals_init_assignment_pure (Yals *yals) {
   int hard_polarity = yals->hard_polarity;
-  double start = yals_time (yals);
+  double start = yals_time_phase (yals);
   int lit;
   int * lits, * p;
   size_t bytes = yals->nvarwords * sizeof (Word);
@@ -229,7 +229,7 @@ void yals_init_assignment_pure (Yals *yals) {
   yals->stats.last = yals_nunsat (yals);
   yals->stats.maxs_last = yals->stats.maxs_best_cost;
 
-  yals->stats.maxs_time.initialization += yals_time (yals) - start;
+  yals->stats.maxs_time.initialization += yals_time_phase (yals) - start;
 
   yals_maxs_check_global_satisfaction_invariant (yals);
 }
@@ -253,7 +253,7 @@ static void yals_maxs_restart_outer (Yals * yals) {
   double start;
   size_t bytes = yals->nvarwords * sizeof (Word);
 
-  start = yals_time (yals);
+  start = yals_time_phase (yals);
   yals->stats.restart.outer.count++;
 
   yals_maxs_report (yals, "outer restart %lld", yals->stats.restart.outer.count);
@@ -266,7 +266,7 @@ static void yals_maxs_restart_outer (Yals * yals) {
   yals->stats.last = yals->stats.best;
   yals->stats.maxs_last = yals->stats.maxs_best_cost;
 
-  yals->stats.time.restart += yals_time (yals) - start;
+  yals->stats.time.restart += yals_time_phase (yals) - start;
 
 
   // new configuration settings
@@ -283,7 +283,7 @@ static void yals_maxs_restart_outer (Yals * yals) {
 static void yals_maxs_restart_inner (Yals * yals) {
   double start;
   size_t bytes = yals->nvarwords * sizeof (Word);
-  start = yals_time (yals);
+  start = yals_time_phase (yals);
   yals->stats.restart.inner.count++;
   yals_maxs_report (yals, "restart %lld", yals->stats.restart.inner.count);
 
@@ -300,7 +300,7 @@ static void yals_maxs_restart_inner (Yals * yals) {
     yals->stats.maxs_last = yals->stats.maxs_best_cost;
   }
 
-  yals->stats.time.restart += yals_time (yals) - start;
+  yals->stats.time.restart += yals_time_phase (yals) - start;
 }
 
 /*
@@ -393,10 +393,10 @@ int yals_pure_maxs_inner_loop (Yals * yals) {
       // Phase 1: explore by satisfying soft consrtaints
       for (int i = 0; i < phase1_flips; i++) {
         if (!yals_soft_unsat (yals)) break;
-        double start = yals_time (yals);
+        double start = yals_time_phase (yals);
         lit = yals_pick_literal_from_heap (yals, 1);
-        yals->stats.maxs_time.var_selection += yals_time (yals) - start;
-        yals->stats.maxs_time.soft_var_selection += yals_time (yals) - start;
+        yals->stats.maxs_time.var_selection += yals_time_phase (yals) - start;
+        yals->stats.maxs_time.soft_var_selection += yals_time_phase (yals) - start;
         inner_flips++;
         outer_flips++;
         c++;
@@ -408,10 +408,10 @@ int yals_pure_maxs_inner_loop (Yals * yals) {
       yals_msg (yals, 2, "Phase 2 : fix hard constraints");
       // Phase 2: fix hard constraints
       while (yals_nunsat (yals)) {
-        double start = yals_time (yals);
+        double start = yals_time_phase (yals);
         lit = yals_pick_literal_from_heap (yals, 0);
-        yals->stats.maxs_time.var_selection += yals_time (yals) - start;
-        yals->stats.maxs_time.hard_var_selection += yals_time (yals) - start;
+        yals->stats.maxs_time.var_selection += yals_time_phase (yals) - start;
+        yals->stats.maxs_time.hard_var_selection += yals_time_phase (yals) - start;
         if (!lit) break; // may occur since we don't push previous tries back on heap...
         assert (lit/ABS(lit) != yals->hard_polarity);
         if (yals_soft_cost_of_flip (yals, -lit) < yals->stats.maxs_best_cost) {

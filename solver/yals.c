@@ -1104,7 +1104,7 @@ static void yals_reset_unsat (Yals * yals) {
 /*------------------------------------------------------------------------*/
 
 void yals_make_clauses_after_flipping_lit (Yals * yals, int lit) {
-  double start = yals_time (yals);
+  double start = yals_time_phase (yals);
   const int * p, * occs;
   int cidx, len, occ;
   double card_unsat_weight_change, card_new_unsat_weight, card_old_critical_weight, \
@@ -1298,11 +1298,11 @@ void yals_make_clauses_after_flipping_lit (Yals * yals, int lit) {
   yals->stats.made += made;
 #endif
 
-  yals->stats.maxs_time.make_time += yals_time (yals) - start;
+  yals->stats.maxs_time.make_time += yals_time_phase (yals) - start;
 }
 
 void yals_break_clauses_after_flipping_lit (Yals * yals, int lit) {
-  double start = yals_time (yals);
+  double start = yals_time_phase (yals);
   const int * p, * occs;
   int occ, cidx, len;
   double card_unsat_weight_change, card_new_unsat_weight, card_old_critical_weight, \
@@ -1472,7 +1472,7 @@ void yals_break_clauses_after_flipping_lit (Yals * yals, int lit) {
   yals->stats.broken += broken;
 #endif
 
-  yals->stats.maxs_time.break_time += yals_time (yals) - start;
+  yals->stats.maxs_time.break_time += yals_time_phase (yals) - start;
 }
 
 static void yals_update_minimum (Yals * yals) {
@@ -3551,7 +3551,7 @@ void save_current_assignment (Yals *yals)
 
 static void yals_restart_inner (Yals * yals) {
   double start;
-  start = yals_time (yals);
+  start = yals_time_phase (yals);
   yals->stats.restart.inner.count++;
   if (yals->opts.verbose.val >= 2) {
       if (yals->using_maxs_weights)
@@ -3602,7 +3602,7 @@ static void yals_restart_inner (Yals * yals) {
   }
   yals->stats.last = yals->stats.best;
   yals->stats.maxs_last = yals->stats.maxs_best_cost;
-  yals->stats.time.restart += yals_time (yals) - start;
+  yals->stats.time.restart += yals_time_phase (yals) - start;
 }
 
 /*------------------------------------------------------------------------*/
@@ -4548,7 +4548,7 @@ void yals_ddfw_transfer_weights_for_card (Yals *yals, int sink)
 // Loop over all falsified constraints and transfer weight to them
 void yals_ddfw_transfer_weights (Yals *yals)
 {
-  double start = yals_time (yals);
+  double start = yals_time_phase (yals);
   // Lnk * p;
   // // no queue implementation allowed
   // if (yals->unsat.usequeue)
@@ -4593,7 +4593,7 @@ void yals_ddfw_transfer_weights (Yals *yals)
   yals->ddfw.wt_count++;
   yals->ddfw.guaranteed_uwrvs = 0;
 
-  yals->stats.maxs_time.weight_transfer += yals_time (yals) - start;
+  yals->stats.maxs_time.weight_transfer += yals_time_phase (yals) - start;
 }
 
 static void yals_outer_loop (Yals * yals) {
@@ -5998,9 +5998,9 @@ int yals_inner_loop_max_tries (Yals * yals)
            return -1;
          }
        }
-          double start = yals_time (yals);
+          double start = yals_time_phase (yals);
           lit = yals_pick_literal_from_heap (yals, 0);
-          yals->stats.maxs_time.var_selection += yals_time (yals) - start;
+          yals->stats.maxs_time.var_selection += yals_time_phase (yals) - start;
           // may add sideways flips here
           if (lit) {
             LOG ("picking from ddfw heap");

@@ -246,7 +246,7 @@ void yals_update_minimum_cost (Yals * yals) {
 void yals_init_assignment_parse (Yals *yals) {
   int i, ch, sign, lit;
   FILE * file;
-  double start = yals_time (yals);
+  double start = yals_time_phase (yals);
 
   if (!(file = fopen ("init.sol", "r"))) {
     printf ("can not read init.sol");
@@ -285,7 +285,7 @@ DONE:
   yals->stats.last = yals_nunsat (yals);
   yals->stats.maxs_last = yals->stats.maxs_best_cost;
 
-  yals->stats.maxs_time.initialization += yals_time (yals) - start;
+  yals->stats.maxs_time.initialization += yals_time_phase (yals) - start;
 
   yals_maxs_check_global_satisfaction_invariant (yals);
   yals_maxs_check_global_weight_invariant (yals);
@@ -294,7 +294,7 @@ DONE:
 void yals_init_assignment_random (Yals *yals) {
   int i, ch, sign, lit;
   FILE * file;
-  double start = yals_time (yals);
+  double start = yals_time_phase (yals);
 
   for (i = 0; i < yals->nvarwords; i++)
       yals->vals[i] = yals_rand (yals);
@@ -309,7 +309,7 @@ void yals_init_assignment_random (Yals *yals) {
   yals->stats.last = yals_nunsat (yals);
   yals->stats.maxs_last = yals->stats.maxs_best_cost;
 
-  yals->stats.maxs_time.initialization += yals_time (yals) - start;
+  yals->stats.maxs_time.initialization += yals_time_phase (yals) - start;
 
   yals_maxs_check_global_satisfaction_invariant (yals);
   yals_maxs_check_global_weight_invariant (yals);
