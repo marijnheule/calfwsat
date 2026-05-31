@@ -397,60 +397,79 @@ static unsigned yals_card_decsatcnt (Yals * yals, int cidx, int lit, int len) {
 
 
 /*
-  iterate over the satisfied literals of a cardinality constraint
-  updating the ddfw weights
+  Iterate over the satisfied literals of a cardinality constraint, updating
+  per-literal sat1 weights. Skip avoid_lit.
 
-  do not update avoid_lit
+  Hot-path specialization of the generic yals_ddfw_update_var_weight wrapper:
+  the (soft, weights, pos, uvars) selection is loop-invariant per call and is
+  hoisted out. sat=1 is hard-coded (this is the sat-side updater), which makes
+  the paramPos scaling (gated on sat==0) statically dead.
 */
 void yals_card_sat_weight_update (Yals *yals, int cidx, double w_diff, int avoid_lit) {
-  int *begin, *end;
+  if (fabs (w_diff) < 0.01) return; // no weight change
   assert_valid_card_cidx (cidx);
-  int soft = 0;
-
-  if ( fabs (w_diff) < 0.01 ) return; // no weight change
   LOG ("%lf", fabs (w_diff));
 
-  if (yals->using_maxs_weights && !yals->hard_card_ids[cidx])
-      soft = 1;
+  int soft = (yals->using_maxs_weights && !yals->hard_card_ids[cidx]);
+  double * weights = soft ? yals->ddfw.sat1_weights_soft
+                          : yals->ddfw.sat1_weights;
+  int * pos = yals->ddfw.uvar_changed_pos;
+  STACK_INT * uvars = &yals->ddfw.uvars_changed;
 
+  int *begin, *end;
   yals_card_sat_iters (yals, cidx, &begin, &end);
-
   for (; begin != end; begin++) {
-    if (*begin != avoid_lit) {
-      yals_ddfw_update_var_weight (yals, *begin, soft,1, w_diff);
-      LOG ("Weight added for soft? %d unsat %lf for lit %d", soft, w_diff, *begin);
+    int lit = *begin;
+    if (lit == avoid_lit) continue;
+    weights[get_pos (lit)] += w_diff;
+    int var = ABS (lit);
+    if (pos[var] < 0) {
+      pos[var] = 1;
+      PUSH (*uvars, var);
     }
+    LOG ("Weight added for soft? %d sat %lf for lit %d", soft, w_diff, lit);
   }
-
 }
 
 
 /*
-  iterate over the falsified literals of a cardinality constraint
-  updating the ddfw weights
+  Iterate over the falsified literals of a cardinality constraint, updating
+  per-literal unsat weights. Skip avoid_lit.
 
-  do not update avoid_lit
+  Hot-path specialization of yals_ddfw_update_var_weight for sat=0: the
+  (soft, weights, pos, uvars) selection is hoisted out, and the paramPos
+  scaling (only fires when lit>0 and paramPos!=1000) is gated by a
+  loop-invariant flag with a cheap per-iter sign check on the active path.
 */
 void yals_card_unsat_weight_update (Yals *yals, int cidx, double w_diff, int avoid_lit) {
-  int *begin, *end;
+  if (fabs (w_diff) < 0.01) return; // no weight change
   assert_valid_card_cidx (cidx);
-  int soft = 0;
-
-  if ( fabs (w_diff) < 0.01 ) return; // no weight change
   LOG ("%lf", fabs (w_diff));
 
-  if (yals->using_maxs_weights && !yals->hard_card_ids[cidx])
-      soft = 1;
+  int soft = (yals->using_maxs_weights && !yals->hard_card_ids[cidx]);
+  double * weights = soft ? yals->ddfw.unsat_weights_soft
+                          : yals->ddfw.unsat_weights;
+  int * pos = yals->ddfw.uvar_changed_pos;
+  STACK_INT * uvars = &yals->ddfw.uvars_changed;
 
+  int param_pos_active = (yals->opts.paramPos.val != 1000);
+  double param_pos_factor = (double) yals->opts.paramPos.val / 1000.0;
+
+  int *begin, *end;
   yals_card_unsat_iters (yals, cidx, &begin, &end);
-
   for (; begin != end; begin++) {
-    if (*begin != avoid_lit) {
-      yals_ddfw_update_var_weight (yals, *begin, soft,0, w_diff);
-      LOG ("Weight added for soft? %d unsat %lf for lit %d", soft, w_diff, *begin);
+    int lit = *begin;
+    if (lit == avoid_lit) continue;
+    double delta = (param_pos_active && lit > 0) ? w_diff * param_pos_factor
+                                                 : w_diff;
+    weights[get_pos (lit)] += delta;
+    int var = ABS (lit);
+    if (pos[var] < 0) {
+      pos[var] = 1;
+      PUSH (*uvars, var);
     }
+    LOG ("Weight added for soft? %d unsat %lf for lit %d", soft, delta, lit);
   }
-
 }
 
 
