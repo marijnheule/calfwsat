@@ -2,8 +2,9 @@
 # repeat-one.sh
 #
 # Run palsat with default options on a single formula N times (seeds 1..N),
-# with a per-run wall-clock timeout. Launches runs in parallel up to the
-# machine's capacity and prints a summary table.
+# sequentially, with a per-run wall-clock timeout. Each palsat invocation
+# uses the binary's full default thread pool (i.e. saturates the machine);
+# runs are NOT overlapped.
 #
 # Usage:
 #   bash repeat-one.sh <formula.knf> <timeout_sec> <N>
@@ -13,14 +14,13 @@
 #
 # Tunables (env vars):
 #   PALSAT      path to palsat binary           (default ./solver/palsat)
-#   THREADS     threads each palsat uses        (default 8)
-#   PARALLEL    max concurrent palsat procs     (default auto: cores/threads)
+#   THREADS     palsat -t N override            (default unset = use palsat's compiled default)
 #
 # Output:
 #   bench-results/<basename>-repeat-<timestamp>/
 #     seed-NNN.log    per-run palsat stdout
 #     rows.txt        seed exitcode wall (raw per-run data)
-#     summary.txt     SAT/TO counts, PAR-2, mean/median flips and wall time
+#     summary.txt     SAT/TO counts, PAR-2, mean+median wall and flips
 #
 # Solver options: ALL DEFAULTS. The binary's compiled-in defaults are used.
 
@@ -37,26 +37,6 @@ case "$N" in (*[!0-9]*|"") echo "N must be a positive integer" >&2; exit 2;; esa
 # -------- tunables --------
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PALSAT="${PALSAT:-$SCRIPT_DIR/solver/palsat}"
-THREADS="${THREADS:-8}"
-
-detect_physical_cores() {
-  local n=
-  if command -v lscpu >/dev/null 2>&1; then
-    n=$(lscpu -p 2>/dev/null | awk -F, '!/^#/ {print $2","$3}' | sort -u | wc -l | tr -d ' ')
-  fi
-  if [ -z "$n" ] || [ "$n" -lt 1 ]; then
-    n=$(sysctl -n hw.physicalcpu 2>/dev/null || true)
-  fi
-  if [ -z "$n" ] || [ "$n" -lt 1 ]; then
-    n=$(nproc 2>/dev/null || echo 1)
-  fi
-  echo "$n"
-}
-if [ -z "${PARALLEL:-}" ]; then
-  CORES=$(detect_physical_cores)
-  PARALLEL=$(( CORES / THREADS ))
-  [ "$PARALLEL" -lt 1 ] && PARALLEL=1
-fi
 
 # -------- setup --------
 [ -x "$PALSAT" ] || { echo "error: palsat not executable at $PALSAT" >&2; exit 2; }
@@ -68,12 +48,11 @@ ROWS="$OUT_DIR/rows.txt"
 : >"$ROWS"
 
 echo "repeat-one: $FORMULA"
-echo "  N:          $N"
-echo "  timeout:    ${TIMEOUT_SEC}s per run"
-echo "  threads:    $THREADS per palsat"
-echo "  parallel:   $PARALLEL concurrent palsat processes"
-echo "  palsat:     $PALSAT"
-echo "  out:        $OUT_DIR"
+echo "  N:        $N (sequential)"
+echo "  timeout:  ${TIMEOUT_SEC}s per run"
+if [ -n "${THREADS:-}" ]; then echo "  threads:  $THREADS (override via -t)"; fi
+echo "  palsat:   $PALSAT"
+echo "  out:      $OUT_DIR"
 echo
 
 # -------- timeout binary detection --------
@@ -85,35 +64,27 @@ else echo "warning: no GNU timeout found; runs will not be killed at $TIMEOUT_SE
 # -------- portable monotonic seconds --------
 now() { python3 -c 'import time;print(time.time())' 2>/dev/null || date +%s; }
 
-# -------- worker: runs one seed --------
-run_one() {
-  local seed="$1"
-  local log="$OUT_DIR/seed-${seed}.log"
-  local t0 t1 wall ec
+# -------- build palsat argv --------
+PALSAT_ARGS=()
+if [ -n "${THREADS:-}" ]; then PALSAT_ARGS+=(-t "$THREADS"); fi
+
+# -------- sequential loop --------
+seed=1
+while [ "$seed" -le "$N" ]; do
+  log="$OUT_DIR/seed-${seed}.log"
   t0=$(now)
   if [ -n "$TIMEOUT_BIN" ]; then
-    "$TIMEOUT_BIN" -k 5 "$TIMEOUT_SEC" "$PALSAT" -t "$THREADS" "$FORMULA" "$seed" >"$log" 2>&1
+    "$TIMEOUT_BIN" -k 5 "$TIMEOUT_SEC" "$PALSAT" ${PALSAT_ARGS[@]+"${PALSAT_ARGS[@]}"} "$FORMULA" "$seed" >"$log" 2>&1
   else
-    "$PALSAT" -t "$THREADS" "$FORMULA" "$seed" >"$log" 2>&1
+    "$PALSAT" ${PALSAT_ARGS[@]+"${PALSAT_ARGS[@]}"} "$FORMULA" "$seed" >"$log" 2>&1
   fi
   ec=$?
   t1=$(now)
   wall=$(awk -v a="$t0" -v b="$t1" 'BEGIN { printf "%.3f", b-a }')
   printf "%s %s %s\n" "$seed" "$ec" "$wall" >>"$ROWS"
-  printf "  seed=%-5s exit=%-3d wall=%ss\n" "$seed" "$ec" "$wall" >&2
-}
-
-# -------- launch loop: keep at most $PARALLEL workers alive --------
-seed=1
-while [ "$seed" -le "$N" ]; do
-  # Cap concurrency at $PARALLEL.
-  while [ "$(jobs -rp | wc -l | tr -d ' ')" -ge "$PARALLEL" ]; do
-    wait -n 2>/dev/null || sleep 0.2
-  done
-  run_one "$seed" &
+  printf "  seed=%-5s exit=%-3d wall=%ss\n" "$seed" "$ec" "$wall"
   seed=$(( seed + 1 ))
 done
-wait
 
 # -------- summary --------
 SUMMARY="$OUT_DIR/summary.txt"
@@ -135,7 +106,7 @@ BEGIN { nsat=0; nto=0; nother=0; par2=0; sumwall_sat=0; sumflips_sat=0 }
   } else if (ec==124 || ec==137 || wall >= TO-1) {
     nto++; par2 += 2*TO
   } else {
-    nother++; par2 += 2*TO  # treat unexpected exits as timeouts in PAR-2
+    nother++; par2 += 2*TO
   }
 }
 function median_of(arr, n,    sorted, i, j, t) {
