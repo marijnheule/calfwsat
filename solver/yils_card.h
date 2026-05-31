@@ -69,7 +69,6 @@ void yals_ddfw_compute_neighborhood_for_clause (Yals *yals, int cidx);
 void yals_ddfw_compute_uwrvs (Yals * yals);
 int yals_pick_non_increasing (Yals * yals);
 void yals_ddfw_init_build (Yals *yals);
-void compute_neighborhood_for_clause_init (Yals *yals, int cidx);
 int yals_pick_literals_random (Yals * yals);
 void yals_ddfw_update_lit_weights_on_break (Yals * yals, int cidx, int lit);
 void yals_add_vars_to_uvars (Yals* yals, int cidx, int constraint_type);
@@ -116,7 +115,6 @@ void yals_preprocess (Yals * yals) ;
 double default_card_wt (Yals * yals, int source, int sink);
 void yals_ddfw_transfer_weights_for_card (Yals *yals, int sink);
 
-void card_compute_neighborhood_for_clause_init (Yals *yals, int cidx);
 
 void yals_ddfw_card_update_lit_weights_on_make (Yals * yals, int cidx, int lit);
 

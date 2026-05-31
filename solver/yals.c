@@ -77,8 +77,6 @@ enum ClausePicking {
 #define WEIGHT_MAX 9999999.0 // largest ddfw weight allowed for soft constraints
 #define HARD_WEIGHT_MAX 999999999999.0 // largest ddfw weight allowed for hard constraints (factor 100,000 bigger than soft)
 
-static int ndone; 
-static int card_ndone; 
 
 /*------------------------------------------------------------------------*/
 
@@ -5593,91 +5591,8 @@ void yals_ddfw_compute_uwrvs (Yals * yals)
 
 }
 
-void yals_ddfw_create_neighborhood_map (Yals *yals)
-{
-  // nmap = malloc (yals->nclauses* sizeof (ClauseNeighboursDups));
-  for (int cidx =0; cidx< yals->nclauses; cidx++)
-    compute_neighborhood_for_clause_init (yals, cidx);
-  ndone = 1;
-
-  // card_nmap = malloc (yals->card_nclauses* sizeof (ClauseNeighboursDups));
-  for (int cidx =0; cidx< yals->card_nclauses; cidx++)
-    card_compute_neighborhood_for_clause_init (yals, cidx);
-  card_ndone = 1;
-}
-
-// compute neighborhood for clause that is a cardinality constraint
-void card_compute_neighborhood_for_clause_init (Yals *yals, int cidx)
-{    
-  // RELEASE (card_nmap [cidx].neighbors);
-  RELEASE (yals->ddfw.card_helper_hash_changed_idx);
- 
-  int lit, occ, neighbor;
-  const int * occs, *p;
-  int * lits = yals_card_lits (yals, cidx);
-  while ((lit = *lits++))
-  {
-    occs = yals_card_occs (yals, lit);
-    //printf ("%d ",lit);
-    for (p = occs; (occ = *p) >= 0; p++)
-    {
-      neighbor = occ >> LENSHIFT;
-      //if (!yals_satcnt (yals, neighbor)) continue;
-      if (cidx != neighbor && yals->ddfw.card_helper_hash_clauses[neighbor]++ == 0)
-      { // if a clause has been seen more than once, do not add it again
-        PUSH(yals->ddfw.card_helper_hash_changed_idx, neighbor);
-        // PUSH (card_nmap [cidx].neighbors, neighbor);
-      }
-    }
-  }
-  for (int k=0; k<COUNT(yals->ddfw.card_helper_hash_changed_idx); k++)
-  { // resetting the helper_hash_clauses so all counts are 0 for subsequent calls
-    int changed = PEEK (yals->ddfw.card_helper_hash_changed_idx,k);
-    yals->ddfw.card_helper_hash_clauses [changed] = 0;
-  }
-  //printf ("\n nmap %d", COUNT (nmap [cidx].neighbors) );
-
-  //TODO: this list can be freed (helper_hash_clauses)
-  //TODO: in general it looks like some memory is never freed after it is used...
-}
-
-void compute_neighborhood_for_clause_init (Yals *yals, int cidx)
-{    
-  // RELEASE (nmap [cidx].neighbors);
-  RELEASE (yals->ddfw.helper_hash_changed_idx);
- 
-  int lit, occ, neighbor;
-  const int * occs, *p;
-  int * lits = yals_lits (yals, cidx);
-  while ((lit = *lits++))
-  {
-    occs = yals_occs (yals, lit);
-    //printf ("%d ",lit);
-    for (p = occs; (occ = *p) >= 0; p++)
-    {
-      neighbor = occ >> LENSHIFT;
-      //if (!yals_satcnt (yals, neighbor)) continue;
-      if (cidx != neighbor && yals->ddfw.helper_hash_clauses[neighbor]++ == 0)
-      {
-        PUSH(yals->ddfw.helper_hash_changed_idx, neighbor);
-        // PUSH (nmap [cidx].neighbors, neighbor);
-      }
-    }
-  }
-  for (int k=0; k<COUNT(yals->ddfw.helper_hash_changed_idx); k++)
-  {
-    int changed = PEEK (yals->ddfw.helper_hash_changed_idx,k);
-    yals->ddfw.helper_hash_clauses [changed] = 0;
-  }
-  //printf ("\n nmap %d", COUNT (nmap [cidx].neighbors) );
-}
-
-
 void yals_ddfw_init_build (Yals *yals) {
   yals_init_ddfw (yals);
-  
-   if (!yals->wid && yals->opts.computeneiinit.val)
-     yals_ddfw_create_neighborhood_map (yals);
 }
 
 void yals_ddfw_update_lit_weights_on_make (Yals * yals, int cidx, int lit) {

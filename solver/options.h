@@ -31,12 +31,10 @@ This code extends the solver yal-lin (Md Solimul Chowdhury, Cayden Codel, Marijn
   OPT (clsselectp, 12 , 1, 100, "Clause selection probability for weight transfer."); \
   OPT (rndlit,0,0,1,"max-weight source selection: scan neighbors of only one randomly chosen falsified literal of the sink"); \
   OPT (litheap,1,0,1,"maintain per-literal max-weight neighbor heaps to speed up max-weight source selection"); \
-  OPT (computeneiinit,0 , 0, 1, "Compute the clause neighborhood initially for palsat"); \
   OPT (crit,1,0,1,"dynamic break values (using critical lits)"); \
   OPT (cutoff,20000 , 0,INT_MAX,"flips per try (0 = unlimited; controls shared-cache cycle frequency)"); \
   OPT (defrag,1,0,1,"defragemtation of unsat queue"); \
   OPT (fixed,4,0,INT_MAX,"fixed default strategy frequency (1=always)"); \
-  OPT (geomfreq,66,0,100,"geometric picking first frequency (percent)"); \
   OPT (ignorewtcriteria,0,0,1,"ignore the check with initial weight while deciding a neighboring satisfied clause during weight transfer"); \
   OPT (wtadd,0,-1000,1000,"weight transfer additive term c (c = init_weight * wtadd/1000); negative subtracts from the transfer"); \
   OPT (wtmul,167,0,1000,"weight transfer multiplicative factor a (a = wtmul/1000)"); \
@@ -55,7 +53,6 @@ This code extends the solver yal-lin (Md Solimul Chowdhury, Cayden Codel, Marijn
   OPT (restartouter,0,0,1,"enable restart outer"); \
   OPT (restartouterfactor,100,1,INT_MAX,"outer restart interval factor"); \
   OPT (setfpu,1,0,1,"set FPU to use double precision on Linux"); \
-  OPT (sidewaysmove,1,0,1,"enable sideways move"); \
   OPT (termint,1000,0,INT_MAX,"termination call back check interval"); \
   OPT (verbose,0,0,5,"set verbose level"); \
   OPT (witness,1,0,1,"print witness"); \
