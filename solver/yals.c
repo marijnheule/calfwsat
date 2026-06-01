@@ -1722,6 +1722,9 @@ void yals_flip_ddfw (Yals * yals, int lit) {
   yals->stats.flips++;
   yals->stats.unsum += yals_nunsat (yals);
   yals->ddfw.last_flipped = lit;
+  // --tabu: record this flip's number for the flipped variable.
+  if (yals->ddfw.tabu_last_flipped)
+    yals->ddfw.tabu_last_flipped[abs (lit)] = yals->stats.flips;
 
   // Debugging information
   //printf ("\n P =====> %d %d",yals->stats.flips, lit);
@@ -3505,6 +3508,7 @@ void yals_del (Yals * yals) {
   yals_oldsrc_free (yals);
   free (yals->ddfw.cc_comp);
   free (yals->ddfw.max_weighted_neighbour);
+  free (yals->ddfw.tabu_last_flipped);  // NULL-safe if --tabu was 0
   free (yals->ddfw.sat_count_in_clause);
   free (yals->ddfw.helper_hash_clauses);
   free (yals->ddfw.helper_hash_vars);
@@ -5352,6 +5356,15 @@ void yals_init_ddfw (Yals *yals)
   yals->ddfw.local_minima = 0;
   yals->ddfw.wt_count = 0;
 
+  // --tabu: allocate per-variable last-flipped-time array; init to a very
+  // negative sentinel so no var is tabu before its first actual flip.
+  yals->ddfw.tabu_last_flipped = NULL;
+  if (yals->opts.tabu.val > 0) {
+    int nv = yals->nvars + 1;
+    yals->ddfw.tabu_last_flipped = malloc (nv * sizeof (int64_t));
+    for (int v = 0; v < nv; v++) yals->ddfw.tabu_last_flipped[v] = INT64_MIN / 2;
+  }
+
   yals->ddfw.conscutive_lm = 0;
   yals->ddfw.count_conscutive_lm = 0;
   yals->ddfw.consecutive_lm_length = 0;
@@ -5651,7 +5664,44 @@ int yals_pick_literal_from_heap (Yals * yals, int soft) {
         }
 
       } else {
-        lit = yals_pop_max_heap (yals, heap);
+        // --tabu: if N most-recently-flipped vars should be skipped, pop the
+        // heap, check each candidate, stash tabu ones in lit_scores, and use
+        // the first non-tabu. If everything popped is tabu, fall back to the
+        // first stashed (least bad). Stashed vars are pushed back at the end.
+        int tabu = yals->opts.tabu.val;
+        if (tabu > 0 && yals->ddfw.tabu_last_flipped) {
+          CLEAR (yals->lit_scores);
+          int max_tries = COUNT (heap->stack);
+          if (max_tries > tabu + 1) max_tries = tabu + 1;
+          for (int i = 0; i < max_tries; i++) {
+            int v = yals_pop_max_heap (yals, heap);
+            if (!v) break;
+            if (yals->stats.flips - yals->ddfw.tabu_last_flipped[abs (v)] < tabu) {
+              Lit_Score t; t.lit = v; t.score = yals_get_heap_score (heap, v);
+              PUSH (yals->lit_scores, t);
+              continue;
+            }
+            lit = v;
+            break;
+          }
+          // If nothing non-tabu was found, take the first (best) stashed.
+          if (!lit && COUNT (yals->lit_scores) > 0) {
+            Lit_Score t = PEEK (yals->lit_scores, 0);
+            lit = t.lit;
+            // Mark this entry as "taken" so we don't push it back.
+            t.lit = 0; yals->lit_scores.start[0] = t;
+          }
+          // Push the rest back into the heap.
+          int sCnt = COUNT (yals->lit_scores);
+          for (int i = 0; i < sCnt; i++) {
+            Lit_Score t = PEEK (yals->lit_scores, i);
+            if (t.lit == 0) continue;
+            yals_update_heap (yals, heap, t.lit, t.score);
+          }
+          CLEAR (yals->lit_scores);
+        } else {
+          lit = yals_pop_max_heap (yals, heap);
+        }
         yals->ddfw.best_var = lit;
         yals->ddfw.best_weight = yals_get_heap_score (heap, lit);
       }

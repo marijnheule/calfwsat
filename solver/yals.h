@@ -333,6 +333,12 @@ typedef struct DDFW {
   int64_t topk_stat_diverged;      // (TOPK_VERIFY=1 env var) queries where top-K pick != full-scan pick
   int topk_verify;                 // set from TOPK_VERIFY env at build time
 
+  // --tabu: track when each variable was last flipped (stats.flips value at
+  // flip time). The picker treats var v as tabu if
+  //   stats.flips - tabu_last_flipped[v] < opts.tabu.val.
+  // Allocated only when opts.tabu.val > 0. Indexed by variable id (1..nvars).
+  int64_t * tabu_last_flipped;
+
   // --oldestsource: LRU doubly-linked list over all constraints (unified id =
   // clause cidx for u<nclauses; card cidx + nclauses else). Head = least
   // recently used as a source. Allocated only when --oldestsource is on.
