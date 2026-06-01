@@ -647,16 +647,18 @@ static void yals_report (Yals * yals, const char * fmt, ...) {
   t = yals_sec (yals);
   // Avg age over the rolling window of the last opts.age_window.val flips
   // (skipping first-flip-ever vars). NOT reset across reports.
-  double avg_age = 0.0;
-  if (yals->ddfw.age_window_count > 0)
-    avg_age = (double) yals->ddfw.age_window_sum / (double) yals->ddfw.age_window_count;
+  // Rolling K-window mean of HD between current and K-flips-ago assignment
+  // (one sample per flip; same K as age window).
+  double avg_hd = 0.0;
+  if (yals->ddfw.hd_value_count > 0)
+    avg_hd = (double) yals->ddfw.hd_value_sum / (double) yals->ddfw.hd_value_count;
   fprintf (yals->out, "%s", yals->opts.prefix);
   va_start (ap, fmt);
   vfprintf (yals->out, fmt, ap);
   va_end (ap);
   fprintf (yals->out,
-    " : best %d (tmp %d), clauses %d, constraints %d, flips %.0f, %.2f sec, %.2f kflips/sec, avg_age %.1f\n",
-    yals->stats.best, yals->stats.tmp,yals->stats.best_clauses, yals->stats.best_cardinality, f, t, yals_avg (f/1e3, t), avg_age);
+    " : best %d (tmp %d), clauses %d, constraints %d, flips %.0f, %.2f sec, %.2f kflips/sec, avg_hd %.1f\n",
+    yals->stats.best, yals->stats.tmp,yals->stats.best_clauses, yals->stats.best_cardinality, f, t, yals_avg (f/1e3, t), avg_hd);
   fflush (yals->out);
   yals_msgunlock (yals);
 }
@@ -1751,6 +1753,44 @@ void yals_flip_ddfw (Yals * yals, int lit) {
       yals->ddfw.age_window_head = (h + 1) % K;
     }
     yals->ddfw.tabu_last_flipped[v] = yals->stats.flips;
+
+    // Sliding-window Hamming-distance update. Same K as age window.
+    // - Toggle parity of v; update hd_window based on new parity.
+    // - If ring full, evict oldest var id and toggle its parity too.
+    {
+      int K2 = yals->ddfw.age_window_size;
+      int h2 = yals->ddfw.hd_ring_head;
+      unsigned char p_new = (unsigned char)(yals->ddfw.hd_parity[v] ^ 1);
+      yals->ddfw.hd_parity[v] = p_new;
+      if (p_new) yals->ddfw.hd_window++; else yals->ddfw.hd_window--;
+      if (yals->ddfw.hd_ring_count < K2) {
+        yals->ddfw.hd_ring[h2] = v;
+        yals->ddfw.hd_ring_count++;
+      } else {
+        int v_old = yals->ddfw.hd_ring[h2];
+        unsigned char p_old = (unsigned char)(yals->ddfw.hd_parity[v_old] ^ 1);
+        yals->ddfw.hd_parity[v_old] = p_old;
+        if (p_old) yals->ddfw.hd_window++; else yals->ddfw.hd_window--;
+        yals->ddfw.hd_ring[h2] = v;
+      }
+      yals->ddfw.hd_ring_head = (h2 + 1) % K2;
+
+      // Sample current hd_window into the rolling K-window mean buffer.
+      {
+        int hh = yals->ddfw.hd_value_head;
+        int sample = yals->ddfw.hd_window;
+        if (yals->ddfw.hd_value_count < K2) {
+          yals->ddfw.hd_value_ring[hh] = sample;
+          yals->ddfw.hd_value_sum += sample;
+          yals->ddfw.hd_value_count++;
+        } else {
+          yals->ddfw.hd_value_sum -= yals->ddfw.hd_value_ring[hh];
+          yals->ddfw.hd_value_ring[hh] = sample;
+          yals->ddfw.hd_value_sum += sample;
+        }
+        yals->ddfw.hd_value_head = (hh + 1) % K2;
+      }
+    }
   }
 
   // Debugging information
@@ -3537,6 +3577,9 @@ void yals_del (Yals * yals) {
   free (yals->ddfw.max_weighted_neighbour);
   free (yals->ddfw.tabu_last_flipped);
   free (yals->ddfw.age_window_buf);
+  free (yals->ddfw.hd_ring);
+  free (yals->ddfw.hd_parity);
+  free (yals->ddfw.hd_value_ring);
   free (yals->ddfw.sat_count_in_clause);
   free (yals->ddfw.helper_hash_clauses);
   free (yals->ddfw.helper_hash_vars);
@@ -5398,6 +5441,21 @@ void yals_init_ddfw (Yals *yals)
   yals->ddfw.age_window_head = 0;
   yals->ddfw.age_window_count = 0;
   yals->ddfw.age_window_sum  = 0;
+  // Sliding-window Hamming-distance buffers (same K as age window).
+  {
+    int K2 = yals->ddfw.age_window_size;
+    int nv = yals->nvars + 1;
+    yals->ddfw.hd_ring       = malloc ((size_t) K2 * sizeof (int));
+    yals->ddfw.hd_parity     = calloc ((size_t) nv, sizeof (unsigned char));
+    yals->ddfw.hd_ring_head  = 0;
+    yals->ddfw.hd_ring_count = 0;
+    yals->ddfw.hd_window     = 0;
+    yals->ddfw.hd_value_ring  = malloc ((size_t) K2 * sizeof (int));
+    yals->ddfw.hd_value_head  = 0;
+    yals->ddfw.hd_value_count = 0;
+    yals->ddfw.hd_value_sum   = 0;
+    yals->ddfw.hd_last_restart_flip = INT64_MIN / 2;
+  }
 
   yals->ddfw.conscutive_lm = 0;
   yals->ddfw.count_conscutive_lm = 0;
@@ -6361,9 +6419,37 @@ int yals_inner_loop_max_tries (Yals * yals)
             continue;
           }
           yals_flip_ddfw (yals, lit);
+          // --hd_restart: trigger an inner restart (same control flow as
+          // hitting --cutoff) as soon as the rolling K-window mean of HD
+          // drops below the threshold. Two gates:
+          //   1. window must be full (hd_value_count >= K) so we have a
+          //      full K-flip sample, not a partial early measurement;
+          //   2. at least K flips since the previous HD-trigger fire, so
+          //      consecutive HD-restarts are spaced like cutoff restarts.
+          {
+            int hd_thresh = yals->opts.hd_restart.val;
+            int K_full = yals->ddfw.age_window_size;
+            if (hd_thresh > 0 &&
+                yals->ddfw.hd_value_count >= K_full &&
+                yals->stats.flips - yals->ddfw.hd_last_restart_flip
+                  >= (int64_t) K_full) {
+              double avg_hd = (double) yals->ddfw.hd_value_sum
+                              / (double) yals->ddfw.hd_value_count;
+              if (avg_hd < (double) hd_thresh) {
+                yals->ddfw.hd_last_restart_flip = yals->stats.flips;
+                yals_msg (yals, 1,
+                  "hd_restart trigger at flips %lld: avg_hd %.2f < %d "
+                  "(K=%d), forcing restart %lld",
+                  (long long) yals->stats.flips, avg_hd, hd_thresh,
+                  K_full,
+                  (long long) (yals->stats.restart.inner.count + 1));
+                break;
+              }
+            }
+          }
     }
   }
-  return -1;    
+  return -1;
 }
 
 void yals_set_wid (Yals * yals, int widx)

@@ -353,6 +353,30 @@ typedef struct DDFW {
   int      age_window_count;  // 0..K (grows until full, then stays at K)
   int64_t  age_window_sum;    // sum of buf[0..count-1]
 
+  // Sliding-window Hamming distance: HD between the current assignment and
+  // the assignment K flips ago. Equivalently, # of vars flipped an odd
+  // number of times within the last K flips. Same K = age_window_size.
+  // Per-flip update is O(1): toggle parity of the new flipping var, and
+  // if the ring is full, evict the oldest var id and toggle its parity
+  // too. hd_window tracks the running count of vars with odd parity.
+  // hd_sum / hd_samples accumulates per-flip HD to produce avg_hd over
+  // the same window as avg_age (one sample per flip, but only once the
+  // ring has filled, so HD is meaningful w.r.t. exactly K-ago).
+  int    * hd_ring;           // ring of K var ids
+  unsigned char * hd_parity;  // per-var parity (0/1) within window; size nvars+1
+  int      hd_ring_head;      // next-write index in [0, K)
+  int      hd_ring_count;     // 0..K (grows until full, then stays at K)
+  int      hd_window;         // running HD = # vars with odd parity in window
+  // Rolling K-window mean of hd_window (one sample per flip).
+  int    * hd_value_ring;     // ring of K int samples of hd_window
+  int      hd_value_head;
+  int      hd_value_count;
+  int64_t  hd_value_sum;
+  // Last stats.flips value at which an --hd_restart trigger fired (used to
+  // enforce a minimum K-flip spacing between consecutive HD-triggered
+  // restarts, mirroring the cutoff's natural spacing).
+  int64_t  hd_last_restart_flip;
+
   // --oldestsource: LRU doubly-linked list over all constraints (unified id =
   // clause cidx for u<nclauses; card cidx + nclauses else). Head = least
   // recently used as a source. Allocated only when --oldestsource is on.
