@@ -5432,8 +5432,9 @@ void yals_init_ddfw (Yals *yals)
   // appears tabu and no never-flipped var pollutes the age stat.
   {
     int nv = yals->nvars + 1;
-    yals->ddfw.tabu_last_flipped = malloc (nv * sizeof (int64_t));
-    for (int v = 0; v < nv; v++) yals->ddfw.tabu_last_flipped[v] = INT64_MIN / 2;
+    // Init to 0 = "never flipped yet". Callers (tabu check, avg_age) gate
+    // on `prev > 0` so the zero sentinel naturally excludes these vars.
+    yals->ddfw.tabu_last_flipped = calloc ((size_t) nv, sizeof (int64_t));
   }
   // Sliding-window age ring buffer.
   yals->ddfw.age_window_size = yals->opts.age_window.val;
@@ -5454,7 +5455,10 @@ void yals_init_ddfw (Yals *yals)
     yals->ddfw.hd_value_head  = 0;
     yals->ddfw.hd_value_count = 0;
     yals->ddfw.hd_value_sum   = 0;
-    yals->ddfw.hd_last_restart_flip = INT64_MIN / 2;
+    // Init to 0; the spacing gate is `flips - hd_last_restart_flip >= K`,
+    // and the trigger ALSO requires hd_value_count >= K, so the first
+    // eligible window can fire freely without a magic sentinel.
+    yals->ddfw.hd_last_restart_flip = 0;
   }
 
   yals->ddfw.conscutive_lm = 0;
@@ -5768,7 +5772,8 @@ int yals_pick_literal_from_heap (Yals * yals, int soft) {
           for (int i = 0; i < max_tries; i++) {
             int v = yals_pop_max_heap (yals, heap);
             if (!v) break;
-            if (yals->stats.flips - yals->ddfw.tabu_last_flipped[abs (v)] < tabu) {
+            int64_t prev = yals->ddfw.tabu_last_flipped[abs (v)];
+            if (prev > 0 && yals->stats.flips - prev < tabu) {
               Lit_Score t; t.lit = v; t.score = yals_get_heap_score (heap, v);
               PUSH (yals->lit_scores, t);
               continue;

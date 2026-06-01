@@ -338,15 +338,15 @@ typedef struct DDFW {
   //   - --tabu: v is tabu while stats.flips - last_flipped[v] < opts.tabu.val
   //   - avg-age stat in "new minimum" prints
   // Always allocated when DDFW is built. Indexed by variable id (1..nvars).
-  // INT64_MIN/2 is a sentinel meaning "never flipped yet" -- skipped in the
-  // age statistic so vars that haven't moved don't pollute the average.
+  // 0 is the "never flipped yet" sentinel -- callers gate on `prev > 0`
+  // so these vars don't pollute the age stat or appear tabu at startup.
   int64_t * tabu_last_flipped;
   // Sliding-window average of "age" of the just-flipped variable, where
   // age = stats.flips - prev_flip_step. Implemented as a ring buffer of
   // size opts.age_window.val. Vars that have never been flipped before
-  // (sentinel last_flipped[v] == INT64_MIN/2) contribute no sample. The
-  // window is NOT reset at "new minimum" prints -- avg_age is the
-  // continuous rolling average over the last K samples.
+  // (last_flipped[v] == 0) contribute no sample. The window is NOT
+  // reset at "new minimum" prints -- avg_age is the continuous rolling
+  // average over the last K samples.
   int64_t * age_window_buf;   // ring of K int64_t
   int      age_window_size;   // K
   int      age_window_head;   // next-write index in [0, K)
