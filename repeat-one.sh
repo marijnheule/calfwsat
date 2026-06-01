@@ -93,7 +93,11 @@ done
 # -------- summary --------
 SUMMARY="$OUT_DIR/summary.txt"
 awk -v N="$N" -v TO="$TIMEOUT_SEC" -v OUT="$OUT_DIR" -v BASE="$BASE" '
-BEGIN { nsat=0; nto=0; nother=0; par2=0; sumwall_sat=0; sumflips_sat=0 }
+BEGIN {
+  nsat=0; nto=0; nother=0; par2=0; sumwall_sat=0; sumflips_sat=0
+  # Initialize integer-second histogram buckets 0..TO; bucket index TO holds "timeout-or-beyond".
+  for (i = 0; i <= TO; i++) hist[i] = 0
+}
 {
   seed=$1; ec=$2; wall=$3+0
   sat=0; flips=0
@@ -107,10 +111,13 @@ BEGIN { nsat=0; nto=0; nother=0; par2=0; sumwall_sat=0; sumflips_sat=0 }
     nsat++; sumwall_sat += wall; sumflips_sat += flips
     walls[nsat] = wall; flipsa[nsat] = flips
     par2 += wall
+    # Histogram: bucket by floor(wall) seconds.
+    b = int(wall); if (b >= TO) b = TO
+    hist[b]++
   } else if (ec==124 || ec==137 || wall >= TO-1) {
-    nto++; par2 += 2*TO
+    nto++; par2 += 2*TO; hist[TO]++
   } else {
-    nother++; par2 += 2*TO
+    nother++; par2 += 2*TO; hist[TO]++
   }
 }
 function median_of(arr, n,    sorted, i, j, t) {
@@ -129,6 +136,20 @@ END {
   printf "PAR-2 = %.2f s (lower is better; SAT=wall, TO=2*timeout)\n", par2/N
   printf "wall sec  (sat-only):  mean %.2f  median %.2f\n", mw, medw
   printf "flips     (sat-only):  mean %.0f  median %.0f\n", mf, medf
+
+  # Histogram: one bar per integer second. Last row is timeout/other.
+  hmax = 0
+  for (i = 0; i <= TO; i++) if (hist[i] > hmax) hmax = hist[i]
+  barwidth = 50
+  printf "\nwall-time histogram (1s buckets; bar maxed at %d count):\n", hmax
+  for (i = 0; i <= TO; i++) {
+    label = sprintf("%3d-%-3d s", i, i+1)
+    if (i == TO) label = sprintf("%3d+   s  (TO/other)", TO)
+    n_in_bar = (hmax > 0 ? int((1.0 * hist[i] * barwidth) / hmax + 0.5) : 0)
+    bar = ""
+    for (k = 0; k < n_in_bar; k++) bar = bar "#"
+    printf "  %-22s %5d  %s\n", label, hist[i], bar
+  }
 }
 ' "$ROWS" >"$SUMMARY"
 
