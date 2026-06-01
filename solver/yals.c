@@ -645,13 +645,11 @@ static void yals_report (Yals * yals, const char * fmt, ...) {
   yals_msglock (yals);
   f = yals->stats.flips;
   t = yals_sec (yals);
-  // Avg age: how many flips elapsed between this variable's previous and
-  // current flip. Accumulated since the last yals_report; reset here.
+  // Avg age over the rolling window of the last opts.age_window.val flips
+  // (skipping first-flip-ever vars). NOT reset across reports.
   double avg_age = 0.0;
-  if (yals->ddfw.age_count > 0)
-    avg_age = (double) yals->ddfw.age_sum / (double) yals->ddfw.age_count;
-  yals->ddfw.age_sum = 0;
-  yals->ddfw.age_count = 0;
+  if (yals->ddfw.age_window_count > 0)
+    avg_age = (double) yals->ddfw.age_window_sum / (double) yals->ddfw.age_window_count;
   fprintf (yals->out, "%s", yals->opts.prefix);
   va_start (ap, fmt);
   vfprintf (yals->out, fmt, ap);
@@ -1731,14 +1729,26 @@ void yals_flip_ddfw (Yals * yals, int lit) {
   yals->ddfw.last_flipped = lit;
   // Per-variable last-flip-step bookkeeping (used by --tabu and avg-age
   // stat). Compute the age of the to-be-flipped var (= flips since its
-  // previous flip) and accumulate, skipping the sentinel for vars that
-  // have never been flipped before.
+  // previous flip) and push into the rolling K-window, skipping the
+  // sentinel for vars that have never been flipped before.
   {
     int v = abs (lit);
     int64_t prev = yals->ddfw.tabu_last_flipped[v];
     if (prev > 0) {
-      yals->ddfw.age_sum += yals->stats.flips - prev;
-      yals->ddfw.age_count++;
+      int64_t age = yals->stats.flips - prev;
+      int K = yals->ddfw.age_window_size;
+      int h = yals->ddfw.age_window_head;
+      if (yals->ddfw.age_window_count < K) {
+        yals->ddfw.age_window_buf[h] = age;
+        yals->ddfw.age_window_sum += age;
+        yals->ddfw.age_window_count++;
+      } else {
+        // ring is full: evict the oldest sample at head, write new
+        yals->ddfw.age_window_sum -= yals->ddfw.age_window_buf[h];
+        yals->ddfw.age_window_buf[h] = age;
+        yals->ddfw.age_window_sum += age;
+      }
+      yals->ddfw.age_window_head = (h + 1) % K;
     }
     yals->ddfw.tabu_last_flipped[v] = yals->stats.flips;
   }
@@ -3525,7 +3535,8 @@ void yals_del (Yals * yals) {
   yals_oldsrc_free (yals);
   free (yals->ddfw.cc_comp);
   free (yals->ddfw.max_weighted_neighbour);
-  free (yals->ddfw.tabu_last_flipped);  // NULL-safe if --tabu was 0
+  free (yals->ddfw.tabu_last_flipped);
+  free (yals->ddfw.age_window_buf);
   free (yals->ddfw.sat_count_in_clause);
   free (yals->ddfw.helper_hash_clauses);
   free (yals->ddfw.helper_hash_vars);
@@ -5381,8 +5392,12 @@ void yals_init_ddfw (Yals *yals)
     yals->ddfw.tabu_last_flipped = malloc (nv * sizeof (int64_t));
     for (int v = 0; v < nv; v++) yals->ddfw.tabu_last_flipped[v] = INT64_MIN / 2;
   }
-  yals->ddfw.age_sum = 0;
-  yals->ddfw.age_count = 0;
+  // Sliding-window age ring buffer.
+  yals->ddfw.age_window_size = yals->opts.age_window.val;
+  yals->ddfw.age_window_buf  = malloc ((size_t) yals->ddfw.age_window_size * sizeof (int64_t));
+  yals->ddfw.age_window_head = 0;
+  yals->ddfw.age_window_count = 0;
+  yals->ddfw.age_window_sum  = 0;
 
   yals->ddfw.conscutive_lm = 0;
   yals->ddfw.count_conscutive_lm = 0;

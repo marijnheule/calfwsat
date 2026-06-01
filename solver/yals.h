@@ -341,11 +341,17 @@ typedef struct DDFW {
   // INT64_MIN/2 is a sentinel meaning "never flipped yet" -- skipped in the
   // age statistic so vars that haven't moved don't pollute the average.
   int64_t * tabu_last_flipped;
-  // Rolling sum and count of ages of the just-flipped variable, accumulated
-  // since the last "new minimum" report. age = stats.flips - prev_flip_step.
-  // Reset to 0 each time yals_report prints them.
-  int64_t age_sum;
-  int64_t age_count;
+  // Sliding-window average of "age" of the just-flipped variable, where
+  // age = stats.flips - prev_flip_step. Implemented as a ring buffer of
+  // size opts.age_window.val. Vars that have never been flipped before
+  // (sentinel last_flipped[v] == INT64_MIN/2) contribute no sample. The
+  // window is NOT reset at "new minimum" prints -- avg_age is the
+  // continuous rolling average over the last K samples.
+  int64_t * age_window_buf;   // ring of K int64_t
+  int      age_window_size;   // K
+  int      age_window_head;   // next-write index in [0, K)
+  int      age_window_count;  // 0..K (grows until full, then stays at K)
+  int64_t  age_window_sum;    // sum of buf[0..count-1]
 
   // --oldestsource: LRU doubly-linked list over all constraints (unified id =
   // clause cidx for u<nclauses; card cidx + nclauses else). Head = least
