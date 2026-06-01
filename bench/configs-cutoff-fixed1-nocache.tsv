@@ -1,0 +1,17 @@
+# Cutoff sweep with --fixed=1 --cached=0 (always default strategy, never
+# pull from per-worker cache on restart). Combined with default --pol=0
+# this means: every non-skip restart re-rolls a fresh per-bit random
+# assignment. The only restarts that "skip" are descent-in-progress
+# ones (best strictly improved since previous restart), which is by
+# design and not gated by any option.
+#
+# Sweep purpose: with deterministic "fresh random per cutoff" mode
+# enabled, what's the best cutoff?  Previous sweep (configs-cutoff-nocache)
+# had the random-strategy escape hatch active.
+#
+# name	args
+co20k	--cutoff=20000   --fixed=1 --cached=0
+co50k	--cutoff=50000   --fixed=1 --cached=0
+co300k	--cutoff=300000  --fixed=1 --cached=0
+co1M	--cutoff=1000000 --fixed=1 --cached=0
+co2_5M	--cutoff=2500000 --fixed=1 --cached=0
