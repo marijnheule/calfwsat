@@ -645,13 +645,20 @@ static void yals_report (Yals * yals, const char * fmt, ...) {
   yals_msglock (yals);
   f = yals->stats.flips;
   t = yals_sec (yals);
+  // Avg age: how many flips elapsed between this variable's previous and
+  // current flip. Accumulated since the last yals_report; reset here.
+  double avg_age = 0.0;
+  if (yals->ddfw.age_count > 0)
+    avg_age = (double) yals->ddfw.age_sum / (double) yals->ddfw.age_count;
+  yals->ddfw.age_sum = 0;
+  yals->ddfw.age_count = 0;
   fprintf (yals->out, "%s", yals->opts.prefix);
   va_start (ap, fmt);
   vfprintf (yals->out, fmt, ap);
   va_end (ap);
   fprintf (yals->out,
-    " : best %d (tmp %d), clauses %d, constraints %d, flips %.0f, %.2f sec, %.2f kflips/sec\n",
-    yals->stats.best, yals->stats.tmp,yals->stats.best_clauses, yals->stats.best_cardinality, f, t, yals_avg (f/1e3, t));
+    " : best %d (tmp %d), clauses %d, constraints %d, flips %.0f, %.2f sec, %.2f kflips/sec, avg_age %.1f\n",
+    yals->stats.best, yals->stats.tmp,yals->stats.best_clauses, yals->stats.best_cardinality, f, t, yals_avg (f/1e3, t), avg_age);
   fflush (yals->out);
   yals_msgunlock (yals);
 }
@@ -1722,9 +1729,19 @@ void yals_flip_ddfw (Yals * yals, int lit) {
   yals->stats.flips++;
   yals->stats.unsum += yals_nunsat (yals);
   yals->ddfw.last_flipped = lit;
-  // --tabu: record this flip's number for the flipped variable.
-  if (yals->ddfw.tabu_last_flipped)
-    yals->ddfw.tabu_last_flipped[abs (lit)] = yals->stats.flips;
+  // Per-variable last-flip-step bookkeeping (used by --tabu and avg-age
+  // stat). Compute the age of the to-be-flipped var (= flips since its
+  // previous flip) and accumulate, skipping the sentinel for vars that
+  // have never been flipped before.
+  {
+    int v = abs (lit);
+    int64_t prev = yals->ddfw.tabu_last_flipped[v];
+    if (prev > 0) {
+      yals->ddfw.age_sum += yals->stats.flips - prev;
+      yals->ddfw.age_count++;
+    }
+    yals->ddfw.tabu_last_flipped[v] = yals->stats.flips;
+  }
 
   // Debugging information
   //printf ("\n P =====> %d %d",yals->stats.flips, lit);
@@ -5356,14 +5373,16 @@ void yals_init_ddfw (Yals *yals)
   yals->ddfw.local_minima = 0;
   yals->ddfw.wt_count = 0;
 
-  // --tabu: allocate per-variable last-flipped-time array; init to a very
-  // negative sentinel so no var is tabu before its first actual flip.
-  yals->ddfw.tabu_last_flipped = NULL;
-  if (yals->opts.tabu.val > 0) {
+  // Per-variable last-flipped-step (used by --tabu AND by the avg-age stat
+  // in "new minimum" prints). Always allocated. Init sentinel so no var
+  // appears tabu and no never-flipped var pollutes the age stat.
+  {
     int nv = yals->nvars + 1;
     yals->ddfw.tabu_last_flipped = malloc (nv * sizeof (int64_t));
     for (int v = 0; v < nv; v++) yals->ddfw.tabu_last_flipped[v] = INT64_MIN / 2;
   }
+  yals->ddfw.age_sum = 0;
+  yals->ddfw.age_count = 0;
 
   yals->ddfw.conscutive_lm = 0;
   yals->ddfw.count_conscutive_lm = 0;
@@ -5669,7 +5688,7 @@ int yals_pick_literal_from_heap (Yals * yals, int soft) {
         // the first non-tabu. If everything popped is tabu, fall back to the
         // first stashed (least bad). Stashed vars are pushed back at the end.
         int tabu = yals->opts.tabu.val;
-        if (tabu > 0 && yals->ddfw.tabu_last_flipped) {
+        if (tabu > 0) {
           CLEAR (yals->lit_scores);
           int max_tries = COUNT (heap->stack);
           if (max_tries > tabu + 1) max_tries = tabu + 1;

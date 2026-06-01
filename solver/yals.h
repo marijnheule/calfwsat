@@ -333,11 +333,19 @@ typedef struct DDFW {
   int64_t topk_stat_diverged;      // (TOPK_VERIFY=1 env var) queries where top-K pick != full-scan pick
   int topk_verify;                 // set from TOPK_VERIFY env at build time
 
-  // --tabu: track when each variable was last flipped (stats.flips value at
-  // flip time). The picker treats var v as tabu if
-  //   stats.flips - tabu_last_flipped[v] < opts.tabu.val.
-  // Allocated only when opts.tabu.val > 0. Indexed by variable id (1..nvars).
+  // Per-variable last-flip step number (stats.flips value at the moment v
+  // was last flipped). Used by:
+  //   - --tabu: v is tabu while stats.flips - last_flipped[v] < opts.tabu.val
+  //   - avg-age stat in "new minimum" prints
+  // Always allocated when DDFW is built. Indexed by variable id (1..nvars).
+  // INT64_MIN/2 is a sentinel meaning "never flipped yet" -- skipped in the
+  // age statistic so vars that haven't moved don't pollute the average.
   int64_t * tabu_last_flipped;
+  // Rolling sum and count of ages of the just-flipped variable, accumulated
+  // since the last "new minimum" report. age = stats.flips - prev_flip_step.
+  // Reset to 0 each time yals_report prints them.
+  int64_t age_sum;
+  int64_t age_count;
 
   // --oldestsource: LRU doubly-linked list over all constraints (unified id =
   // clause cidx for u<nclauses; card cidx + nclauses else). Head = least
