@@ -549,6 +549,11 @@ void yals_stats (Yals *);
 YalsProbePool * yals_probe_pool_new (void);
 void yals_probe_pool_delete (YalsProbePool *);
 void yals_set_probe_pool (Yals *, YalsProbePool *);
+// Print a single global line summarizing --bypass usage across `n`
+// workers (count + fraction of total cutoff hits that were bypassed).
+// Mirror of yals_print_combined_probe_hist for the bypass counter.
+void yals_print_combined_bypass_stats (Yals ** ys, int n);
+
 // Print a single probe-best histogram aggregated across `n` workers.
 // Each worker's per-probe scores (yals->ddfw.probe_bests) are merged
 // into one flat list before bucketing. Use `n=1` for sequential runs.

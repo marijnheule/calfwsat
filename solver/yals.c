@@ -5308,18 +5308,10 @@ void yals_stats (Yals * yals) {
   yals_msg (yals, 0,
     "%lld inner restarts",
     (long long) s->restart.inner.count);
-  // Restart bypasses (--bypass): how many times a probe was extended past
-  // the cutoff. With --bypass=0 the count is always 0 -- print it plain
-  // (no percentage); otherwise show the fraction of cutoff hits that were
-  // bypassed.
-  if (yals->opts.bypass.val)
-    yals_msg (yals, 0,
-      "%lld bypassed restarts (%.1f%% of inner cutoffs reached)",
-      (long long) s->restart.bypassed,
-      yals_pct (s->restart.bypassed,
-                s->restart.bypassed + s->restart.inner.count));
-  else
-    yals_msg (yals, 0, "0 bypassed restarts (--bypass disabled)");
+  // Note: bypass count is printed globally (aggregated across all workers
+  // in palsat) from main.c via yals_print_combined_bypass_stats, since
+  // --bypass uses a shared cross-worker histogram and the natural unit of
+  // measurement is the global counter, not the per-worker one.
 
   yals_msg (yals, 0,
     "%lld outer restarts",
@@ -6282,6 +6274,33 @@ void yals_print_stats (Yals * yals)
   //                 yals->fres_fact, yals->fres_count, yals->stats.time.restart);
   // double r = (double) yals->ddfw.source_not_selected / (double) yals->ddfw.total_transfers;
   //printf ("c stats |%ld ", yals->stats.flips);
+}
+
+/*------------------------------------------------------------------------*/
+/* Single global summary of --bypass usage across `n` workers: total      */
+/* bypasses + total inner restarts = total cutoff hits. Printed once at   */
+/* end of run from main.c.                                                */
+/*------------------------------------------------------------------------*/
+void yals_print_combined_bypass_stats (Yals ** ys, int n) {
+  if (n <= 0 || !ys || !ys[0]) return;
+  int64_t bypassed = 0, restarts = 0;
+  int bypass_enabled = 0;
+  for (int i = 0; i < n; i++) {
+    bypassed  += ys[i]->stats.restart.bypassed;
+    restarts  += ys[i]->stats.restart.inner.count;
+    if (ys[i]->opts.bypass.val) bypass_enabled = 1;
+  }
+  if (bypass_enabled) {
+    int64_t total = bypassed + restarts;
+    yals_msg (ys[0], 0,
+      "%lld bypassed restarts (%.1f%% of %lld inner cutoffs reached, summed across %d worker%s)",
+      (long long) bypassed,
+      yals_pct (bypassed, total),
+      (long long) total,
+      n, (n == 1 ? "" : "s"));
+  } else {
+    yals_msg (ys[0], 0, "0 bypassed restarts (--bypass disabled)");
+  }
 }
 
 /*------------------------------------------------------------------------*/
