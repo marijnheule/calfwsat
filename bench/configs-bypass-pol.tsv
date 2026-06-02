@@ -1,17 +1,24 @@
-# 2x2 sweep: --bypass on/off X --pol in {0, -1}, all with cutoff=20K.
+# 2x2x2 sweep: --bypass {0,1} X --pol {0,-1} X --fixed {1,4}, cutoff=20K.
 #
-# --bypass: at each cutoff hit, extend the probe with probability p =
-#   fraction of past probe-bests strictly worse than current stats.tmp
-#   (capped at 0.99). Idea: trade restart frequency for "stay in the
-#   rare-good basin a bit longer."
+# --bypass: at each cutoff hit, extend the probe with probability p^c,
+#   where p = fraction of past probe-bests strictly worse than current
+#   stats.tmp (capped at 0.99) and c = # cutoff hits so far in this
+#   probe. Trades restart frequency for "stay in the rare-good basin."
 # --pol=0:  per-bit random initial assignment (current default).
 # --pol=-1: all-negative initial assignment.
+# --fixed=1: always use the default strategy at restart (current default).
+# --fixed=4: 25% default + 75% random strategy (the historical setting
+#   that re-enables the random-strategy escape hatch -- strat.cached and
+#   strat.pol get resampled per restart in 75% of cycles).
 #
-# All rows also force --fixed=1 --cached=0 (current defaults; spelled
-# out for the record).
+# All rows force --cached=0 explicitly (current default).
 #
 # name		args
-b0_pol0		--bypass=0 --pol=0  --cutoff=20000
-b0_polneg	--bypass=0 --pol=-1 --cutoff=20000
-b1_pol0		--bypass=1 --pol=0  --cutoff=20000
-b1_polneg	--bypass=1 --pol=-1 --cutoff=20000
+b0_p0_f1	--bypass=0 --pol=0  --fixed=1 --cached=0 --cutoff=20000
+b0_p0_f4	--bypass=0 --pol=0  --fixed=4 --cached=0 --cutoff=20000
+b0_pn_f1	--bypass=0 --pol=-1 --fixed=1 --cached=0 --cutoff=20000
+b0_pn_f4	--bypass=0 --pol=-1 --fixed=4 --cached=0 --cutoff=20000
+b1_p0_f1	--bypass=1 --pol=0  --fixed=1 --cached=0 --cutoff=20000
+b1_p0_f4	--bypass=1 --pol=0  --fixed=4 --cached=0 --cutoff=20000
+b1_pn_f1	--bypass=1 --pol=-1 --fixed=1 --cached=0 --cutoff=20000
+b1_pn_f4	--bypass=1 --pol=-1 --fixed=4 --cached=0 --cutoff=20000
