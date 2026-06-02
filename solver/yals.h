@@ -114,6 +114,7 @@ typedef struct Stats {
   struct {
     struct { int64_t count; } outer;
     struct { int64_t count; } inner;
+    int64_t bypassed;  // # times --bypass extended a probe past cutoff
   } restart;
   struct { struct { int chunks, lnks; } max; int64_t unfair; } queue;
   struct { int64_t inserted, replaced, skipped; } cache;

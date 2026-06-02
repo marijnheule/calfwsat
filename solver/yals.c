@@ -5308,6 +5308,15 @@ void yals_stats (Yals * yals) {
   yals_msg (yals, 0,
     "%lld inner restarts",
     (long long) s->restart.inner.count);
+  // Restart bypasses (--bypass): how many times a probe was extended past
+  // the cutoff. Each one represents an "almost-restart" that didn't happen.
+  // Printed unconditionally so it's easy to grep even when --bypass=0
+  // (count will be 0).
+  yals_msg (yals, 0,
+    "%lld bypassed restarts (%.1f%% of inner cutoffs reached)",
+    (long long) s->restart.bypassed,
+    yals_pct (s->restart.bypassed,
+              s->restart.bypassed + s->restart.inner.count));
 
   yals_msg (yals, 0,
     "%lld outer restarts",
@@ -6632,6 +6641,7 @@ int yals_inner_loop_max_tries (Yals * yals)
           }
         }
         if (bypass) {
+          yals->stats.restart.bypassed++;
           yals_msg (yals, 2,
             "cutoff bypass at flips %lld: tmp=%d, p=%.3f -- extending probe",
             (long long) yals->stats.flips, yals->stats.tmp,
