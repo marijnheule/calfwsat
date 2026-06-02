@@ -63,6 +63,7 @@ typedef struct {
 typedef unsigned Word;
 
 typedef struct YalsSharedCache YalsSharedCache;
+typedef struct YalsProbePool YalsProbePool;
 
 #ifndef NYALSMEMS
 #define ADD(NAME,NUM) \
@@ -485,6 +486,7 @@ typedef struct Yals {
   // Optional pointer to a process-wide cache of assignments shared across
   // palsat workers. NULL when no shared cache is attached.
   YalsSharedCache * shared_cache;
+  YalsProbePool * probe_pool;
 
 } Yals;
 
@@ -538,6 +540,14 @@ int yals_nunsat_external (Yals *yals);
 
 void yals_stats (Yals *);
 
+// Shared probe-best pool: a histogram of per-probe stats.tmp values
+// pooled across all workers, used by --cutoff_bypass to gauge how the
+// current probe's best compares to the global distribution. Lock-
+// protected; reads/writes are infrequent (~1 per probe per worker)
+// so a single mutex is fine.
+YalsProbePool * yals_probe_pool_new (void);
+void yals_probe_pool_delete (YalsProbePool *);
+void yals_set_probe_pool (Yals *, YalsProbePool *);
 // Print a single probe-best histogram aggregated across `n` workers.
 // Each worker's per-probe scores (yals->ddfw.probe_bests) are merged
 // into one flat list before bucketing. Use `n=1` for sequential runs.

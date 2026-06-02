@@ -2014,6 +2014,93 @@ void yals_set_shared_cache (Yals * yals, YalsSharedCache * c) {
   yals->shared_cache = c;
 }
 
+/*------------------------------------------------------------------------*/
+/* Shared probe-best pool: histogram + running CDF (count-strictly-       */
+/* above each value) protected by a single mutex. Used by                  */
+/* --cutoff_bypass to compute "how good is my current probe vs. the       */
+/* global distribution of past probe-bests".                              */
+/*------------------------------------------------------------------------*/
+
+struct YalsProbePool {
+  pthread_mutex_t lock;
+  int * counts;             // counts[v] = # past probes that ended at best=v
+  int capacity;             // size of counts[]
+  int64_t total;            // sum of counts[] == # past probes recorded
+  // Running suffix sum: above[v] = sum_{w>v} counts[w]. Lazily maintained
+  // (resized + updated on each record). Lets query_p() be O(1) instead of
+  // O(capacity).
+  int64_t * above;
+};
+
+YalsProbePool * yals_probe_pool_new (void) {
+  YalsProbePool * p = calloc (1, sizeof (*p));
+  if (!p) return 0;
+  pthread_mutex_init (&p->lock, 0);
+  // Start small; grow on demand.
+  p->capacity = 16;
+  p->counts = calloc ((size_t) p->capacity, sizeof (int));
+  p->above  = calloc ((size_t) p->capacity, sizeof (int64_t));
+  p->total = 0;
+  return p;
+}
+
+void yals_probe_pool_delete (YalsProbePool * p) {
+  if (!p) return;
+  pthread_mutex_destroy (&p->lock);
+  free (p->counts);
+  free (p->above);
+  free (p);
+}
+
+void yals_set_probe_pool (Yals * yals, YalsProbePool * p) {
+  yals->probe_pool = p;
+}
+
+// Grow `counts` / `above` so that index `v` is accessible. Caller holds lock.
+static void yals_probe_pool_ensure_capacity (YalsProbePool * p, int v) {
+  if (v < p->capacity) return;
+  int newcap = p->capacity;
+  while (newcap <= v) newcap *= 2;
+  p->counts = realloc (p->counts, (size_t) newcap * sizeof (int));
+  p->above  = realloc (p->above,  (size_t) newcap * sizeof (int64_t));
+  for (int i = p->capacity; i < newcap; i++) {
+    p->counts[i] = 0;
+    p->above[i]  = 0;
+  }
+  p->capacity = newcap;
+}
+
+// Record one probe-best value. Updates the suffix-sum incrementally so
+// query_p() stays O(1).
+static void yals_probe_pool_record (YalsProbePool * p, int v) {
+  if (!p || v < 0) return;
+  pthread_mutex_lock (&p->lock);
+  yals_probe_pool_ensure_capacity (p, v);
+  p->counts[v]++;
+  p->total++;
+  // above[w] = # past entries with best > w. After inserting v, this
+  // increases by 1 for all w < v.
+  for (int w = 0; w < v; w++) p->above[w]++;
+  pthread_mutex_unlock (&p->lock);
+}
+
+// p = (# past probes with best > v) / total. Returns 0 when empty.
+// Capped at 0.99 so that even when the current probe beats every past
+// probe, there's a small per-cutoff chance to end the probe naturally
+// -- otherwise an early "first-ever best=1" probe would extend forever.
+static double yals_probe_pool_query_p (YalsProbePool * p, int v) {
+  if (!p) return 0.0;
+  if (v < 0) return 0.99;
+  double r;
+  pthread_mutex_lock (&p->lock);
+  if (p->total == 0) r = 0.0;
+  else if (v >= p->capacity) r = 0.0;  // current value beats every past entry
+  else r = (double) p->above[v] / (double) p->total;
+  pthread_mutex_unlock (&p->lock);
+  if (r > 0.99) r = 0.99;
+  return r;
+}
+
 void yals_shared_cache_stats (YalsSharedCache * c) {
   if (!c) return;
   fprintf (stdout,
@@ -3868,8 +3955,12 @@ static void yals_restart_inner (Yals * yals) {
   // Snapshot the just-completed probe's best (stats.tmp). Skip the very
   // first call (no probe has run yet -- restart.inner.count == 0) and
   // any probe that recorded no improvement (tmp still INT_MAX).
-  if (yals->stats.restart.inner.count > 0 && yals->stats.tmp != INT_MAX)
+  if (yals->stats.restart.inner.count > 0 && yals->stats.tmp != INT_MAX) {
     PUSH (yals->ddfw.probe_bests, yals->stats.tmp);
+    // Also feed the shared cross-worker pool used by --cutoff_bypass.
+    if (yals->probe_pool)
+      yals_probe_pool_record (yals->probe_pool, yals->stats.tmp);
+  }
   yals->stats.restart.inner.count++;
   if (yals->opts.verbose.val >= 2) {
       if (yals->using_maxs_weights)
@@ -6522,8 +6613,34 @@ int yals_inner_loop_max_tries (Yals * yals)
     if (!yals_nunsat(yals))
       return 1;
     yals_restart_inner (yals);
-    for (int c=0; c<yals->opts.cutoff.val || (yals->opts.cutoff.val <= 0) ; ++c)// cutoff 0 is unlimited flips
-    {
+    // Hand-rolled inner cutoff loop so we can intercept the natural
+    // cutoff exit and apply --cutoff_bypass (probabilistic re-extension
+    // based on stats.tmp's rank vs. the global probe-best pool).
+    int c = 0;
+    while (1) {
+      // Cutoff reached?
+      if (yals->opts.cutoff.val > 0 && c >= yals->opts.cutoff.val) {
+        int bypass = 0;
+        if (yals->opts.cutoff_bypass.val && yals->probe_pool
+            && yals->stats.tmp != INT_MAX) {
+          double pp = yals_probe_pool_query_p (yals->probe_pool,
+                                               yals->stats.tmp);
+          if (pp > 0.0) {
+            double r = (double) yals_rand (yals)
+                       / (1.0 + (double) UINT_MAX);
+            if (r < pp) bypass = 1;
+          }
+        }
+        if (bypass) {
+          yals_msg (yals, 2,
+            "cutoff bypass at flips %lld: tmp=%d, p=%.3f -- extending probe",
+            (long long) yals->stats.flips, yals->stats.tmp,
+            yals_probe_pool_query_p (yals->probe_pool, yals->stats.tmp));
+          c = 0;
+          continue;
+        }
+        break;  // normal cutoff exit
+      }
        if (!yals_nunsat(yals))
         return 1;
        // Check external termination callback (e.g., palsat sibling worker won).
@@ -6544,9 +6661,8 @@ int yals_inner_loop_max_tries (Yals * yals)
           }
           else {
             yals_ddfw_transfer_weights (yals);
-            c--;
             yals_check_global_satisfaction_invariant (yals);
-            continue;
+            continue;  // transfer iterations don't advance the cutoff counter
           }
           yals_flip_ddfw (yals, lit);
           // --hd_restart: trigger an inner restart (same control flow as
@@ -6577,6 +6693,7 @@ int yals_inner_loop_max_tries (Yals * yals)
               }
             }
           }
+          c++;  // one flip = one tick toward the cutoff
     }
   }
   return -1;

@@ -63,10 +63,12 @@ static Worker * worker;
 static YalsSharedCache * shared_cache;
 static YalsSharedCacheConfig shared_cache_cfg;
 static int shared_cache_enabled = 0;     // OFF by default; opt-in via --shared-cache
+static YalsProbePool * probe_pool;       // shared across all palsat workers
 static int done, winner, threads = THREADS, threadset;
 struct { pthread_mutex_t done, msg, mem; } lock;
 #else
 static Yals * yals;
+static YalsProbePool * probe_pool;       // single-solver case: still useful for bypass-against-self
 static int flipsset, memsset;
 static long long flips = -1, mems = -1;
 #endif
@@ -789,6 +791,11 @@ int main (int argc, char** argv) {
 #else
   yals = yals_new_with_mem_mgr (0, mymalloc, myrealloc, myfree);
   yals_setprefix (yals, "c ");
+  // Shared probe-best pool (in this build, "shared" = "self"): same
+  // bypass mechanism works with a single solver, accumulating against
+  // its own history.
+  probe_pool = yals_probe_pool_new ();
+  yals_set_probe_pool (yals, probe_pool);
 #endif
   verbose = 0;
   for (i = 1; i < argc; i++) {
@@ -918,6 +925,11 @@ int main (int argc, char** argv) {
   } else {
     msg ("shared assignment cache disabled (default; pass --shared-cache to enable)");
   }
+  // Shared probe-best pool: always allocated. Tracks per-probe stats.tmp
+  // across all workers; consumed by --cutoff_bypass.
+  probe_pool = yals_probe_pool_new ();
+  for (i = 0; i < threads; i++)
+    yals_set_probe_pool (worker[i].yals, probe_pool);
 #endif
   setsighandlers ();
   verbose = yals_getopt (YALS, "verbose");
@@ -1155,8 +1167,10 @@ DONE:
   for (i = 0; i < threads; i++) yals_del (worker[i].yals);
   myfree (0, worker, threads * sizeof *worker);
   yals_shared_cache_delete (shared_cache);
+  yals_probe_pool_delete (probe_pool);
 #else
   yals_del (yals);
+  yals_probe_pool_delete (probe_pool);
 #endif
   msg ("");
   msg ("%s returns with exit code %d", NAME, res);
