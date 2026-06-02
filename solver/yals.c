@@ -2017,7 +2017,7 @@ void yals_set_shared_cache (Yals * yals, YalsSharedCache * c) {
 /*------------------------------------------------------------------------*/
 /* Shared probe-best pool: histogram + running CDF (count-strictly-       */
 /* above each value) protected by a single mutex. Used by                  */
-/* --cutoff_bypass to compute "how good is my current probe vs. the       */
+/* --bypass to compute "how good is my current probe vs. the       */
 /* global distribution of past probe-bests".                              */
 /*------------------------------------------------------------------------*/
 
@@ -3957,7 +3957,7 @@ static void yals_restart_inner (Yals * yals) {
   // any probe that recorded no improvement (tmp still INT_MAX).
   if (yals->stats.restart.inner.count > 0 && yals->stats.tmp != INT_MAX) {
     PUSH (yals->ddfw.probe_bests, yals->stats.tmp);
-    // Also feed the shared cross-worker pool used by --cutoff_bypass.
+    // Also feed the shared cross-worker pool used by --bypass.
     if (yals->probe_pool)
       yals_probe_pool_record (yals->probe_pool, yals->stats.tmp);
   }
@@ -6614,14 +6614,14 @@ int yals_inner_loop_max_tries (Yals * yals)
       return 1;
     yals_restart_inner (yals);
     // Hand-rolled inner cutoff loop so we can intercept the natural
-    // cutoff exit and apply --cutoff_bypass (probabilistic re-extension
+    // cutoff exit and apply --bypass (probabilistic re-extension
     // based on stats.tmp's rank vs. the global probe-best pool).
     int c = 0;
     while (1) {
       // Cutoff reached?
       if (yals->opts.cutoff.val > 0 && c >= yals->opts.cutoff.val) {
         int bypass = 0;
-        if (yals->opts.cutoff_bypass.val && yals->probe_pool
+        if (yals->opts.bypass.val && yals->probe_pool
             && yals->stats.tmp != INT_MAX) {
           double pp = yals_probe_pool_query_p (yals->probe_pool,
                                                yals->stats.tmp);

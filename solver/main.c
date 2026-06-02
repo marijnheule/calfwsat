@@ -926,7 +926,7 @@ int main (int argc, char** argv) {
     msg ("shared assignment cache disabled (default; pass --shared-cache to enable)");
   }
   // Shared probe-best pool: always allocated. Tracks per-probe stats.tmp
-  // across all workers; consumed by --cutoff_bypass.
+  // across all workers; consumed by --bypass.
   probe_pool = yals_probe_pool_new ();
   for (i = 0; i < threads; i++)
     yals_set_probe_pool (worker[i].yals, probe_pool);

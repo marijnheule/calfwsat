@@ -541,7 +541,7 @@ int yals_nunsat_external (Yals *yals);
 void yals_stats (Yals *);
 
 // Shared probe-best pool: a histogram of per-probe stats.tmp values
-// pooled across all workers, used by --cutoff_bypass to gauge how the
+// pooled across all workers, used by --bypass to gauge how the
 // current probe's best compares to the global distribution. Lock-
 // protected; reads/writes are infrequent (~1 per probe per worker)
 // so a single mutex is fine.
