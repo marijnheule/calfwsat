@@ -2024,12 +2024,16 @@ void yals_set_shared_cache (Yals * yals, YalsSharedCache * c) {
 struct YalsProbePool {
   pthread_mutex_t lock;
   int * counts;             // counts[v] = # past probes that ended at best=v
-  int capacity;             // size of counts[]
+  int capacity;             // size of counts[] / above[] / bypass_by_tmp[]
   int64_t total;            // sum of counts[] == # past probes recorded
   // Running suffix sum: above[v] = sum_{w>v} counts[w]. Lazily maintained
   // (resized + updated on each record). Lets query_p() be O(1) instead of
   // O(capacity).
   int64_t * above;
+  // Per-tmp bypass count: bypass_by_tmp[v] = # times a bypass roll
+  // succeeded when the current probe had stats.tmp = v. Aggregated
+  // globally; printed at end of run.
+  int64_t * bypass_by_tmp;
 };
 
 YalsProbePool * yals_probe_pool_new (void) {
@@ -2038,8 +2042,9 @@ YalsProbePool * yals_probe_pool_new (void) {
   pthread_mutex_init (&p->lock, 0);
   // Start small; grow on demand.
   p->capacity = 16;
-  p->counts = calloc ((size_t) p->capacity, sizeof (int));
-  p->above  = calloc ((size_t) p->capacity, sizeof (int64_t));
+  p->counts        = calloc ((size_t) p->capacity, sizeof (int));
+  p->above         = calloc ((size_t) p->capacity, sizeof (int64_t));
+  p->bypass_by_tmp = calloc ((size_t) p->capacity, sizeof (int64_t));
   p->total = 0;
   return p;
 }
@@ -2049,6 +2054,7 @@ void yals_probe_pool_delete (YalsProbePool * p) {
   pthread_mutex_destroy (&p->lock);
   free (p->counts);
   free (p->above);
+  free (p->bypass_by_tmp);
   free (p);
 }
 
@@ -2056,16 +2062,19 @@ void yals_set_probe_pool (Yals * yals, YalsProbePool * p) {
   yals->probe_pool = p;
 }
 
-// Grow `counts` / `above` so that index `v` is accessible. Caller holds lock.
+// Grow `counts` / `above` / `bypass_by_tmp` so that index `v` is accessible.
+// Caller holds lock.
 static void yals_probe_pool_ensure_capacity (YalsProbePool * p, int v) {
   if (v < p->capacity) return;
   int newcap = p->capacity;
   while (newcap <= v) newcap *= 2;
-  p->counts = realloc (p->counts, (size_t) newcap * sizeof (int));
-  p->above  = realloc (p->above,  (size_t) newcap * sizeof (int64_t));
+  p->counts        = realloc (p->counts,        (size_t) newcap * sizeof (int));
+  p->above         = realloc (p->above,         (size_t) newcap * sizeof (int64_t));
+  p->bypass_by_tmp = realloc (p->bypass_by_tmp, (size_t) newcap * sizeof (int64_t));
   for (int i = p->capacity; i < newcap; i++) {
-    p->counts[i] = 0;
-    p->above[i]  = 0;
+    p->counts[i]        = 0;
+    p->above[i]         = 0;
+    p->bypass_by_tmp[i] = 0;
   }
   p->capacity = newcap;
 }
@@ -2082,6 +2091,32 @@ static void yals_probe_pool_record (YalsProbePool * p, int v) {
   // increases by 1 for all w < v.
   for (int w = 0; w < v; w++) p->above[w]++;
   pthread_mutex_unlock (&p->lock);
+}
+
+// Record one successful bypass at tmp=v.
+static void yals_probe_pool_record_bypass (YalsProbePool * p, int v) {
+  if (!p || v < 0) return;
+  pthread_mutex_lock (&p->lock);
+  yals_probe_pool_ensure_capacity (p, v);
+  p->bypass_by_tmp[v]++;
+  pthread_mutex_unlock (&p->lock);
+}
+
+// Snapshot the bypass_by_tmp array into a caller-provided buffer.
+// Returns the number of meaningful entries written (== current capacity).
+// Returns 0 if pool is null or empty.
+static int yals_probe_pool_snapshot_bypass (YalsProbePool * p,
+                                            int64_t ** out,
+                                            int * out_cap) {
+  if (!p) { *out = 0; *out_cap = 0; return 0; }
+  pthread_mutex_lock (&p->lock);
+  int cap = p->capacity;
+  int64_t * buf = malloc ((size_t) cap * sizeof (int64_t));
+  memcpy (buf, p->bypass_by_tmp, (size_t) cap * sizeof (int64_t));
+  pthread_mutex_unlock (&p->lock);
+  *out = buf;
+  *out_cap = cap;
+  return cap;
 }
 
 // p = (# past probes with best > v) / total. Returns 0 when empty.
@@ -6290,17 +6325,41 @@ void yals_print_combined_bypass_stats (Yals ** ys, int n) {
     restarts  += ys[i]->stats.restart.inner.count;
     if (ys[i]->opts.bypass.val) bypass_enabled = 1;
   }
-  if (bypass_enabled) {
-    int64_t total = bypassed + restarts;
-    yals_msg (ys[0], 0,
-      "%lld bypassed restarts (%.1f%% of %lld inner cutoffs reached, summed across %d worker%s)",
-      (long long) bypassed,
-      yals_pct (bypassed, total),
-      (long long) total,
-      n, (n == 1 ? "" : "s"));
-  } else {
+  if (!bypass_enabled) {
     yals_msg (ys[0], 0, "0 bypassed restarts (--bypass disabled)");
+    return;
   }
+  int64_t total = bypassed + restarts;
+  yals_msg (ys[0], 0,
+    "%lld bypassed restarts (%.1f%% of %lld inner cutoffs reached, summed across %d worker%s)",
+    (long long) bypassed, yals_pct (bypassed, total),
+    (long long) total, n, (n == 1 ? "" : "s"));
+
+  // Per-tmp breakdown -- where the bypass volume is concentrated. The pool
+  // is shared across all workers so a single snapshot covers all of them.
+  YalsProbePool * pool = ys[0]->probe_pool;
+  if (!pool || bypassed <= 0) return;
+  int64_t * buf = 0;
+  int cap = 0;
+  yals_probe_pool_snapshot_bypass (pool, &buf, &cap);
+  if (!buf || cap == 0) return;
+  // Build a single-line summary: "tmp=v -> N (P%), tmp=v -> N (P%), ..."
+  // Only nonzero entries, ascending by tmp.
+  char line[1024];
+  int off = 0;
+  off += snprintf (line + off, sizeof line - off, "bypass-by-tmp:");
+  int printed = 0;
+  for (int v = 0; v < cap && off + 40 < (int) sizeof line; v++) {
+    if (buf[v] == 0) continue;
+    off += snprintf (line + off, sizeof line - off,
+                     "%s tmp=%d -> %lld (%.1f%%)",
+                     printed ? "," : "",
+                     v, (long long) buf[v],
+                     yals_pct (buf[v], bypassed));
+    printed++;
+  }
+  if (printed) yals_msg (ys[0], 0, "%s", line);
+  free (buf);
 }
 
 /*------------------------------------------------------------------------*/
@@ -6664,6 +6723,8 @@ int yals_inner_loop_max_tries (Yals * yals)
         }
         if (bypass) {
           yals->stats.restart.bypassed++;
+          yals_probe_pool_record_bypass (yals->probe_pool,
+                                         yals->stats.tmp);
           yals_msg (yals, 2,
             "cutoff bypass at flips %lld: tmp=%d, p=%.3f -- extending probe",
             (long long) yals->stats.flips, yals->stats.tmp,
