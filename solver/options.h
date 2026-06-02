@@ -24,7 +24,7 @@ This code extends the solver yal-lin (Md Solimul Chowdhury, Cayden Codel, Marijn
 
 #define OPTSTEMPLATE \
   OPT (best,0,0,1,"always pick best assignment during restart"); \
-  OPT (cached,1,0,1,"use cached assignment during restart"); \
+  OPT (cached,0,0,1,"use cached assignment during restart"); \
   OPT (cacheduni,0,0,1,"pick random cached assignment uniformly"); \
   OPT (cachemax,(1<<10),0,(1<<20),"max cache size of saved assignments"); \
   OPT (cachemin,1,0,(1<<10),"minimum cache size of saved assignments"); \
@@ -33,7 +33,7 @@ This code extends the solver yal-lin (Md Solimul Chowdhury, Cayden Codel, Marijn
   OPT (topk,8,0,64,"per-literal top-K sorted list of heaviest neighbors (K=0 falls back to full scan)"); \
   OPT (cutoff,200000,0,INT_MAX,"flips per try (0 = unlimited; controls inner-restart and shared-cache cycle frequency)"); \
   OPT (defrag,1,0,1,"defragemtation of unsat queue"); \
-  OPT (fixed,4,0,INT_MAX,"fixed default strategy frequency (1=always)"); \
+  OPT (fixed,1,0,INT_MAX,"fixed default strategy frequency (1=always)"); \
   OPT (ignorewtcriteria,0,0,1,"ignore the check with initial weight while deciding a neighboring satisfied clause during weight transfer"); \
   OPT (wtadd,0,-1000,1000,"weight transfer additive term c (c = init_weight * wtadd/1000); negative subtracts from the transfer"); \
   OPT (wtmul,167,0,1000,"weight transfer multiplicative factor a (a = wtmul/1000)"); \
