@@ -6228,36 +6228,55 @@ void yals_print_combined_probe_hist (Yals ** ys, int n) {
     "min=%d max=%d mean=%.2f median=%d",
     n, (n == 1 ? "" : "s"), total, min_v, max_v, mean, median);
 
-  // Up to 10 linear buckets across [min_v, max_v]; clamp to range+1 if
-  // narrower so labels stay clean (one bucket per integer).
-  int range_v = max_v - min_v;
-  int NB = 10;
-  if (range_v + 1 < NB) NB = range_v + 1;
-  int * buckets = calloc ((size_t) NB, sizeof (int));
-  for (int i = 0; i < total; i++) {
-    int v = all[i];
-    int b;
-    if (NB == 1) b = 0;
-    else {
-      b = (int) ((int64_t)(v - min_v) * NB / (int64_t)(range_v + 1));
-      if (b >= NB) b = NB - 1;
-    }
-    buckets[b]++;
+  // Quantile-style bucketing: walk the *sorted* values, opening a new
+  // bucket once the current one has accumulated at least total/MAX_NB
+  // entries -- but never split runs of equal values across two buckets.
+  // The last bucket always absorbs the tail, so a long-tail outlier
+  // lands in its own bucket if it doesn't fit elsewhere.
+  //
+  // For e.g. {1:1281, 2:1281, 3:1922, 4:1922, 42:1} this gives
+  // [1], [2], [3], [4], [42] -- rather than 10 equal-width buckets
+  // where one bucket holds 99.98% of probes.
+  const int MAX_NB = 10;
+  // re-sort `all` (we have `sorted` already, but it was freed; redo on `all`).
+  for (int i = 1; i < total; i++) {
+    int x = all[i], j = i - 1;
+    while (j >= 0 && all[j] > x) { all[j+1] = all[j]; j--; }
+    all[j+1] = x;
   }
+  double target = (double) total / (double) MAX_NB;
+  // Each bucket: (lo, hi, count). Allocate worst case (one per unique value
+  // is bounded by total but typically <<).
+  int * bucket_lo    = malloc ((size_t) MAX_NB * sizeof (int));
+  int * bucket_hi    = malloc ((size_t) MAX_NB * sizeof (int));
+  int * bucket_count = calloc ((size_t) MAX_NB, sizeof (int));
+  int NB = 0;
+  int i = 0;
+  while (i < total) {
+    bucket_lo[NB] = all[i];
+    bucket_count[NB] = 0;
+    // Accumulate one or more runs of equal values until we hit target
+    // (or there's only one bucket slot left -- absorb the tail).
+    while (i < total) {
+      int v = all[i];
+      // Take the whole run of v's.
+      int run = 0;
+      while (i < total && all[i] == v) { i++; run++; }
+      bucket_count[NB] += run;
+      bucket_hi[NB] = v;
+      if (NB < MAX_NB - 1 && (double) bucket_count[NB] >= target) break;
+    }
+    NB++;
+    if (NB == MAX_NB) break;
+  }
+
   int bmax = 0;
-  for (int b = 0; b < NB; b++) if (buckets[b] > bmax) bmax = buckets[b];
+  for (int b = 0; b < NB; b++) if (bucket_count[b] > bmax) bmax = bucket_count[b];
   const int barwidth = 50;
   for (int b = 0; b < NB; b++) {
-    int lo, hi;
-    if (NB == 1) { lo = min_v; hi = max_v; }
-    else {
-      lo = min_v + (int) ((int64_t)b * (range_v + 1) / NB);
-      hi = min_v + (int) ((int64_t)(b + 1) * (range_v + 1) / NB) - 1;
-      if (hi < lo) hi = lo;
-      if (hi > max_v) hi = max_v;
-    }
+    int lo = bucket_lo[b], hi = bucket_hi[b];
     int nb = (bmax > 0)
-             ? (int) ((1.0 * buckets[b] * barwidth) / bmax + 0.5)
+             ? (int) ((1.0 * bucket_count[b] * barwidth) / bmax + 0.5)
              : 0;
     char bar[80];
     int k;
@@ -6267,9 +6286,11 @@ void yals_print_combined_probe_hist (Yals ** ys, int n) {
     if (lo == hi) snprintf (label, sizeof label, "%d", lo);
     else          snprintf (label, sizeof label, "%d-%d", lo, hi);
     yals_msg (out, 0,
-      "  probe-best [%12s]  %6d  %s", label, buckets[b], bar);
+      "  probe-best [%12s]  %6d  %s", label, bucket_count[b], bar);
   }
-  free (buckets);
+  free (bucket_lo);
+  free (bucket_hi);
+  free (bucket_count);
   free (all);
 }
 
