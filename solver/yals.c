@@ -6706,19 +6706,27 @@ int yals_inner_loop_max_tries (Yals * yals)
     // Hand-rolled inner cutoff loop so we can intercept the natural
     // cutoff exit and apply --bypass (probabilistic re-extension
     // based on stats.tmp's rank vs. the global probe-best pool).
+    // Effective bypass probability is p^k, where p comes from the pool
+    // and k = # cutoffs hit so far in THIS probe -- consecutive bypasses
+    // taper off geometrically so even high-p probes terminate in finite
+    // (expected) flips.
     int c = 0;
+    int cutoffs_this_probe = 0;
     while (1) {
       // Cutoff reached?
       if (yals->opts.cutoff.val > 0 && c >= yals->opts.cutoff.val) {
+        cutoffs_this_probe++;
         int bypass = 0;
+        double pp = 0.0, p_eff = 0.0;
         if (yals->opts.bypass.val && yals->probe_pool
             && yals->stats.tmp != INT_MAX) {
-          double pp = yals_probe_pool_query_p (yals->probe_pool,
-                                               yals->stats.tmp);
+          pp = yals_probe_pool_query_p (yals->probe_pool, yals->stats.tmp);
           if (pp > 0.0) {
+            // p^c: pow() is fine here (called once per cutoff hit, ~1/sec).
+            p_eff = pow (pp, (double) cutoffs_this_probe);
             double r = (double) yals_rand (yals)
                        / (1.0 + (double) UINT_MAX);
-            if (r < pp) bypass = 1;
+            if (r < p_eff) bypass = 1;
           }
         }
         if (bypass) {
@@ -6726,9 +6734,9 @@ int yals_inner_loop_max_tries (Yals * yals)
           yals_probe_pool_record_bypass (yals->probe_pool,
                                          yals->stats.tmp);
           yals_msg (yals, 2,
-            "cutoff bypass at flips %lld: tmp=%d, p=%.3f -- extending probe",
+            "cutoff bypass at flips %lld: tmp=%d, p=%.3f, p^%d=%.3f -- extending probe",
             (long long) yals->stats.flips, yals->stats.tmp,
-            yals_probe_pool_query_p (yals->probe_pool, yals->stats.tmp));
+            pp, cutoffs_this_probe, p_eff);
           c = 0;
           continue;
         }
