@@ -538,6 +538,14 @@ int yals_nunsat_external (Yals *yals);
 
 void yals_stats (Yals *);
 
+// Print a single probe-best histogram aggregated across `n` workers.
+// Each worker's per-probe scores (yals->ddfw.probe_bests) are merged
+// into one flat list before bucketing. Use `n=1` for sequential runs.
+// Output is emitted via yals_msg on ys[0] so it picks up that worker's
+// prefix; safe to call with all workers (palsat) or just the single
+// active solver (CaLFwSAT).
+void yals_print_combined_probe_hist (Yals ** ys, int n);
+
 /* Average weight per constraint length (clauses and cardinality
    constraints separately). For palsat, call on the winning thread. */
 void yals_print_length_weights (Yals *);

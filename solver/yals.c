@@ -5218,81 +5218,6 @@ void yals_stats (Yals * yals) {
     "%lld inner restarts",
     (long long) s->restart.inner.count);
 
-  // Per-probe best-score histogram. Each entry is the best nunsat reached
-  // during one probe (between consecutive inner restarts). 10 linear
-  // buckets between min and max observed; styled to match the wall-time
-  // histogram in repeat-parallel.sh (one bar per bucket, scaled to
-  // bar width with `#`, max-bucket count = full bar).
-  {
-    int n = (int) COUNT (yals->ddfw.probe_bests);
-    if (n > 0) {
-      int max_v = 0, min_v = INT_MAX;
-      int64_t sum_b = 0;
-      for (int i = 0; i < n; i++) {
-        int v = PEEK (yals->ddfw.probe_bests, i);
-        if (v > max_v) max_v = v;
-        if (v < min_v) min_v = v;
-        sum_b += v;
-      }
-      double mean = (double) sum_b / (double) n;
-      // median via copy + insertion sort (n is typically small-to-moderate)
-      int * sorted = malloc ((size_t) n * sizeof (int));
-      for (int i = 0; i < n; i++) sorted[i] = PEEK (yals->ddfw.probe_bests, i);
-      for (int i = 1; i < n; i++) {
-        int x = sorted[i], j = i - 1;
-        while (j >= 0 && sorted[j] > x) { sorted[j+1] = sorted[j]; j--; }
-        sorted[j+1] = x;
-      }
-      int median = (n & 1) ? sorted[n/2] : (sorted[n/2 - 1] + sorted[n/2]) / 2;
-      free (sorted);
-      yals_msg (yals, 0,
-        "probe-best histogram: %d probes, min=%d max=%d mean=%.2f median=%d",
-        n, min_v, max_v, mean, median);
-
-      // Up to 10 linear buckets across [min_v, max_v]. If range+1 < 10,
-      // use range+1 buckets (one per integer value) so labels stay clean.
-      int range_v = max_v - min_v;
-      int NB = 10;
-      if (range_v + 1 < NB) NB = range_v + 1;
-      int * buckets = calloc ((size_t) NB, sizeof (int));
-      for (int i = 0; i < n; i++) {
-        int v = PEEK (yals->ddfw.probe_bests, i);
-        int b;
-        if (NB == 1) b = 0;
-        else {
-          b = (int) ((int64_t)(v - min_v) * NB / (int64_t)(range_v + 1));
-          if (b >= NB) b = NB - 1;
-        }
-        buckets[b]++;
-      }
-      int bmax = 0;
-      for (int b = 0; b < NB; b++) if (buckets[b] > bmax) bmax = buckets[b];
-      const int barwidth = 50;
-      for (int b = 0; b < NB; b++) {
-        int lo, hi;
-        if (NB == 1) { lo = min_v; hi = max_v; }
-        else {
-          lo = min_v + (int) ((int64_t)b * (range_v + 1) / NB);
-          hi = min_v + (int) ((int64_t)(b + 1) * (range_v + 1) / NB) - 1;
-          if (hi < lo) hi = lo;
-          if (hi > max_v) hi = max_v;
-        }
-        int nb = (bmax > 0)
-                 ? (int) ((1.0 * buckets[b] * barwidth) / bmax + 0.5)
-                 : 0;
-        char bar[80];
-        int k;
-        for (k = 0; k < nb && k < 79; k++) bar[k] = '#';
-        bar[k] = 0;
-        char label[32];
-        if (lo == hi) snprintf (label, sizeof label, "%d", lo);
-        else          snprintf (label, sizeof label, "%d-%d", lo, hi);
-        yals_msg (yals, 0,
-          "  probe-best [%12s]  %6d  %s", label, buckets[b], bar);
-      }
-      free (buckets);
-    }
-  }
   yals_msg (yals, 0,
     "%lld outer restarts",
     (long long) s->restart.outer.count);
@@ -6254,6 +6179,98 @@ void yals_print_stats (Yals * yals)
   //                 yals->fres_fact, yals->fres_count, yals->stats.time.restart);
   // double r = (double) yals->ddfw.source_not_selected / (double) yals->ddfw.total_transfers;
   //printf ("c stats |%ld ", yals->stats.flips);
+}
+
+/*------------------------------------------------------------------------*/
+/* Aggregated per-probe best-score histogram across `n` workers. Same     */
+/* visual format as the wall-time histogram in repeat-parallel.sh: 10    */
+/* equal-width linear buckets across [min, max], 50-char bar scaled to    */
+/* max-bucket count. Printed once globally; intended to be called from   */
+/* main.c after per-worker yals_stats() has run.                          */
+/*------------------------------------------------------------------------*/
+void yals_print_combined_probe_hist (Yals ** ys, int n) {
+  if (n <= 0 || !ys || !ys[0]) return;
+  // Collect total count and pool all entries into one flat array.
+  int total = 0;
+  for (int i = 0; i < n; i++) total += (int) COUNT (ys[i]->ddfw.probe_bests);
+  if (total <= 0) return;
+  int * all = malloc ((size_t) total * sizeof (int));
+  int pos = 0;
+  for (int i = 0; i < n; i++) {
+    int c = (int) COUNT (ys[i]->ddfw.probe_bests);
+    for (int k = 0; k < c; k++) all[pos++] = PEEK (ys[i]->ddfw.probe_bests, k);
+  }
+
+  Yals * out = ys[0];
+  int min_v = INT_MAX, max_v = 0;
+  int64_t sum_b = 0;
+  for (int i = 0; i < total; i++) {
+    int v = all[i];
+    if (v > max_v) max_v = v;
+    if (v < min_v) min_v = v;
+    sum_b += v;
+  }
+  double mean = (double) sum_b / (double) total;
+  // median via in-place insertion sort on a copy
+  int * sorted = malloc ((size_t) total * sizeof (int));
+  memcpy (sorted, all, (size_t) total * sizeof (int));
+  for (int i = 1; i < total; i++) {
+    int x = sorted[i], j = i - 1;
+    while (j >= 0 && sorted[j] > x) { sorted[j+1] = sorted[j]; j--; }
+    sorted[j+1] = x;
+  }
+  int median = (total & 1) ? sorted[total/2]
+                           : (sorted[total/2 - 1] + sorted[total/2]) / 2;
+  free (sorted);
+
+  yals_msg (out, 0,
+    "probe-best histogram (combined across %d worker%s): %d probes, "
+    "min=%d max=%d mean=%.2f median=%d",
+    n, (n == 1 ? "" : "s"), total, min_v, max_v, mean, median);
+
+  // Up to 10 linear buckets across [min_v, max_v]; clamp to range+1 if
+  // narrower so labels stay clean (one bucket per integer).
+  int range_v = max_v - min_v;
+  int NB = 10;
+  if (range_v + 1 < NB) NB = range_v + 1;
+  int * buckets = calloc ((size_t) NB, sizeof (int));
+  for (int i = 0; i < total; i++) {
+    int v = all[i];
+    int b;
+    if (NB == 1) b = 0;
+    else {
+      b = (int) ((int64_t)(v - min_v) * NB / (int64_t)(range_v + 1));
+      if (b >= NB) b = NB - 1;
+    }
+    buckets[b]++;
+  }
+  int bmax = 0;
+  for (int b = 0; b < NB; b++) if (buckets[b] > bmax) bmax = buckets[b];
+  const int barwidth = 50;
+  for (int b = 0; b < NB; b++) {
+    int lo, hi;
+    if (NB == 1) { lo = min_v; hi = max_v; }
+    else {
+      lo = min_v + (int) ((int64_t)b * (range_v + 1) / NB);
+      hi = min_v + (int) ((int64_t)(b + 1) * (range_v + 1) / NB) - 1;
+      if (hi < lo) hi = lo;
+      if (hi > max_v) hi = max_v;
+    }
+    int nb = (bmax > 0)
+             ? (int) ((1.0 * buckets[b] * barwidth) / bmax + 0.5)
+             : 0;
+    char bar[80];
+    int k;
+    for (k = 0; k < nb && k < 79; k++) bar[k] = '#';
+    bar[k] = 0;
+    char label[32];
+    if (lo == hi) snprintf (label, sizeof label, "%d", lo);
+    else          snprintf (label, sizeof label, "%d-%d", lo, hi);
+    yals_msg (out, 0,
+      "  probe-best [%12s]  %6d  %s", label, buckets[b], bar);
+  }
+  free (buckets);
+  free (all);
 }
 
 /*------------------------------------------------------------------------*/

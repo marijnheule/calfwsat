@@ -318,6 +318,14 @@ static void stats () {
       i, yals_minimum (y));
     if (verbose) yals_stats (y);
   }
+  // Combined per-probe best-score histogram across all workers.
+  if (verbose) {
+    Yals ** ys = malloc ((size_t) threads * sizeof (Yals *));
+    for (i = 0; i < threads; i++) ys[i] = worker[i].yals;
+    msg ("");
+    yals_print_combined_probe_hist (ys, threads);
+    free (ys);
+  }
   msg ("");
   w = getime ();
   t = yals_process_time ();
@@ -336,6 +344,12 @@ static void stats () {
   msg ("");
   msg ("final minimum of %d unsatisfied hard constraints", yals_minimum (yals));
   if (verbose) yals_stats (yals);
+  // Per-probe best-score histogram (single solver). Same call shape as
+  // palsat for consistency.
+  if (verbose) {
+    Yals * single[1] = { yals };
+    yals_print_combined_probe_hist (single, 1);
+  }
   msg ("total flips %lld", yals_flips (yals));
   yals_print_length_weights (yals);
   msg ("total process time of %.2f seconds", getime ());
