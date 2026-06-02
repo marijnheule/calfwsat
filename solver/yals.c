@@ -2034,6 +2034,12 @@ struct YalsProbePool {
   // succeeded when the current probe had stats.tmp = v. Aggregated
   // globally; printed at end of run.
   int64_t * bypass_by_tmp;
+  // Per-tmp total cutoff hits: cutoffs_by_tmp[v] = # times the cutoff
+  // was reached when stats.tmp = v, *regardless* of whether the
+  // subsequent roll resulted in a bypass. bypass_by_tmp[v] is always
+  // <= cutoffs_by_tmp[v]; their ratio is the empirical bypass rate
+  // observed at value v.
+  int64_t * cutoffs_by_tmp;
 };
 
 YalsProbePool * yals_probe_pool_new (void) {
@@ -2042,9 +2048,10 @@ YalsProbePool * yals_probe_pool_new (void) {
   pthread_mutex_init (&p->lock, 0);
   // Start small; grow on demand.
   p->capacity = 16;
-  p->counts        = calloc ((size_t) p->capacity, sizeof (int));
-  p->above         = calloc ((size_t) p->capacity, sizeof (int64_t));
-  p->bypass_by_tmp = calloc ((size_t) p->capacity, sizeof (int64_t));
+  p->counts         = calloc ((size_t) p->capacity, sizeof (int));
+  p->above          = calloc ((size_t) p->capacity, sizeof (int64_t));
+  p->bypass_by_tmp  = calloc ((size_t) p->capacity, sizeof (int64_t));
+  p->cutoffs_by_tmp = calloc ((size_t) p->capacity, sizeof (int64_t));
   p->total = 0;
   return p;
 }
@@ -2055,6 +2062,7 @@ void yals_probe_pool_delete (YalsProbePool * p) {
   free (p->counts);
   free (p->above);
   free (p->bypass_by_tmp);
+  free (p->cutoffs_by_tmp);
   free (p);
 }
 
@@ -2068,13 +2076,15 @@ static void yals_probe_pool_ensure_capacity (YalsProbePool * p, int v) {
   if (v < p->capacity) return;
   int newcap = p->capacity;
   while (newcap <= v) newcap *= 2;
-  p->counts        = realloc (p->counts,        (size_t) newcap * sizeof (int));
-  p->above         = realloc (p->above,         (size_t) newcap * sizeof (int64_t));
-  p->bypass_by_tmp = realloc (p->bypass_by_tmp, (size_t) newcap * sizeof (int64_t));
+  p->counts         = realloc (p->counts,         (size_t) newcap * sizeof (int));
+  p->above          = realloc (p->above,          (size_t) newcap * sizeof (int64_t));
+  p->bypass_by_tmp  = realloc (p->bypass_by_tmp,  (size_t) newcap * sizeof (int64_t));
+  p->cutoffs_by_tmp = realloc (p->cutoffs_by_tmp, (size_t) newcap * sizeof (int64_t));
   for (int i = p->capacity; i < newcap; i++) {
-    p->counts[i]        = 0;
-    p->above[i]         = 0;
-    p->bypass_by_tmp[i] = 0;
+    p->counts[i]         = 0;
+    p->above[i]          = 0;
+    p->bypass_by_tmp[i]  = 0;
+    p->cutoffs_by_tmp[i] = 0;
   }
   p->capacity = newcap;
 }
@@ -2102,20 +2112,34 @@ static void yals_probe_pool_record_bypass (YalsProbePool * p, int v) {
   pthread_mutex_unlock (&p->lock);
 }
 
-// Snapshot the bypass_by_tmp array into a caller-provided buffer.
-// Returns the number of meaningful entries written (== current capacity).
-// Returns 0 if pool is null or empty.
+// Record one cutoff hit at tmp=v (called regardless of bypass outcome).
+static void yals_probe_pool_record_cutoff (YalsProbePool * p, int v) {
+  if (!p || v < 0) return;
+  pthread_mutex_lock (&p->lock);
+  yals_probe_pool_ensure_capacity (p, v);
+  p->cutoffs_by_tmp[v]++;
+  pthread_mutex_unlock (&p->lock);
+}
+
+// Snapshot bypass_by_tmp and cutoffs_by_tmp into freshly malloc'd buffers
+// of size == current capacity. Caller frees both. Returns capacity, or
+// 0 if pool is null.
 static int yals_probe_pool_snapshot_bypass (YalsProbePool * p,
-                                            int64_t ** out,
+                                            int64_t ** out_bypass,
+                                            int64_t ** out_cutoffs,
                                             int * out_cap) {
-  if (!p) { *out = 0; *out_cap = 0; return 0; }
+  if (!p) {
+    *out_bypass = 0; *out_cutoffs = 0; *out_cap = 0;
+    return 0;
+  }
   pthread_mutex_lock (&p->lock);
   int cap = p->capacity;
-  int64_t * buf = malloc ((size_t) cap * sizeof (int64_t));
-  memcpy (buf, p->bypass_by_tmp, (size_t) cap * sizeof (int64_t));
+  int64_t * b = malloc ((size_t) cap * sizeof (int64_t));
+  int64_t * c = malloc ((size_t) cap * sizeof (int64_t));
+  memcpy (b, p->bypass_by_tmp,  (size_t) cap * sizeof (int64_t));
+  memcpy (c, p->cutoffs_by_tmp, (size_t) cap * sizeof (int64_t));
   pthread_mutex_unlock (&p->lock);
-  *out = buf;
-  *out_cap = cap;
+  *out_bypass = b; *out_cutoffs = c; *out_cap = cap;
   return cap;
 }
 
@@ -6325,41 +6349,41 @@ void yals_print_combined_bypass_stats (Yals ** ys, int n) {
     restarts  += ys[i]->stats.restart.inner.count;
     if (ys[i]->opts.bypass.val) bypass_enabled = 1;
   }
-  if (!bypass_enabled) {
-    yals_msg (ys[0], 0, "0 bypassed restarts (--bypass disabled)");
-    return;
-  }
   int64_t total = bypassed + restarts;
-  yals_msg (ys[0], 0,
-    "%lld bypassed restarts (%.1f%% of %lld inner cutoffs reached, summed across %d worker%s)",
-    (long long) bypassed, yals_pct (bypassed, total),
-    (long long) total, n, (n == 1 ? "" : "s"));
+  if (bypass_enabled) {
+    yals_msg (ys[0], 0,
+      "%lld bypassed restarts (%.1f%% of %lld inner cutoffs reached, summed across %d worker%s)",
+      (long long) bypassed, yals_pct (bypassed, total),
+      (long long) total, n, (n == 1 ? "" : "s"));
+  } else {
+    yals_msg (ys[0], 0,
+      "0 bypassed restarts (--bypass disabled), %lld inner cutoffs reached summed across %d worker%s",
+      (long long) total, n, (n == 1 ? "" : "s"));
+  }
 
-  // Per-tmp breakdown -- where the bypass volume is concentrated. The pool
-  // is shared across all workers so a single snapshot covers all of them.
+  // Per-tmp breakdown. For every tmp value v that has had any cutoff hits,
+  // print: total hits, bypasses, and the empirical bypass rate at that
+  // tmp. Pool is shared across workers so a single snapshot covers all
+  // of them.
   YalsProbePool * pool = ys[0]->probe_pool;
-  if (!pool || bypassed <= 0) return;
-  int64_t * buf = 0;
+  if (!pool) return;
+  int64_t * bbuf = 0, * cbuf = 0;
   int cap = 0;
-  yals_probe_pool_snapshot_bypass (pool, &buf, &cap);
-  if (!buf || cap == 0) return;
-  // Build a single-line summary: "tmp=v -> N (P%), tmp=v -> N (P%), ..."
-  // Only nonzero entries, ascending by tmp.
-  char line[1024];
-  int off = 0;
-  off += snprintf (line + off, sizeof line - off, "bypass-by-tmp:");
+  yals_probe_pool_snapshot_bypass (pool, &bbuf, &cbuf, &cap);
+  if (!cbuf || cap == 0) { free (bbuf); free (cbuf); return; }
+  yals_msg (ys[0], 0,
+    "bypass-by-tmp (cutoffs reached -> bypassed, empirical rate):");
   int printed = 0;
-  for (int v = 0; v < cap && off + 40 < (int) sizeof line; v++) {
-    if (buf[v] == 0) continue;
-    off += snprintf (line + off, sizeof line - off,
-                     "%s tmp=%d -> %lld (%.1f%%)",
-                     printed ? "," : "",
-                     v, (long long) buf[v],
-                     yals_pct (buf[v], bypassed));
+  for (int v = 0; v < cap; v++) {
+    if (cbuf[v] == 0) continue;
+    yals_msg (ys[0], 0,
+      "  tmp=%-3d  cutoffs=%-6lld  bypassed=%-6lld  (%.1f%%)",
+      v, (long long) cbuf[v], (long long) bbuf[v],
+      yals_pct (bbuf[v], cbuf[v]));
     printed++;
   }
-  if (printed) yals_msg (ys[0], 0, "%s", line);
-  free (buf);
+  if (!printed) yals_msg (ys[0], 0, "  (no cutoffs reached)");
+  free (bbuf); free (cbuf);
 }
 
 /*------------------------------------------------------------------------*/
@@ -6716,6 +6740,11 @@ int yals_inner_loop_max_tries (Yals * yals)
       // Cutoff reached?
       if (yals->opts.cutoff.val > 0 && c >= yals->opts.cutoff.val) {
         cutoffs_this_probe++;
+        // Attribute every cutoff hit to the current best, whether or not
+        // the subsequent bypass roll succeeds. bypass_by_tmp[v] /
+        // cutoffs_by_tmp[v] is then the empirical bypass rate at tmp=v.
+        if (yals->probe_pool && yals->stats.tmp != INT_MAX)
+          yals_probe_pool_record_cutoff (yals->probe_pool, yals->stats.tmp);
         int bypass = 0;
         double pp = 0.0, p_eff = 0.0;
         if (yals->opts.bypass.val && yals->probe_pool
