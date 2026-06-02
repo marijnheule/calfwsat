@@ -1,0 +1,17 @@
+# 2x2 sweep: --bypass on/off X --pol in {0, -1}, all with cutoff=20K.
+#
+# --bypass: at each cutoff hit, extend the probe with probability p =
+#   fraction of past probe-bests strictly worse than current stats.tmp
+#   (capped at 0.99). Idea: trade restart frequency for "stay in the
+#   rare-good basin a bit longer."
+# --pol=0:  per-bit random initial assignment (current default).
+# --pol=-1: all-negative initial assignment.
+#
+# All rows also force --fixed=1 --cached=0 (current defaults; spelled
+# out for the record).
+#
+# name		args
+b0_pol0		--bypass=0 --pol=0  --cutoff=20000
+b0_polneg	--bypass=0 --pol=-1 --cutoff=20000
+b1_pol0		--bypass=1 --pol=0  --cutoff=20000
+b1_polneg	--bypass=1 --pol=-1 --cutoff=20000
