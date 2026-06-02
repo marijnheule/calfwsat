@@ -377,6 +377,14 @@ typedef struct DDFW {
   // restarts, mirroring the cutoff's natural spacing).
   int64_t  hd_last_restart_flip;
 
+  // Per-probe best-score log. A "probe" is the work between consecutive
+  // inner restarts: from yals_pick_assignment to the next cutoff (or
+  // --hd_restart trigger). Each entry is stats.tmp at the *end* of a
+  // probe (i.e. the best nunsat reached during that probe). Skips the
+  // initial pre-flip pseudo-restart and any probe with no flips (tmp
+  // still INT_MAX). Printed as a histogram by yals_stats at end of run.
+  STACK (int) probe_bests;
+
   // --oldestsource: LRU doubly-linked list over all constraints (unified id =
   // clause cidx for u<nclauses; card cidx + nclauses else). Head = least
   // recently used as a source. Allocated only when --oldestsource is on.

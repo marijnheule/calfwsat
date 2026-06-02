@@ -3564,6 +3564,7 @@ void yals_del (Yals * yals) {
   RELEASE (yals->ddfw.uvars_soft);
   RELEASE (yals->ddfw.card_helper_hash_changed_idx);
   RELEASE (yals->ddfw.uvars_changed);
+  RELEASE (yals->ddfw.probe_bests);
 
   RELEASE (yals->ddfw.uvars_heap.stack);
   DELN (yals->ddfw.uvars_heap.pos, yals->nvars);
@@ -3864,6 +3865,11 @@ void save_current_assignment (Yals *yals)
 static void yals_restart_inner (Yals * yals) {
   double start;
   start = yals_time_phase (yals);
+  // Snapshot the just-completed probe's best (stats.tmp). Skip the very
+  // first call (no probe has run yet -- restart.inner.count == 0) and
+  // any probe that recorded no improvement (tmp still INT_MAX).
+  if (yals->stats.restart.inner.count > 0 && yals->stats.tmp != INT_MAX)
+    PUSH (yals->ddfw.probe_bests, yals->stats.tmp);
   yals->stats.restart.inner.count++;
   if (yals->opts.verbose.val >= 2) {
       if (yals->using_maxs_weights)
@@ -5211,6 +5217,73 @@ void yals_stats (Yals * yals) {
   yals_msg (yals, 0,
     "%lld inner restarts",
     (long long) s->restart.inner.count);
+
+  // Per-probe best-score histogram. Each entry is the best nunsat reached
+  // during one probe (between consecutive inner restarts). Buckets are
+  // log2: [1,1], [2,3], [4,7], [8,15], [16,31], ... ; the bucket [0,0]
+  // would mean "probe found a satisfying assignment" -- in that case the
+  // run exits before we record, so this only fires on a UNSAT/timeout.
+  {
+    int n = (int) COUNT (yals->ddfw.probe_bests);
+    if (n > 0) {
+      int max_v = 0, min_v = INT_MAX;
+      for (int i = 0; i < n; i++) {
+        int v = PEEK (yals->ddfw.probe_bests, i);
+        if (v > max_v) max_v = v;
+        if (v < min_v) min_v = v;
+      }
+      // log2 bucket count: ceil(log2(max+1)) + 1 (extra slot for the 0 bucket)
+      int nbuckets = 1;
+      while ((1 << (nbuckets - 1)) <= max_v) nbuckets++;
+      int * buckets = calloc ((size_t) nbuckets, sizeof (int));
+      for (int i = 0; i < n; i++) {
+        int v = PEEK (yals->ddfw.probe_bests, i);
+        int b = 0;
+        while ((1 << b) <= v) b++;
+        buckets[b]++;
+      }
+      // sum + mean + median
+      int64_t sum_b = 0;
+      for (int i = 0; i < n; i++) sum_b += PEEK (yals->ddfw.probe_bests, i);
+      double mean = (double) sum_b / (double) n;
+      // median via partial sort copy
+      int * sorted = malloc ((size_t) n * sizeof (int));
+      for (int i = 0; i < n; i++) sorted[i] = PEEK (yals->ddfw.probe_bests, i);
+      // simple insertion sort (n typically small-to-moderate)
+      for (int i = 1; i < n; i++) {
+        int x = sorted[i], j = i - 1;
+        while (j >= 0 && sorted[j] > x) { sorted[j+1] = sorted[j]; j--; }
+        sorted[j+1] = x;
+      }
+      int median = (n & 1) ? sorted[n/2] : (sorted[n/2 - 1] + sorted[n/2]) / 2;
+      free (sorted);
+      yals_msg (yals, 0,
+        "probe-best histogram: %d probes, min=%d max=%d mean=%.2f median=%d",
+        n, min_v, max_v, mean, median);
+      // find max bucket count for bar scaling
+      int bmax = 0;
+      for (int b = 0; b < nbuckets; b++) if (buckets[b] > bmax) bmax = buckets[b];
+      int barwidth = 40;
+      for (int b = 0; b < nbuckets; b++) {
+        if (buckets[b] == 0) continue;
+        int lo = (b == 0) ? 0 : (1 << (b - 1));
+        int hi = (1 << b) - 1;
+        int nb = (bmax > 0)
+                 ? (int) ((1.0 * buckets[b] * barwidth) / bmax + 0.5)
+                 : 0;
+        char bar[64];
+        int k;
+        for (k = 0; k < nb && k < 63; k++) bar[k] = '#';
+        bar[k] = 0;
+        char range[32];
+        if (lo == hi) snprintf (range, sizeof range, "%d", lo);
+        else          snprintf (range, sizeof range, "%d-%d", lo, hi);
+        yals_msg (yals, 0,
+          "  probe-best [%10s]  %6d  %s", range, buckets[b], bar);
+      }
+      free (buckets);
+    }
+  }
   yals_msg (yals, 0,
     "%lld outer restarts",
     (long long) s->restart.outer.count);
