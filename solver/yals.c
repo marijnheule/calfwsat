@@ -6228,46 +6228,51 @@ void yals_print_combined_probe_hist (Yals ** ys, int n) {
     "min=%d max=%d mean=%.2f median=%d",
     n, (n == 1 ? "" : "s"), total, min_v, max_v, mean, median);
 
-  // Quantile-style bucketing: walk the *sorted* values, opening a new
-  // bucket once the current one has accumulated at least total/MAX_NB
-  // entries -- but never split runs of equal values across two buckets.
-  // The last bucket always absorbs the tail, so a long-tail outlier
-  // lands in its own bucket if it doesn't fit elsewhere.
-  //
-  // For e.g. {1:1281, 2:1281, 3:1922, 4:1922, 42:1} this gives
-  // [1], [2], [3], [4], [42] -- rather than 10 equal-width buckets
-  // where one bucket holds 99.98% of probes.
+  // Bottom-up bucketing: start with one bucket per unique value, then
+  // repeatedly merge the adjacent pair with the smallest combined count
+  // until we're at MAX_NB buckets. This keeps buckets that "deserve"
+  // their own row separate and only merges in low-count regions -- so
+  // e.g. {1:big, 2:big, 3:big, 4-89:7} stays as four distinct buckets
+  // rather than collapsing [1-2] into one row that's actually larger
+  // than several other rows.
   const int MAX_NB = 10;
-  // re-sort `all` (we have `sorted` already, but it was freed; redo on `all`).
+  // Sort `all` (insertion sort -- typically small unique-value count;
+  // the median sort above used a copy, so `all` is still unsorted).
   for (int i = 1; i < total; i++) {
     int x = all[i], j = i - 1;
     while (j >= 0 && all[j] > x) { all[j+1] = all[j]; j--; }
     all[j+1] = x;
   }
-  double target = (double) total / (double) MAX_NB;
-  // Each bucket: (lo, hi, count). Allocate worst case (one per unique value
-  // is bounded by total but typically <<).
-  int * bucket_lo    = malloc ((size_t) MAX_NB * sizeof (int));
-  int * bucket_hi    = malloc ((size_t) MAX_NB * sizeof (int));
-  int * bucket_count = calloc ((size_t) MAX_NB, sizeof (int));
+  // Compress runs of equal values into (lo, hi, count) buckets.
+  int * bucket_lo    = malloc ((size_t) total * sizeof (int));
+  int * bucket_hi    = malloc ((size_t) total * sizeof (int));
+  int * bucket_count = malloc ((size_t) total * sizeof (int));
   int NB = 0;
-  int i = 0;
-  while (i < total) {
-    bucket_lo[NB] = all[i];
-    bucket_count[NB] = 0;
-    // Accumulate one or more runs of equal values until we hit target
-    // (or there's only one bucket slot left -- absorb the tail).
-    while (i < total) {
-      int v = all[i];
-      // Take the whole run of v's.
-      int run = 0;
-      while (i < total && all[i] == v) { i++; run++; }
-      bucket_count[NB] += run;
-      bucket_hi[NB] = v;
-      if (NB < MAX_NB - 1 && (double) bucket_count[NB] >= target) break;
-    }
+  for (int i = 0; i < total; ) {
+    int v = all[i], run = 0;
+    while (i < total && all[i] == v) { i++; run++; }
+    bucket_lo[NB] = bucket_hi[NB] = v;
+    bucket_count[NB] = run;
     NB++;
-    if (NB == MAX_NB) break;
+  }
+  // Greedy merge: while NB > MAX_NB, merge the adjacent pair with the
+  // smallest combined count. O(NB) per merge, O(NB^2) total which is
+  // fine since NB <= number of unique values (typically tiny).
+  while (NB > MAX_NB) {
+    int best = 0;
+    int best_sum = bucket_count[0] + bucket_count[1];
+    for (int j = 1; j < NB - 1; j++) {
+      int s = bucket_count[j] + bucket_count[j+1];
+      if (s < best_sum) { best_sum = s; best = j; }
+    }
+    bucket_hi[best]    = bucket_hi[best+1];
+    bucket_count[best] = best_sum;
+    for (int j = best + 1; j < NB - 1; j++) {
+      bucket_lo[j]    = bucket_lo[j+1];
+      bucket_hi[j]    = bucket_hi[j+1];
+      bucket_count[j] = bucket_count[j+1];
+    }
+    NB--;
   }
 
   int bmax = 0;
