@@ -29,7 +29,7 @@ SEEDS_DEFAULT="${SEEDS:-$(seq 1 100 | paste -sd, -)}"
 TIMEOUT_DEFAULT="${TIMEOUT:-900}"
 THREADS_DEFAULT="${THREADS:-8}"
 CUTOFF_DEFAULT="${CUTOFF:-20000}"
-CONFIGS_REL="${CONFIGS:-bench/configs-bypass-pol.tsv}"
+CONFIGS_REL="${CONFIGS:-bench/configs-heat-bypass.tsv}"
 # ------------------------------------------------------------------
 
 FORMULA="${1:?usage: $0 <formula.knf>}"

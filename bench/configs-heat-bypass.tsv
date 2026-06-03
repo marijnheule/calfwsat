@@ -1,0 +1,17 @@
+# 2x2 sweep: --heat on/off X --bypass on/off, defaults elsewhere.
+#
+# --heat: maintain a global per-variable counter, incremented at each
+#   probe-end for variables true in that probe's best. New fresh-random
+#   picks set each variable to true with probability heat[v]/probes.
+# --bypass: at each cutoff, extend the probe with probability p^c,
+#   where p = fraction of past probe-bests strictly worse than current
+#   stats.tmp (capped 0.99), c = # cutoff hits so far in this probe.
+#
+# Cutoff stays at the default (200K). All defaults otherwise
+# (--fixed=1 --cached=0 --pol=0).
+#
+# name		args
+h0_b0		--heat=0 --bypass=0
+h0_b1		--heat=0 --bypass=1
+h1_b0		--heat=1 --bypass=0
+h1_b1		--heat=1 --bypass=1
