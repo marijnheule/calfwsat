@@ -2734,9 +2734,45 @@ PUSH (yals->scores, min);
     memset (yals->vals, 0xff, bytes);
   } else {
     yals->stats.pick.rnd++;
-    yals_msg (yals, vl, "picking new random assignment");
-    for (i = 0; i < yals->nvarwords; i++)
-      yals->vals[i] = yals_rand (yals);
+    // --heat: bias each variable toward true with probability heat[v]/probes.
+    // Falls back to pure per-bit random when heat is disabled or empty.
+    YalsProbePool * pool = yals->probe_pool;
+    int use_heat = (yals->opts.heat.val && pool);
+    int64_t probes = 0;
+    int Nh = 0;
+    int * hsnap = 0;
+    if (use_heat) {
+      pthread_mutex_lock (&pool->lock);
+      probes = pool->heat_probes;
+      Nh = pool->heat_nvars;
+      if (probes > 0 && Nh > 0 && pool->heat) {
+        hsnap = malloc ((size_t) (Nh + 1) * sizeof (int));
+        memcpy (hsnap, pool->heat, (size_t) (Nh + 1) * sizeof (int));
+      } else {
+        use_heat = 0;  // no data yet -- fall through to pure random
+      }
+      pthread_mutex_unlock (&pool->lock);
+    }
+    if (use_heat) {
+      yals_msg (yals, vl,
+        "picking new random assignment biased by --heat (over %lld probes)",
+        (long long) probes);
+      memset (yals->vals, 0, bytes);
+      int limit = (Nh < yals->nvars) ? Nh : yals->nvars;
+      double denom = (double) probes;
+      for (int v = 1; v <= limit; v++) {
+        double p = (double) hsnap[v] / denom;
+        double r = (double) yals_rand (yals) / (1.0 + (double) UINT_MAX);
+        if (r < p) SETBIT (yals->vals, yals->nvarwords, v);
+      }
+      // Variables not covered by heat (if any) stay false. In practice
+      // heat is sized to the first probe's nvars, which matches.
+      free (hsnap);
+    } else {
+      yals_msg (yals, vl, "picking new random assignment");
+      for (i = 0; i < yals->nvarwords; i++)
+        yals->vals[i] = yals_rand (yals);
+    }
   }
   yals_remove_trailing_bits (yals);
   if (initial) yals_setphases (yals);
