@@ -1785,9 +1785,9 @@ void yals_flip_ddfw (Yals * yals, int lit) {
     yals->ddfw.tabu_last_flipped[v] = yals->stats.flips;
 
     // Sliding-window Hamming-distance update. Same K as age window.
-    // - Toggle parity of v; update hd_window based on new parity.
-    // - If ring full, evict oldest var id and toggle its parity too.
-    {
+    // Only maintained when --hd_restart > 0 (the only consumer); skipped
+    // on the hot path otherwise.
+    if (yals->opts.hd_restart.val > 0) {
       int K2 = yals->ddfw.age_window_size;
       int h2 = yals->ddfw.hd_ring_head;
       unsigned char p_new = (unsigned char)(yals->ddfw.hd_parity[v] ^ 1);
@@ -5729,22 +5729,24 @@ void yals_init_ddfw (Yals *yals)
   yals->ddfw.age_window_count = 0;
   yals->ddfw.age_window_sum  = 0;
   // Sliding-window Hamming-distance buffers (same K as age window).
-  {
+  // Only allocated when --hd_restart > 0; per-flip maintenance is also
+  // gated on the option, so leaving these NULL is safe in the off case.
+  yals->ddfw.hd_ring          = 0;
+  yals->ddfw.hd_parity        = 0;
+  yals->ddfw.hd_value_ring    = 0;
+  yals->ddfw.hd_ring_head     = 0;
+  yals->ddfw.hd_ring_count    = 0;
+  yals->ddfw.hd_window        = 0;
+  yals->ddfw.hd_value_head    = 0;
+  yals->ddfw.hd_value_count   = 0;
+  yals->ddfw.hd_value_sum     = 0;
+  yals->ddfw.hd_last_restart_flip = 0;
+  if (yals->opts.hd_restart.val > 0) {
     int K2 = yals->ddfw.age_window_size;
     int nv = yals->nvars + 1;
     yals->ddfw.hd_ring       = malloc ((size_t) K2 * sizeof (int));
     yals->ddfw.hd_parity     = calloc ((size_t) nv, sizeof (unsigned char));
-    yals->ddfw.hd_ring_head  = 0;
-    yals->ddfw.hd_ring_count = 0;
-    yals->ddfw.hd_window     = 0;
-    yals->ddfw.hd_value_ring  = malloc ((size_t) K2 * sizeof (int));
-    yals->ddfw.hd_value_head  = 0;
-    yals->ddfw.hd_value_count = 0;
-    yals->ddfw.hd_value_sum   = 0;
-    // Init to 0; the spacing gate is `flips - hd_last_restart_flip >= K`,
-    // and the trigger ALSO requires hd_value_count >= K, so the first
-    // eligible window can fire freely without a magic sentinel.
-    yals->ddfw.hd_last_restart_flip = 0;
+    yals->ddfw.hd_value_ring = malloc ((size_t) K2 * sizeof (int));
   }
 
   yals->ddfw.conscutive_lm = 0;
