@@ -68,8 +68,8 @@ This code extends the solver yal-lin (Md Solimul Chowdhury, Cayden Codel, Marijn
   OPT (tabu,0,0,INT_MAX,"tabu length N: the N most-recently-flipped variables are skipped in the picker (0 = disabled)"); \
   OPT (age_window,10000,1,INT_MAX,"rolling window size for the avg_age/avg_hd statistics shown in 'new minimum' prints"); \
   OPT (hd_restart,0,0,INT_MAX,"trigger an inner restart when avg_hd drops below this threshold (0 = disabled; only fires once the K-flip window has filled)"); \
-  OPT (bypass,0,0,1,"at cutoff, bypass with probability p = fraction of past probe-bests strictly worse than current stats.tmp; rolls a fresh dice on each subsequent cutoff hit"); \
-  OPT (heat,0,0,1,"maintain a globally shared per-variable counter: at the end of each probe, increment heat[v] for every variable v that is true in the probe's best assignment; print all (var, count) pairs at end of run"); \
+  OPT (bypass,1,0,1,"at cutoff, bypass with probability p = fraction of past probe-bests strictly worse than current stats.tmp; rolls a fresh dice on each subsequent cutoff hit"); \
+  OPT (heat,1,0,1,"maintain a globally shared per-variable counter: at the end of each probe, increment heat[v] for every variable v that is true in the probe's best assignment; print all (var, count) pairs at end of run"); \
   OPT (heavy,1,1,INT_MAX,"weight used in the 'best' objective for falsified constraints containing at least one negative literal (clauses with all-positive literals always count as 1); H=1 = unweighted (default)"); \
   OPT (oldestsource,0,0,1,"random-source selection: instead of random, pick the satisfied source that has been least-recently used as a source (LRU)"); \
   OPT (sourcecap,500,0,1000,"cap per-transfer amount at source_weight*sourcecap/1000 (1000 = cap at source weight, the loosest binding; 0 = no transfer)"); \
