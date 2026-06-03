@@ -2141,9 +2141,10 @@ static void yals_probe_pool_record_heat (YalsProbePool * p, Yals * yals) {
     p->heat = calloc ((size_t) (nvars + 1), sizeof (int));
     p->heat_nvars = nvars;
   }
-  // Tolerate workers with mismatched nvars by clamping to the smaller.
+  // yals->nvars is the max variable index PLUS ONE (real vars are 1..nvars-1).
+  // Clamp to the smaller of {this yals' nvars, the pool's heat_nvars}.
   int N = (nvars < p->heat_nvars) ? nvars : p->heat_nvars;
-  for (int v = 1; v <= N; v++) {
+  for (int v = 1; v < N; v++) {
     if (GETBIT (yals->tmp, yals->nvarwords, v)) p->heat[v]++;
   }
   p->heat_probes++;
@@ -2758,9 +2759,10 @@ PUSH (yals->scores, min);
         "picking new random assignment biased by --heat (over %lld probes)",
         (long long) probes);
       memset (yals->vals, 0, bytes);
+      // yals->nvars is max_var_index + 1; real variables are 1..nvars-1.
       int limit = (Nh < yals->nvars) ? Nh : yals->nvars;
       double denom = (double) probes;
-      for (int v = 1; v <= limit; v++) {
+      for (int v = 1; v < limit; v++) {
         double p = (double) hsnap[v] / denom;
         double r = (double) yals_rand (yals) / (1.0 + (double) UINT_MAX);
         if (r < p) SETBIT (yals->vals, yals->nvarwords, v);
@@ -6475,7 +6477,8 @@ void yals_print_combined_heat (Yals ** ys, int n) {
     yals_msg (ys[0], 0, "heat: no probes contributed (--heat enabled but pool empty)");
     return;
   }
-  // Copy heat[] under lock; sort outside.
+  // Copy heat[] under lock; sort outside. N here is max_var_index + 1
+  // (yals->nvars convention), real variables are 1..N-1.
   int * heat_copy = malloc ((size_t) (N + 1) * sizeof (int));
   memcpy (heat_copy, pool->heat, (size_t) (N + 1) * sizeof (int));
   pthread_mutex_unlock (&pool->lock);
@@ -6484,7 +6487,7 @@ void yals_print_combined_heat (Yals ** ys, int n) {
   typedef struct { int var, cnt; } HeatEntry;
   HeatEntry * arr = malloc ((size_t) N * sizeof (HeatEntry));
   int m = 0;
-  for (int v = 1; v <= N; v++) {
+  for (int v = 1; v < N; v++) {
     if (heat_copy[v] == 0) continue;
     arr[m].var = v;
     arr[m].cnt = heat_copy[v];
