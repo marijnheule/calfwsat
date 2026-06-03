@@ -4159,7 +4159,8 @@ static void yals_restart_inner (Yals * yals) {
       }
 
   if (yals->using_maxs_weights) {
-    if (yals->stats.maxs_best_cost < yals->stats.maxs_last) {
+    if (yals->opts.improving.val
+        && yals->stats.maxs_best_cost < yals->stats.maxs_last) {
       yals->stats.pick.keep++;
       yals_msg (yals, 2,
         "keeping strategy and assignment thus essentially skipping restart");
@@ -4180,7 +4181,8 @@ static void yals_restart_inner (Yals * yals) {
       yals_save_new_minimum (yals);
     }
   } else {
-    if (yals->stats.best < yals->stats.last) {
+    if (yals->opts.improving.val
+        && yals->stats.best < yals->stats.last) {
       yals->stats.pick.keep++;
       yals_msg (yals, 2,
         "keeping strategy and assignment thus essentially skipping restart");
