@@ -445,6 +445,7 @@ typedef struct Yals {
   double maxs_hard_weight; // weight of hard constraints
   double maxs_acc_hard_weight;
   int * hard_clause_ids; // clauses that are hard (=1) or soft (=0)
+  unsigned char * clause_has_neg;  // --heavy: 1 if clause cidx contains any negative literal
 
   int * pos_soft;
   int * card_pos_soft; 
@@ -483,6 +484,7 @@ typedef struct Yals {
 
   STACK (double) maxs_card_weights; // soft constraint costs
   int * hard_card_ids; // cardinality constraints that are hard (=1) or soft (=0)
+  unsigned char * card_has_neg;  // --heavy: 1 if card cidx contains any negative literal
 
   // Optional pointer to a process-wide cache of assignments shared across
   // palsat workers. NULL when no shared cache is attached.
