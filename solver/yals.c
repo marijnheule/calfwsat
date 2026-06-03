@@ -6576,6 +6576,118 @@ void yals_print_combined_heat (Yals ** ys, int n) {
   free (arr);
 }
 
+typedef struct { double slack; int kind, cidx; } HeatSlackEntry;
+
+static int yals_heat_slack_cmp (const void * a, const void * b) {
+  double sa = ((const HeatSlackEntry *) a)->slack;
+  double sb = ((const HeatSlackEntry *) b)->slack;
+  if (sa < sb) return -1;
+  if (sa > sb) return  1;
+  return 0;
+}
+
+/*------------------------------------------------------------------------*/
+/* Heat-slack: post-SAT diagnostic. For each clause/card constraint,      */
+/* sum the heat-implied truth probabilities of its literals (positive    */
+/* lit x: heat[x]/probes; negative lit -x: 1 - heat[x]/probes), subtract */
+/* the bound (1 for plain clauses), and rank ascending. The smallest    */
+/* values are the constraints the heat prior is least confident about: */
+/* "if you sampled from the heat distribution, these would be the most */
+/* often falsified." Useful diagnostic for the heat-bias quality.        */
+/*------------------------------------------------------------------------*/
+void yals_print_heat_slack (Yals * winner, int top_n) {
+  if (!winner) return;
+  YalsProbePool * pool = winner->probe_pool;
+  if (!pool) return;
+  // Snapshot heat under lock.
+  pthread_mutex_lock (&pool->lock);
+  int Nh = pool->heat_nvars;
+  int64_t probes = pool->heat_probes;
+  if (probes <= 0 || Nh <= 0 || !pool->heat) {
+    pthread_mutex_unlock (&pool->lock);
+    return;
+  }
+  int * heat = malloc ((size_t) (Nh + 1) * sizeof (int));
+  memcpy (heat, pool->heat, (size_t) (Nh + 1) * sizeof (int));
+  pthread_mutex_unlock (&pool->lock);
+
+  double denom = (double) probes;
+
+  // Build entries: (slack, kind, cidx). kind=0 clause, kind=1 card.
+  int nclauses = winner->nclauses;
+  int ncards   = winner->card_nclauses;
+  int total = nclauses + ncards;
+  if (total <= 0) { free (heat); return; }
+
+  HeatSlackEntry * arr = malloc ((size_t) total * sizeof (HeatSlackEntry));
+  int m = 0;
+  // Walk clauses: bound = 1.
+  for (int c = 0; c < nclauses; c++) {
+    int * p = yals_lits (winner, c), lit;
+    double s = 0.0;
+    while ((lit = *p++)) {
+      int v = abs (lit);
+      double h = (v < Nh) ? (double) heat[v] / denom : 0.0;
+      s += (lit > 0) ? h : (1.0 - h);
+    }
+    arr[m].slack = s - 1.0;
+    arr[m].kind  = 0;
+    arr[m].cidx  = c;
+    m++;
+  }
+  // Walk cards: bound from yals_card_bound().
+  for (int c = 0; c < ncards; c++) {
+    int * p = yals_card_lits (winner, c), lit;
+    int B = yals_card_bound (winner, c);
+    double s = 0.0;
+    while ((lit = *p++)) {
+      int v = abs (lit);
+      double h = (v < Nh) ? (double) heat[v] / denom : 0.0;
+      s += (lit > 0) ? h : (1.0 - h);
+    }
+    arr[m].slack = s - (double) B;
+    arr[m].kind  = 1;
+    arr[m].cidx  = c;
+    m++;
+  }
+  free (heat);
+
+  // Sort ascending by slack. Comparator at file scope below.
+  qsort (arr, m, sizeof (HeatSlackEntry), yals_heat_slack_cmp);
+
+  if (top_n <= 0 || top_n > m) top_n = m;
+  yals_msg (winner, 0,
+    "heat-slack: %d constraints, showing %d lowest (%lld probes)",
+    m, top_n, (long long) probes);
+  for (int i = 0; i < top_n; i++) {
+    HeatSlackEntry * e = &arr[i];
+    if (e->kind == 0) {
+      // Inline literals so the user can read what the constraint looks like.
+      int * p = yals_lits (winner, e->cidx);
+      char buf[256];
+      int off = 0, lit;
+      while ((lit = *p++) && off + 12 < (int) sizeof buf)
+        off += snprintf (buf + off, sizeof buf - off, "%d ", lit);
+      if (off > 0) buf[off-1] = 0;  // strip trailing space
+      else         buf[0]     = 0;
+      yals_msg (winner, 0,
+        "  slack %+.4f  clause %d  (%s)", e->slack, e->cidx, buf);
+    } else {
+      int B = yals_card_bound (winner, e->cidx);
+      int * p = yals_card_lits (winner, e->cidx);
+      char buf[256];
+      int off = 0, lit;
+      while ((lit = *p++) && off + 12 < (int) sizeof buf)
+        off += snprintf (buf + off, sizeof buf - off, "%d ", lit);
+      if (off > 0) buf[off-1] = 0;
+      else         buf[0]     = 0;
+      yals_msg (winner, 0,
+        "  slack %+.4f  card %d  >=%d  (%s)", e->slack, e->cidx, B, buf);
+    }
+  }
+  free (arr);
+}
+
 /*------------------------------------------------------------------------*/
 /* Aggregated per-probe best-score histogram across `n` workers. Same     */
 /* visual format as the wall-time histogram in repeat-parallel.sh: 10    */

@@ -561,6 +561,16 @@ void yals_print_combined_bypass_stats (Yals ** ys, int n);
 // all workers have stopped. No-op if --heat is disabled on every worker.
 void yals_print_combined_heat (Yals ** ys, int n);
 
+// After SAT is found, print the constraints (clauses + cards) whose
+// "heat slack" is lowest -- the constraints that the heat map would be
+// closest to falsifying. For each constraint, slack = (sum of literal
+// scores) - bound, where positive literal x scores heat[x]/probes,
+// negative literal -x scores 1 - heat[x]/probes, and a plain clause is
+// treated as a card with bound 1. Lowest `top_n` printed (or all if
+// fewer). Reads the shared probe_pool's heat[]; uses `winner` only for
+// clause / card iteration.
+void yals_print_heat_slack (Yals * winner, int top_n);
+
 // Print a single probe-best histogram aggregated across `n` workers.
 // Each worker's per-probe scores (yals->ddfw.probe_bests) are merged
 // into one flat list before bucketing. Use `n=1` for sequential runs.

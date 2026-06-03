@@ -329,6 +329,8 @@ static void stats () {
     yals_print_combined_bypass_stats (ys, threads);
     yals_print_combined_probe_hist (ys, threads);
     yals_print_combined_heat (ys, threads);
+    // Heat-slack ranking (lowest 20 constraints by heat-implied slack).
+    yals_print_heat_slack (WINNER, 20);
     free (ys);
   }
   msg ("");
@@ -356,6 +358,7 @@ static void stats () {
     yals_print_combined_bypass_stats (single, 1);
     yals_print_combined_probe_hist (single, 1);
     yals_print_combined_heat (single, 1);
+    yals_print_heat_slack (yals, 20);
   }
   msg ("total flips %lld", yals_flips (yals));
   yals_print_length_weights (yals);
