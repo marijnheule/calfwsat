@@ -645,20 +645,13 @@ static void yals_report (Yals * yals, const char * fmt, ...) {
   yals_msglock (yals);
   f = yals->stats.flips;
   t = yals_sec (yals);
-  // Avg age over the rolling window of the last opts.age_window.val flips
-  // (skipping first-flip-ever vars). NOT reset across reports.
-  // Rolling K-window mean of HD between current and K-flips-ago assignment
-  // (one sample per flip; same K as age window).
-  double avg_hd = 0.0;
-  if (yals->ddfw.hd_value_count > 0)
-    avg_hd = (double) yals->ddfw.hd_value_sum / (double) yals->ddfw.hd_value_count;
   fprintf (yals->out, "%s", yals->opts.prefix);
   va_start (ap, fmt);
   vfprintf (yals->out, fmt, ap);
   va_end (ap);
   fprintf (yals->out,
-    " : best %d (tmp %d), clauses %d, constraints %d, flips %.0f, %.2f sec, %.2f kflips/sec, avg_hd %.1f\n",
-    yals->stats.best, yals->stats.tmp,yals->stats.best_clauses, yals->stats.best_cardinality, f, t, yals_avg (f/1e3, t), avg_hd);
+    " : best %d (tmp %d), clauses %d, constraints %d, flips %.0f, %.2f sec, %.2f kflips/sec\n",
+    yals->stats.best, yals->stats.tmp, yals->stats.best_clauses, yals->stats.best_cardinality, f, t, yals_avg (f/1e3, t));
   fflush (yals->out);
   yals_msgunlock (yals);
 }
