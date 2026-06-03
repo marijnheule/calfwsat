@@ -554,6 +554,11 @@ void yals_set_probe_pool (Yals *, YalsProbePool *);
 // Mirror of yals_print_combined_probe_hist for the bypass counter.
 void yals_print_combined_bypass_stats (Yals ** ys, int n);
 
+// Print the --heat per-variable counter (one line per nonzero variable,
+// sorted by count descending). Pool is read once; safe to call after
+// all workers have stopped. No-op if --heat is disabled on every worker.
+void yals_print_combined_heat (Yals ** ys, int n);
+
 // Print a single probe-best histogram aggregated across `n` workers.
 // Each worker's per-probe scores (yals->ddfw.probe_bests) are merged
 // into one flat list before bucketing. Use `n=1` for sequential runs.

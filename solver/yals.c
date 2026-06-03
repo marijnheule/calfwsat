@@ -2040,6 +2040,13 @@ struct YalsProbePool {
   // <= cutoffs_by_tmp[v]; their ratio is the empirical bypass rate
   // observed at value v.
   int64_t * cutoffs_by_tmp;
+  // --heat: per-variable counter, +1 per probe for every var that is
+  // TRUE in that probe's best assignment. Lazily allocated on first
+  // record call (when nvars becomes known). heat_nvars == 0 = "not
+  // yet allocated".  heat_probes = # probes that contributed.
+  int     * heat;
+  int       heat_nvars;
+  int64_t   heat_probes;
 };
 
 YalsProbePool * yals_probe_pool_new (void) {
@@ -2063,6 +2070,7 @@ void yals_probe_pool_delete (YalsProbePool * p) {
   free (p->above);
   free (p->bypass_by_tmp);
   free (p->cutoffs_by_tmp);
+  free (p->heat);
   free (p);
 }
 
@@ -2118,6 +2126,27 @@ static void yals_probe_pool_record_cutoff (YalsProbePool * p, int v) {
   pthread_mutex_lock (&p->lock);
   yals_probe_pool_ensure_capacity (p, v);
   p->cutoffs_by_tmp[v]++;
+  pthread_mutex_unlock (&p->lock);
+}
+
+// --heat: scan the just-completed probe's best assignment (yals->tmp)
+// and bump heat[v] for every variable v that is true in it. Lazy-allocs
+// the heat array on first call.
+static void yals_probe_pool_record_heat (YalsProbePool * p, Yals * yals) {
+  if (!p || !yals) return;
+  int nvars = yals->nvars;
+  if (nvars <= 0) return;
+  pthread_mutex_lock (&p->lock);
+  if (p->heat_nvars == 0) {
+    p->heat = calloc ((size_t) (nvars + 1), sizeof (int));
+    p->heat_nvars = nvars;
+  }
+  // Tolerate workers with mismatched nvars by clamping to the smaller.
+  int N = (nvars < p->heat_nvars) ? nvars : p->heat_nvars;
+  for (int v = 1; v <= N; v++) {
+    if (GETBIT (yals->tmp, yals->nvarwords, v)) p->heat[v]++;
+  }
+  p->heat_probes++;
   pthread_mutex_unlock (&p->lock);
 }
 
@@ -4019,6 +4048,9 @@ static void yals_restart_inner (Yals * yals) {
     // Also feed the shared cross-worker pool used by --bypass.
     if (yals->probe_pool)
       yals_probe_pool_record (yals->probe_pool, yals->stats.tmp);
+    // --heat: attribute this probe's best assignment to per-var counters.
+    if (yals->opts.heat.val && yals->probe_pool)
+      yals_probe_pool_record_heat (yals->probe_pool, yals);
   }
   yals->stats.restart.inner.count++;
   if (yals->opts.verbose.val >= 2) {
@@ -6384,6 +6416,65 @@ void yals_print_combined_bypass_stats (Yals ** ys, int n) {
   }
   if (!printed) yals_msg (ys[0], 0, "  (no cutoffs reached)");
   free (bbuf); free (cbuf);
+}
+
+/*------------------------------------------------------------------------*/
+/* --heat: print the per-variable counter as `var count` lines, one per   */
+/* variable with a nonzero count, in descending order of count. The      */
+/* heat array lives in the shared YalsProbePool so a single read from    */
+/* any worker suffices.                                                   */
+/*------------------------------------------------------------------------*/
+void yals_print_combined_heat (Yals ** ys, int n) {
+  if (n <= 0 || !ys || !ys[0]) return;
+  int heat_enabled = 0;
+  for (int i = 0; i < n; i++) if (ys[i]->opts.heat.val) { heat_enabled = 1; break; }
+  if (!heat_enabled) return;
+  YalsProbePool * pool = ys[0]->probe_pool;
+  if (!pool) return;
+  pthread_mutex_lock (&pool->lock);
+  int N = pool->heat_nvars;
+  int64_t probes = pool->heat_probes;
+  if (N <= 0 || !pool->heat) {
+    pthread_mutex_unlock (&pool->lock);
+    yals_msg (ys[0], 0, "heat: no probes contributed (--heat enabled but pool empty)");
+    return;
+  }
+  // Copy heat[] under lock; sort outside.
+  int * heat_copy = malloc ((size_t) (N + 1) * sizeof (int));
+  memcpy (heat_copy, pool->heat, (size_t) (N + 1) * sizeof (int));
+  pthread_mutex_unlock (&pool->lock);
+
+  // Build (var, count) pairs and sort by count desc, then var asc.
+  typedef struct { int var, cnt; } HeatEntry;
+  HeatEntry * arr = malloc ((size_t) N * sizeof (HeatEntry));
+  int m = 0;
+  for (int v = 1; v <= N; v++) {
+    if (heat_copy[v] == 0) continue;
+    arr[m].var = v;
+    arr[m].cnt = heat_copy[v];
+    m++;
+  }
+  free (heat_copy);
+  // Insertion sort: HeatEntry count is typically <= N, fine for moderate N.
+  // For very large N, this is O(m^2); but the alternative is qsort with a
+  // comparator -- prefer the dependency-free variant.
+  for (int i = 1; i < m; i++) {
+    HeatEntry x = arr[i];
+    int j = i - 1;
+    while (j >= 0 && (arr[j].cnt < x.cnt
+                      || (arr[j].cnt == x.cnt && arr[j].var > x.var))) {
+      arr[j+1] = arr[j];
+      j--;
+    }
+    arr[j+1] = x;
+  }
+  yals_msg (ys[0], 0,
+    "heat: %d nonzero variables over %lld probes (sorted by count desc, var# asc)",
+    m, (long long) probes);
+  for (int i = 0; i < m; i++) {
+    yals_msg (ys[0], 0, "  heat %d %d", arr[i].var, arr[i].cnt);
+  }
+  free (arr);
 }
 
 /*------------------------------------------------------------------------*/
