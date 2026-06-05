@@ -4805,7 +4805,7 @@ int yals_ddfw_get_random_sat_clause (Yals * yals, int * constraint_type, int sin
     LOG ("Get random SAT clause");
 
     // --oldestsource: walk the LRU list head->tail, return the first satisfied,
-    // hard/soft- and componentlock-compatible source that passes the --suppress
+    // hard/soft- and componentlock-compatible source that passes the --min-weight
     // weight floor. Replaces the random rejection-sampling loop below.
     if (yals->opts.oldestsource.val) {
       int * next = yals->ddfw.oldsrc_next;
@@ -4816,12 +4816,9 @@ int yals_ddfw_get_random_sat_clause (Yals * yals, int * constraint_type, int sin
           if ((source_hard && !takes_hard) || (!source_hard && !takes_soft)) continue;
           if (sink_comp >= 0 && yals_cc_comp_of (yals, clause, TYPECLAUSE) != sink_comp) continue;
           if (yals_satcnt (yals, clause) <= 0) continue;
-          if (yals->opts.suppress.val) {
-            int wt_ok = (relative && !source_hard)
-              ? yals->ddfw.ddfw_clause_weights[clause] > PEEK (yals->maxs_clause_weights, clause)
-              : yals->ddfw.ddfw_clause_weights[clause] >= yals->opts.init_clause_weight.val;
-            if (!wt_ok) continue;
-          }
+          // --min-weight: block source if its DDFW weight < M.
+          if (yals->ddfw.ddfw_clause_weights[clause] < yals->opts.min_weight.val)
+            continue;
           *constraint_type = TYPECLAUSE; return clause;
         } else {
           int card = u - yals->nclauses;
@@ -4829,12 +4826,9 @@ int yals_ddfw_get_random_sat_clause (Yals * yals, int * constraint_type, int sin
           if ((source_hard && !takes_hard) || (!source_hard && !takes_soft)) continue;
           if (sink_comp >= 0 && yals_cc_comp_of (yals, card, TYPECARDINALITY) != sink_comp) continue;
           if (yals_card_satcnt (yals, card) < yals_card_bound (yals, card)) continue;
-          if (yals->opts.suppress.val) {
-            int wt_ok = (relative && !source_hard)
-              ? yals->ddfw.ddfw_card_weights[card] > PEEK (yals->maxs_card_weights, card)
-              : yals->ddfw.ddfw_card_weights[card] >= yals->opts.init_card_weight.val;
-            if (!wt_ok) continue;
-          }
+          // --min-weight: block source if its DDFW weight < M.
+          if (yals->ddfw.ddfw_card_weights[card] < yals->opts.min_weight.val)
+            continue;
           *constraint_type = TYPECARDINALITY; return card;
         }
       }
@@ -4877,11 +4871,9 @@ int yals_ddfw_get_random_sat_clause (Yals * yals, int * constraint_type, int sin
                 best_wt_cls = yals->ddfw.ddfw_clause_weights [clause];
               }
           }
-          // --suppress: gate the "weight >= initial" acceptance criterion.
-          int wt_ok = (relative && !source_hard)
-            ? yals->ddfw.ddfw_clause_weights [clause] > PEEK (yals->maxs_clause_weights, clause)
-            : yals->ddfw.ddfw_clause_weights [clause] >= yals->opts.init_clause_weight.val;
-          if (!yals->opts.suppress.val || wt_ok) {
+          // --min-weight: accept source iff its DDFW weight >= M.
+          if (yals->ddfw.ddfw_clause_weights[clause]
+              >= yals->opts.min_weight.val) {
             source = clause;
             *constraint_type = TYPECLAUSE;
           }
@@ -4903,11 +4895,9 @@ int yals_ddfw_get_random_sat_clause (Yals * yals, int * constraint_type, int sin
               best_wt_card = yals->ddfw.ddfw_card_weights [card];
             }
           }
-          // --suppress: gate the "weight >= initial" acceptance criterion.
-          int wt_ok = (relative && !source_hard)
-            ? yals->ddfw.ddfw_card_weights [card] > PEEK (yals->maxs_card_weights, card)
-            : yals->ddfw.ddfw_card_weights [card] >= yals->opts.init_card_weight.val;
-          if (!yals->opts.suppress.val || wt_ok) {
+          // --min-weight: accept source iff its DDFW weight >= M.
+          if (yals->ddfw.ddfw_card_weights[card]
+              >= yals->opts.min_weight.val) {
             source = card;
             *constraint_type = TYPECARDINALITY;
           }

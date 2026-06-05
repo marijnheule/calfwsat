@@ -64,7 +64,7 @@ This code extends the solver yal-lin (Md Solimul Chowdhury, Cayden Codel, Marijn
   OPT (maxs_soft_takes_hard,0,0,1,"soft constraints can take from hard in random transfer"); \
   OPT (maxs_hard_takes_soft,0,0,1,"hard constraints can take from soft in random transfer"); \
   OPT (wtini,0,0,1000,"if source still has exactly its initial weight, transfer initial_weight*wtini/1000 (instead of the linear rule)"); \
-  OPT (suppress,1,0,1,"random-source selection: if 1 (default), require source to have weight >= initial weight; if 0, accept any satisfied source"); \
+  OPT (min_weight,100,0,INT_MAX,"random-source selection: block a satisfied source from being transferred from if its DDFW weight is strictly less than M. M=0 accepts any satisfied source; M=init_clause_weight (default 100) reproduces the historical --suppress=1 behavior."); \
   OPT (tabu,0,0,INT_MAX,"tabu length N: the N most-recently-flipped variables are skipped in the picker (0 = disabled)"); \
   OPT (age_window,10000,1,INT_MAX,"rolling window size for the avg_age/avg_hd statistics shown in 'new minimum' prints"); \
   OPT (hd_restart,0,0,INT_MAX,"trigger an inner restart when avg_hd drops below this threshold (0 = disabled; only fires once the K-flip window has filled)"); \
