@@ -1,0 +1,19 @@
+# --min_weight sweep: 0 to 100 in steps of 10. All other options default.
+#
+# --min_weight=M blocks a satisfied source from being transferred from if
+#   its DDFW weight is strictly less than M. M=0 accepts any satisfied
+#   source; M=100 (default == init_clause_weight) requires the historical
+#   --suppress=1 floor.
+#
+# name		args
+mw000		--min_weight=0
+mw010		--min_weight=10
+mw020		--min_weight=20
+mw030		--min_weight=30
+mw040		--min_weight=40
+mw050		--min_weight=50
+mw060		--min_weight=60
+mw070		--min_weight=70
+mw080		--min_weight=80
+mw090		--min_weight=90
+mw100		--min_weight=100
