@@ -4816,8 +4816,9 @@ int yals_ddfw_get_random_sat_clause (Yals * yals, int * constraint_type, int sin
           if ((source_hard && !takes_hard) || (!source_hard && !takes_soft)) continue;
           if (sink_comp >= 0 && yals_cc_comp_of (yals, clause, TYPECLAUSE) != sink_comp) continue;
           if (yals_satcnt (yals, clause) <= 0) continue;
-          // --min-weight: block source if its DDFW weight < M.
-          if (yals->ddfw.ddfw_clause_weights[clause] < yals->opts.min_weight.val)
+          // --min_weight: block source if its DDFW weight <= M (a source at
+          // M has zero transfer headroom and would be pointless to pick).
+          if (yals->ddfw.ddfw_clause_weights[clause] <= yals->opts.min_weight.val)
             continue;
           *constraint_type = TYPECLAUSE; return clause;
         } else {
@@ -4826,8 +4827,8 @@ int yals_ddfw_get_random_sat_clause (Yals * yals, int * constraint_type, int sin
           if ((source_hard && !takes_hard) || (!source_hard && !takes_soft)) continue;
           if (sink_comp >= 0 && yals_cc_comp_of (yals, card, TYPECARDINALITY) != sink_comp) continue;
           if (yals_card_satcnt (yals, card) < yals_card_bound (yals, card)) continue;
-          // --min-weight: block source if its DDFW weight < M.
-          if (yals->ddfw.ddfw_card_weights[card] < yals->opts.min_weight.val)
+          // --min_weight: block source if its DDFW weight <= M.
+          if (yals->ddfw.ddfw_card_weights[card] <= yals->opts.min_weight.val)
             continue;
           *constraint_type = TYPECARDINALITY; return card;
         }
@@ -4871,9 +4872,10 @@ int yals_ddfw_get_random_sat_clause (Yals * yals, int * constraint_type, int sin
                 best_wt_cls = yals->ddfw.ddfw_clause_weights [clause];
               }
           }
-          // --min-weight: accept source iff its DDFW weight >= M.
+          // --min_weight: accept source iff its DDFW weight > M (so transfer
+          // headroom = src_w - M > 0; src_w == M is pointless).
           if (yals->ddfw.ddfw_clause_weights[clause]
-              >= yals->opts.min_weight.val) {
+              > yals->opts.min_weight.val) {
             source = clause;
             *constraint_type = TYPECLAUSE;
           }
@@ -4895,9 +4897,9 @@ int yals_ddfw_get_random_sat_clause (Yals * yals, int * constraint_type, int sin
               best_wt_card = yals->ddfw.ddfw_card_weights [card];
             }
           }
-          // --min-weight: accept source iff its DDFW weight >= M.
+          // --min_weight: accept source iff its DDFW weight > M.
           if (yals->ddfw.ddfw_card_weights[card]
-              >= yals->opts.min_weight.val) {
+              > yals->opts.min_weight.val) {
             source = card;
             *constraint_type = TYPECARDINALITY;
           }
@@ -4966,12 +4968,21 @@ double yals_ddfw_get_weight (Yals *yals, int source, int sink, int constraint_ty
   // --sourcecap: cap the transfer at source_weight * sourcecap/1000.
   // 1000 = cap at the source's own weight (barely binds; prevents draining
   // a source below zero). Smaller N = tighter cap.
+  double src_w = (constraint_type_source == TYPECLAUSE)
+                 ? yals->ddfw.ddfw_clause_weights [source]
+                 : yals->ddfw.ddfw_card_weights [source];
   {
-    double src_w = (constraint_type_source == TYPECLAUSE)
-                   ? yals->ddfw.ddfw_clause_weights [source]
-                   : yals->ddfw.ddfw_card_weights [source];
     double cap = src_w * (yals->opts.sourcecap.val / 1000.0);
     if (w > cap) w = cap;
+  }
+
+  // --min_weight: floor on source weight. No source can be drained below
+  // M; if src_w <= M we can transfer nothing, otherwise we can transfer
+  // at most (src_w - M).
+  {
+    double headroom = src_w - (double) yals->opts.min_weight.val;
+    if (headroom < 0.0) headroom = 0.0;
+    if (w > headroom) w = headroom;
   }
 
   return w;
