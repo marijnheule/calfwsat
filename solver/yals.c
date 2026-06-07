@@ -3587,11 +3587,11 @@ static const char * yals_opt_display_name (const char * name, char * buf, size_t
 
 #define USGOPT(NAME,DEFAULT,MIN,MAX,DESCRIPTION) \
 do { \
-  char BUFFER[120], NB[120]; int I; \
+  char BUFFER[256], NB[64]; int I; \
   yals_opt_display_name (#NAME, NB, sizeof NB); \
-  sprintf (BUFFER, "--%s=%d..%d", NB, (MIN), (MAX)); \
+  snprintf (BUFFER, sizeof BUFFER, "--%s=%d..%d", NB, (MIN), (MAX)); \
   fputs (BUFFER, yals->out); \
-  for (I = 28 - strlen (BUFFER); I > 0; I--) fputc (' ', yals->out); \
+  for (I = 28 - (int) strlen (BUFFER); I > 0; I--) fputc (' ', yals->out); \
   fprintf (yals->out, "%s [%d]\n", (DESCRIPTION), (int)(DEFAULT)); \
 } while (0)
 
@@ -3608,7 +3608,7 @@ void yals_usage (Yals * yals) {
 
 #define SHOWOPT(NAME,DEFAULT,MIN,MAX,DESCRIPTION) \
 do { \
-  char NB[120]; \
+  char NB[64]; \
   yals_opt_display_name (#NAME, NB, sizeof NB); \
   yals_msg (yals, 0, "--%s=%d", NB, yals->opts.NAME); \
 } while (0)
@@ -4050,7 +4050,7 @@ static int yals_is_default_strategy (Yals * yals) {
 #define PRINTSTRAT(NAME,ENABLED) \
 do { \
   if (!(ENABLED)) break; \
-  char NB[120]; \
+  char NB[64]; \
   yals_opt_display_name (#NAME, NB, sizeof NB); \
   fprintf (yals->out, " --%s=%d", NB, yals->strat.NAME); \
 } while (0)
