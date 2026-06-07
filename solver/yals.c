@@ -3575,10 +3575,21 @@ int yals_getopt (Yals * yals, const char * name) {
 
 /*------------------------------------------------------------------------*/
 
+// Display the C identifier of an option with underscores rendered as dashes.
+// Returns a pointer into BUF (which must be supplied by caller).
+static const char * yals_opt_display_name (const char * name, char * buf, size_t bufsize) {
+  size_t i;
+  for (i = 0; i + 1 < bufsize && name[i]; i++)
+    buf[i] = (name[i] == '_') ? '-' : name[i];
+  buf[i] = 0;
+  return buf;
+}
+
 #define USGOPT(NAME,DEFAULT,MIN,MAX,DESCRIPTION) \
 do { \
-  char BUFFER[120]; int I; \
-  sprintf (BUFFER, "--%s=%d..%d", #NAME, (MIN), (MAX)); \
+  char BUFFER[120], NB[120]; int I; \
+  yals_opt_display_name (#NAME, NB, sizeof NB); \
+  sprintf (BUFFER, "--%s=%d..%d", NB, (MIN), (MAX)); \
   fputs (BUFFER, yals->out); \
   for (I = 28 - strlen (BUFFER); I > 0; I--) fputc (' ', yals->out); \
   fprintf (yals->out, "%s [%d]\n", (DESCRIPTION), (int)(DEFAULT)); \
@@ -3597,7 +3608,9 @@ void yals_usage (Yals * yals) {
 
 #define SHOWOPT(NAME,DEFAULT,MIN,MAX,DESCRIPTION) \
 do { \
-  yals_msg (yals, 0, "--%s=%d", #NAME, yals->opts.NAME); \
+  char NB[120]; \
+  yals_opt_display_name (#NAME, NB, sizeof NB); \
+  yals_msg (yals, 0, "--%s=%d", NB, yals->opts.NAME); \
 } while (0)
 
 #undef OPT
@@ -4037,7 +4050,9 @@ static int yals_is_default_strategy (Yals * yals) {
 #define PRINTSTRAT(NAME,ENABLED) \
 do { \
   if (!(ENABLED)) break; \
-  fprintf (yals->out, " --%s=%d", #NAME, yals->strat.NAME); \
+  char NB[120]; \
+  yals_opt_display_name (#NAME, NB, sizeof NB); \
+  fprintf (yals->out, " --%s=%d", NB, yals->strat.NAME); \
 } while (0)
 #undef STRAT
 #define STRAT PRINTSTRAT

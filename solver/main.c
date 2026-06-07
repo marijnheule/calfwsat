@@ -458,16 +458,32 @@ static int setopt (const char * name, int val) {
   return res;
 }
 
+// Normalize an option name: convert dashes to underscores in-place so the
+// user can write either --min-weight or --min_weight; both look up the same
+// internal identifier. Stops at the first '=' or end of string.
+static void normalize_opt_name (char * name) {
+  for (char * p = name; *p && *p != '='; p++)
+    if (*p == '-') *p = '_';
+}
+
 static int opt (const char * arg) {
   int res = 0;
   assert (arg[0] == '-');
   if (arg[1] == '-') {
-    if (arg[2] == 'n' && arg[3] == 'o' && arg[4] == '-')
-      res = setopt (arg + 5, 0);
+    if (arg[2] == 'n' && arg[3] == 'o' && arg[4] == '-') {
+      // --no-<name>: name follows; normalize it too.
+      int sublen = strlen (arg + 5) + 1;
+      char * name = mymalloc (0, sublen);
+      strcpy (name, arg + 5);
+      normalize_opt_name (name);
+      res = setopt (name, 0);
+      myfree (0, name, sublen);
+    }
     else {
       int len = strlen (arg);
       char * name = mymalloc (0, len - 1), * val;
       strcpy (name, arg + 2);
+      normalize_opt_name (name);
       for (val = name; *val && *val != '='; val++)
 	;
       if (!*val) res = setopt (name, 1);
