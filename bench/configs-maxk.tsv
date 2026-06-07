@@ -1,0 +1,17 @@
+# --maxk sweep: 1..5. All other options default.
+#
+# --maxk=N: for each falsified literal in the sink, find its best per-literal
+#   source; aggregate the top k = min(N, #valid-per-literal-bests), divide
+#   each transfer amount by k, apply each. Same source can appear multiple
+#   times if it's the per-literal best for multiple literals.
+#
+# k=1 (default) = original single-source behavior. k>1 spreads transfer
+# across multiple sources -- in expectation each source loses less per
+# round, weight rebalancing may be slower but more distributed.
+#
+# name		args
+mk1		--maxk=1
+mk2		--maxk=2
+mk3		--maxk=3
+mk4		--maxk=4
+mk5		--maxk=5
