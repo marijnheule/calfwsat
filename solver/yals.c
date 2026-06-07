@@ -4692,6 +4692,128 @@ int yals_ddfw_get_max_weight_sat_clause (Yals *yals, int cidx, int constraint_ty
 }
 
 /*------------------------------------------------------------------------*/
+/* --maxk: top-K source finder for weight transfer.                       */
+/* For each falsified literal in the sink, find that literal's best       */
+/* neighbor (heaviest eligible satisfied clause/card). Collect all per-   */
+/* literal bests, sort by weight desc, return up to N of them. The same   */
+/* clause/card can appear multiple times if it was the per-literal best   */
+/* for multiple literals.                                                 */
+/*                                                                        */
+/* Writes (source_cidx, constraint_type) pairs into out_sources/out_types.*/
+/* Caller-supplied arrays must hold at least N entries.                   */
+/* Returns the number written (0..N).                                     */
+/*------------------------------------------------------------------------*/
+int yals_ddfw_get_top_k_max_weight_sat_clause (
+    Yals * yals, int cidx, int constraint_type, int N,
+    int * out_sources, int * out_types) {
+  if (N <= 0) return 0;
+  int * lits = (constraint_type == TYPECLAUSE)
+               ? yals_lits (yals, cidx)
+               : yals_card_lits (yals, cidx);
+  int relative = (yals->opts.maxs_init_weight_relative.val
+                  && yals->using_maxs_weights);
+  // Per-literal bests collected here. Bounded by the number of literals;
+  // long constraints (especially cards) can be hundreds, so use heap.
+  // Upper-bound by N; we never keep more than N candidates anyway, but
+  // we also want a temporary capacity at least as large as the literal
+  // count to track all per-literal bests before sort+truncate. Use a
+  // growable approach with reasonable initial size.
+  int cap = 64;
+  int * srcs = malloc ((size_t) cap * sizeof (int));
+  int * tps  = malloc ((size_t) cap * sizeof (int));
+  double * wts = malloc ((size_t) cap * sizeof (double));
+  int n = 0;
+  int lit;
+  while ((lit = *lits++)) {
+    if (yals_val (yals, lit)) continue;  // satisfied literal, skip
+    int best_src = -1, best_type = -1;
+    double best_w = 0.0;
+    int best_uid = INT_MAX;
+    int found = 0;
+    // --topk fast path
+    if (yals->opts.topk.val > 0) {
+      int nbr_ct, cand = yals_topk_best (yals, lit, &nbr_ct);
+      if (cand >= 0) {
+        double cw = (nbr_ct == TYPECLAUSE)
+                    ? yals->ddfw.ddfw_clause_weights[cand]
+                    : yals->ddfw.ddfw_card_weights[cand];
+        best_src = cand; best_type = nbr_ct;
+        best_w = cw; found = 1;
+      }
+    }
+    if (!found) {
+      // Full scan over clause neighbors.
+      int * occs = yals_occs (yals, lit), occ, * p;
+      for (p = occs; (occ = *p) >= 0; p++) {
+        int nidx = occ >> LENSHIFT;
+        int source_hard = yals->hard_clause_ids[nidx];
+        if (yals_satcnt (yals, nidx) > 0) {
+          double thr = (relative && !source_hard)
+                       ? PEEK (yals->maxs_clause_weights, nidx)
+                       : (double) yals->opts.init_clause_weight.val;
+          if (yals->opts.ignorewtcriteria.val
+              || yals->ddfw.ddfw_clause_weights[nidx] >= thr) {
+            double cw = yals->ddfw.ddfw_clause_weights[nidx];
+            if (cw > best_w || (cw == best_w && nidx < best_uid)) {
+              best_src = nidx; best_type = TYPECLAUSE;
+              best_w = cw; best_uid = nidx; found = 1;
+            }
+          }
+        }
+      }
+      // Card neighbors.
+      occs = yals_card_occs (yals, lit);
+      for (p = occs; (occ = *p) >= 0; p++) {
+        int nidx = occ >> LENSHIFT;
+        int source_hard = yals->hard_card_ids[nidx];
+        if (yals_card_satcnt (yals, nidx)
+            >= yals_card_bound (yals, nidx)) {
+          double thr = (relative && !source_hard)
+                       ? PEEK (yals->maxs_card_weights, nidx)
+                       : (double) yals->opts.init_card_weight.val;
+          if (yals->opts.ignorewtcriteria.val
+              || yals->ddfw.ddfw_card_weights[nidx] >= thr) {
+            double cw = yals->ddfw.ddfw_card_weights[nidx];
+            int cuid = yals->nclauses + nidx;
+            if (cw > best_w || (cw == best_w && cuid < best_uid)) {
+              best_src = nidx; best_type = TYPECARDINALITY;
+              best_w = cw; best_uid = cuid; found = 1;
+            }
+          }
+        }
+      }
+    }
+    if (found) {
+      if (n == cap) {
+        cap *= 2;
+        srcs = realloc (srcs, (size_t) cap * sizeof (int));
+        tps  = realloc (tps,  (size_t) cap * sizeof (int));
+        wts  = realloc (wts,  (size_t) cap * sizeof (double));
+      }
+      srcs[n] = best_src; tps[n] = best_type; wts[n] = best_w;
+      n++;
+    }
+  }
+  // Insertion sort by weight desc (n typically small).
+  for (int i = 1; i < n; i++) {
+    int s = srcs[i], t = tps[i];
+    double w = wts[i];
+    int j = i - 1;
+    while (j >= 0 && wts[j] < w) {
+      srcs[j+1] = srcs[j]; tps[j+1] = tps[j]; wts[j+1] = wts[j]; j--;
+    }
+    srcs[j+1] = s; tps[j+1] = t; wts[j+1] = w;
+  }
+  int k = (n < N) ? n : N;
+  for (int i = 0; i < k; i++) {
+    out_sources[i] = srcs[i];
+    out_types[i]   = tps[i];
+  }
+  free (srcs); free (tps); free (wts);
+  return k;
+}
+
+/*------------------------------------------------------------------------*/
 /* Connected components by shared-literal connectivity (componentlock).    */
 /* Two constraints are connected if they share a common (signed) literal.  */
 /* Weight transfer is restricted to within a component when enabled.       */
@@ -4988,81 +5110,101 @@ double yals_ddfw_get_weight (Yals *yals, int source, int sink, int constraint_ty
   return w;
 }
 
+/*------------------------------------------------------------------------*/
+/* Apply a single (source, sink) weight transfer of amount w. Handles    */
+/* both clause and card source/sink types. Used by both the single-      */
+/* source and --maxk top-K transfer paths.                                */
+/*------------------------------------------------------------------------*/
+static void yals_ddfw_apply_one_transfer (
+    Yals * yals, int source, int sink,
+    int src_type, int sink_type, double w) {
+  // Subtract from source.
+  if (src_type == TYPECLAUSE)
+    yals->ddfw.ddfw_clause_weights[source] -= w;
+  else
+    yals->ddfw.ddfw_card_weights[source] -= w;
+  // Add to sink.
+  if (sink_type == TYPECLAUSE)
+    yals->ddfw.ddfw_clause_weights[sink] += w;
+  else
+    yals->ddfw.ddfw_card_weights[sink] += w;
+  // --topk maintenance.
+  if (yals->opts.topk.val > 0) {
+    yals_topk_decreased (yals,
+      (src_type == TYPECLAUSE) ? source : yals->nclauses + source);
+    yals_topk_increased (yals,
+      (sink_type == TYPECLAUSE) ? sink : yals->nclauses + sink);
+  }
+  // Per-literal weight updates.
+  yals_ddfw_update_lit_weights_on_weight_transfer (
+    yals, sink, source, src_type, sink_type, w);
+}
+
 /*
 
   Given a sink clause, find a source and transfer weight from source to sink.
 
   Update the unsat and sat1 weights for both source and sink based on weight change.
 
+  --maxk=N>1 enables the top-K mode: collect up to N best per-literal sources,
+  divide the per-source transfer amount by k = min(N, #valid-per-literal-bests),
+  and apply each transfer in sequence.
+
 */
 void yals_ddfw_transfer_weights_for_clause (Yals *yals, int sink)
 {
-  int constraint_type;
-  int source = -1;
-  int sink_comp = yals->opts.componentlock.val ? yals_cc_comp_of (yals, sink, TYPECLAUSE) : -1;
-
+  int N = yals->opts.maxk.val;
+  int sink_comp = yals->opts.componentlock.val
+    ? yals_cc_comp_of (yals, sink, TYPECLAUSE) : -1;
   LOGCIDX (sink, "Transfer weight to");
 
-  // With probability clsselectp, skip the expensive max-weight neighbor scan
-  // and go straight to a random satisfied clause. Otherwise scan neighbors and
-  // fall back to the random path only if no neighbor source is found.
-  if (((double) yals_rand_mod (yals, INT_MAX) / (double) INT_MAX) <= yals->ddfw.clsselectp) {
-    source = yals_ddfw_get_random_sat_clause (yals, &constraint_type, sink_comp);
+  // Source list -- size N for top-k mode, size 1 for single-source mode.
+  int slots = (N > 1) ? N : 1;
+  int * sources = malloc ((size_t) slots * sizeof (int));
+  int * types   = malloc ((size_t) slots * sizeof (int));
+  int k = 0;
+
+  if (((double) yals_rand_mod (yals, INT_MAX) / (double) INT_MAX)
+      <= yals->ddfw.clsselectp) {
+    // clsselectp: skip neighbor scan, go straight to random source.
+    sources[0] = yals_ddfw_get_random_sat_clause (yals, &types[0], sink_comp);
+    if (sources[0] >= 0) k = 1;
   } else {
-    // Find maximum weighted satisfied clause (source) in same-sign neighborhood
-    // of sink (same-sign neighbors share a literal, so are always in its component).
-    source = yals_ddfw_get_max_weight_sat_clause (yals, sink, TYPECLAUSE, &constraint_type);
-    if (source == -1) {
+    if (N > 1) {
+      k = yals_ddfw_get_top_k_max_weight_sat_clause (
+        yals, sink, TYPECLAUSE, N, sources, types);
+    } else {
+      sources[0] = yals_ddfw_get_max_weight_sat_clause (
+        yals, sink, TYPECLAUSE, &types[0]);
+      if (sources[0] >= 0) k = 1;
+    }
+    if (k == 0) {
       yals->ddfw.source_not_selected++;
-      source = yals_ddfw_get_random_sat_clause (yals, &constraint_type, sink_comp);
+      sources[0] = yals_ddfw_get_random_sat_clause (
+        yals, &types[0], sink_comp);
+      if (sources[0] >= 0) k = 1;
     }
   }
 
-  if (source == -1) {
+  if (k == 0) {
     yals_msg (yals, 3, "could not find satisfied constraint to transfer from");
-    return;
+    free (sources); free (types); return;
   }
 
   yals->ddfw.total_transfers++;
-  // --oldestsource: mark source as just-used (move to tail of LRU list).
-  if (yals->opts.oldestsource.val)
-    yals_oldsrc_move_to_tail (yals,
-      (constraint_type == TYPECLAUSE) ? source : yals->nclauses + source);
-
   assert (!yals_satcnt (yals, sink));
 
-  if (constraint_type == TYPECLAUSE) {
-    assert (yals_satcnt (yals, source)); // difference 1
-
-    LOGCIDX (source, "Transfer weights from");
-
-    double w = yals_ddfw_get_weight (yals, source,sink, constraint_type,TYPECLAUSE);
-
-    LOG ("Transferring %lf",w);
-
-    yals->ddfw.ddfw_clause_weights [source] -= w; // difference 2
-    yals->ddfw.ddfw_clause_weights [sink] += w;
-    if (yals->opts.topk.val > 0) { yals_topk_decreased (yals, source); yals_topk_increased (yals, sink); }
-
-    yals_ddfw_update_lit_weights_on_weight_transfer (yals, sink, source, constraint_type, TYPECLAUSE, w);
-
-  } else if (constraint_type == TYPECARDINALITY) {
-    assert (yals_card_satcnt (yals, source) >= yals_card_bound (yals, source));
-
-    LOGCARDCIDX (source, "Transfer weights from");
-
-    double w = yals_ddfw_get_weight (yals, source,sink, constraint_type,TYPECLAUSE);
-
-    LOG ("Transferring %lf",w);
-
-    yals->ddfw.ddfw_card_weights [source] -= w;
-    yals->ddfw.ddfw_clause_weights [sink] += w;
-    if (yals->opts.topk.val > 0) { yals_topk_decreased (yals, yals->nclauses + source); yals_topk_increased (yals, sink); }
-
-    yals_ddfw_update_lit_weights_on_weight_transfer (yals, sink, source, constraint_type, TYPECLAUSE, w);
-
+  double divk = (double) k;
+  for (int i = 0; i < k; i++) {
+    int src = sources[i], src_t = types[i];
+    // --oldestsource: mark source as just-used.
+    if (yals->opts.oldestsource.val)
+      yals_oldsrc_move_to_tail (yals,
+        (src_t == TYPECLAUSE) ? src : yals->nclauses + src);
+    double w = yals_ddfw_get_weight (yals, src, sink, src_t, TYPECLAUSE) / divk;
+    yals_ddfw_apply_one_transfer (yals, src, sink, src_t, TYPECLAUSE, w);
   }
-
+  free (sources); free (types);
 }
 
 /*
@@ -5076,71 +5218,55 @@ void yals_ddfw_transfer_weights_for_clause (Yals *yals, int sink)
 */
 void yals_ddfw_transfer_weights_for_card (Yals *yals, int sink)
 {
-  int constraint_type;
-  int source = -1;
-  int sink_comp = yals->opts.componentlock.val ? yals_cc_comp_of (yals, sink, TYPECARDINALITY) : -1;
-
+  int N = yals->opts.maxk.val;
+  int sink_comp = yals->opts.componentlock.val
+    ? yals_cc_comp_of (yals, sink, TYPECARDINALITY) : -1;
   LOGCARDCIDX (sink, "Transfer weight to");
 
-  // With probability clsselectp, skip the expensive max-weight neighbor scan
-  // and go straight to a random satisfied clause. Otherwise scan neighbors and
-  // fall back to the random path only if no neighbor source is found.
-  if (((double) yals_rand_mod (yals, INT_MAX) / (double) INT_MAX) <= yals->ddfw.clsselectp) {
-    source = yals_ddfw_get_random_sat_clause (yals, &constraint_type, sink_comp);
+  int slots = (N > 1) ? N : 1;
+  int * sources = malloc ((size_t) slots * sizeof (int));
+  int * types   = malloc ((size_t) slots * sizeof (int));
+  int k = 0;
+
+  if (((double) yals_rand_mod (yals, INT_MAX) / (double) INT_MAX)
+      <= yals->ddfw.clsselectp) {
+    sources[0] = yals_ddfw_get_random_sat_clause (yals, &types[0], sink_comp);
+    if (sources[0] >= 0) k = 1;
   } else {
-    // Find maximum weighted satisfied clause (source) in same-sign neighborhood of sink.
-    source = yals_ddfw_get_max_weight_sat_clause (yals, sink, TYPECARDINALITY, &constraint_type);
-    if (source == -1) {
+    if (N > 1) {
+      k = yals_ddfw_get_top_k_max_weight_sat_clause (
+        yals, sink, TYPECARDINALITY, N, sources, types);
+    } else {
+      sources[0] = yals_ddfw_get_max_weight_sat_clause (
+        yals, sink, TYPECARDINALITY, &types[0]);
+      if (sources[0] >= 0) k = 1;
+    }
+    if (k == 0) {
       yals->ddfw.source_not_selected++;
-      source = yals_ddfw_get_random_sat_clause (yals, &constraint_type, sink_comp);
+      sources[0] = yals_ddfw_get_random_sat_clause (
+        yals, &types[0], sink_comp);
+      if (sources[0] >= 0) k = 1;
     }
   }
 
-  if (source == -1) {
+  if (k == 0) {
     yals_msg (yals, 3, "could not find sat clause to transfer from");
-    return;
+    free (sources); free (types); return;
   }
 
   yals->ddfw.total_transfers++;
-  // --oldestsource: mark source as just-used (move to tail of LRU list).
-  if (yals->opts.oldestsource.val)
-    yals_oldsrc_move_to_tail (yals,
-      (constraint_type == TYPECLAUSE) ? source : yals->nclauses + source);
+  assert (yals_card_satcnt (yals, sink) < yals_card_bound (yals, sink));
 
-  assert (yals_card_satcnt (yals, sink)  < yals_card_bound (yals, sink));
-
-  if (constraint_type == TYPECLAUSE) {
-    assert (yals_satcnt (yals, source)); // difference 1
-
-    LOGCIDX (source, "Transfer weights from");
-
-    double w = yals_ddfw_get_weight (yals, source,sink, constraint_type,TYPECARDINALITY);
-
-    LOG ("Transferring %lf",w);
-
-    yals->ddfw.ddfw_clause_weights [source] -= w; // difference 2
-    yals->ddfw.ddfw_card_weights [sink] += w;
-    if (yals->opts.topk.val > 0) { yals_topk_decreased (yals, source); yals_topk_increased (yals, yals->nclauses + sink); }
-
-    yals_ddfw_update_lit_weights_on_weight_transfer (yals, sink, source, constraint_type, TYPECARDINALITY, w);
-
-  } else if (constraint_type == TYPECARDINALITY) {
-    assert (yals_card_satcnt (yals, source) >= yals_card_bound (yals, source));
-
-    LOGCARDCIDX (source, "Transfer weights from");
-
-    double w = yals_ddfw_get_weight (yals, source,sink, constraint_type,TYPECARDINALITY);
-
-    LOG ("Transferring %lf",w);
-
-    yals->ddfw.ddfw_card_weights [source] -= w;
-    yals->ddfw.ddfw_card_weights [sink] += w;
-    if (yals->opts.topk.val > 0) { yals_topk_decreased (yals, yals->nclauses + source); yals_topk_increased (yals, yals->nclauses + sink); }
-
-    yals_ddfw_update_lit_weights_on_weight_transfer (yals, sink, source, constraint_type, TYPECARDINALITY, w);
-
+  double divk = (double) k;
+  for (int i = 0; i < k; i++) {
+    int src = sources[i], src_t = types[i];
+    if (yals->opts.oldestsource.val)
+      yals_oldsrc_move_to_tail (yals,
+        (src_t == TYPECLAUSE) ? src : yals->nclauses + src);
+    double w = yals_ddfw_get_weight (yals, src, sink, src_t, TYPECARDINALITY) / divk;
+    yals_ddfw_apply_one_transfer (yals, src, sink, src_t, TYPECARDINALITY, w);
   }
-
+  free (sources); free (types);
 }
 
 // Loop over all falsified constraints and transfer weight to them

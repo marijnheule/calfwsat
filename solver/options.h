@@ -65,6 +65,7 @@ This code extends the solver yal-lin (Md Solimul Chowdhury, Cayden Codel, Marijn
   OPT (maxs_hard_takes_soft,0,0,1,"hard constraints can take from soft in random transfer"); \
   OPT (wtini,0,0,1000,"if source still has exactly its initial weight, transfer initial_weight*wtini/1000 (instead of the linear rule)"); \
   OPT (min_weight,80,0,INT_MAX,"weight floor: no clause/card weight can drop below M. A source must have weight > M to be picked (otherwise it has no transfer headroom), and any transfer is capped at (source_weight - M) so the source ends up at exactly M in the worst case. M=0 = no floor (free transfer up to source_weight)."); \
+  OPT (maxk,1,1,INT_MAX,"weight transfer top-K sources: for each falsified literal in the sink, find its best neighbor; aggregate up to N of those into the top k = min(N, #valid-per-literal-bests) and transfer from each, with each transfer amount divided by k. Same clause can appear multiple times if it's the per-literal best for multiple literals. N=1 (default) = current single-source behavior."); \
   OPT (tabu,0,0,INT_MAX,"tabu length N: the N most-recently-flipped variables are skipped in the picker (0 = disabled)"); \
   OPT (age_window,10000,1,INT_MAX,"rolling window size for the avg_age/avg_hd statistics shown in 'new minimum' prints"); \
   OPT (hd_restart,0,0,INT_MAX,"trigger an inner restart when avg_hd drops below this threshold (0 = disabled; only fires once the K-flip window has filled)"); \
