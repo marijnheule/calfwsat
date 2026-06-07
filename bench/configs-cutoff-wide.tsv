@@ -1,0 +1,15 @@
+# --cutoff sweep, wide range: 1K..100M (factor-of-10 steps).
+# All other options at default (incl. --maxk=1).
+#
+# Tests whether the new default (cutoff=20K combined with bypass=1,
+# heat=1, min-weight=10) is still in the right band, and at what
+# point the longer-cutoff regime starts to dominate (or fail) under
+# the bypass-extends-good-probes mechanism.
+#
+# name		args
+co1K		--cutoff=1000     --maxk=1
+co10K		--cutoff=10000    --maxk=1
+co100K		--cutoff=100000   --maxk=1
+co1M		--cutoff=1000000  --maxk=1
+co10M		--cutoff=10000000 --maxk=1
+co100M		--cutoff=100000000 --maxk=1
