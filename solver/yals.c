@@ -5060,18 +5060,21 @@ int yals_ddfw_get_random_sat_clause (Yals * yals, int * constraint_type, int sin
 
 /*------------------------------------------------------------------------*/
 /* --randk: top-K random-source finder.                                   */
-/* Random-sample satisfied sources (clauses + cards) until 3N have been   */
-/* collected, sort by weight desc, return up to N. Applies the same       */
-/* admission filters as yals_ddfw_get_random_sat_clause (hard/soft        */
-/* compatibility, componentlock, satcnt, --min-weight floor).             */
+/* Random-sample satisfied sources (clauses + cards) until R*K have been  */
+/* collected (R = --randtour, K = --randk), sort by weight desc, return   */
+/* up to K. Applies the same admission filters as                          */
+/* yals_ddfw_get_random_sat_clause (hard/soft compat, componentlock,      */
+/* satcnt, --min-weight floor).                                            */
 /*                                                                        */
 /* Writes (source_cidx, constraint_type) pairs into out_sources/out_types.*/
-/* Returns the count written (0..N).                                      */
+/* Returns the count written (0..K).                                      */
 /*------------------------------------------------------------------------*/
-int yals_ddfw_get_random_sat_top_k (Yals * yals, int N, int sink_comp,
+int yals_ddfw_get_random_sat_top_k (Yals * yals, int K, int sink_comp,
                                     int * out_sources, int * out_types) {
-  if (N <= 0) return 0;
-  int target = 3 * N;
+  if (K <= 0) return 0;
+  int R = yals->opts.randtour.val;
+  if (R < 1) R = 1;
+  int target = R * K;
 
   // Hard/soft compatibility (matches yals_ddfw_get_random_sat_clause).
   int takes_hard = 1, takes_soft = 1;
@@ -5157,7 +5160,7 @@ int yals_ddfw_get_random_sat_top_k (Yals * yals, int N, int sink_comp,
     src[j+1] = s; tps[j+1] = t; wts[j+1] = w;
   }
 
-  int k = (collected < N) ? collected : N;
+  int k = (collected < K) ? collected : K;
   for (int i = 0; i < k; i++) {
     out_sources[i] = src[i];
     out_types[i]   = tps[i];
