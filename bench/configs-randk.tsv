@@ -1,0 +1,14 @@
+# --randk sweep: 1..5. All other options default.
+#
+# --randk=N: when the random-source path fires (clsselectp roll or max-
+#   weight fallback), random-sample 3N satisfied sources, take the top N
+#   by weight, transfer from each with amount/N.
+#
+# N=0 (the default) = original single-random behavior.
+#
+# name		args
+rk1		--randk=1
+rk2		--randk=2
+rk3		--randk=3
+rk4		--randk=4
+rk5		--randk=5
