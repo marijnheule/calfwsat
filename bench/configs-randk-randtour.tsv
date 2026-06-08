@@ -1,0 +1,19 @@
+# --randk x --randtour sweep: 3x3 grid, both in {1,2,3}.
+#
+# rkK_tR: --randk=K --randtour=R. Random transfer samples R*K satisfied
+#   sources, takes top K by weight, transfers W/K from each. rk1_t1 is
+#   the bit-identical-to-baseline corner; the others span tournament
+#   sizes from 2 to 9 and split factors from 1 to 3.
+#
+# All other options at default.
+#
+# name		args
+rk1_t1		--randk=1 --randtour=1
+rk1_t2		--randk=1 --randtour=2
+rk1_t3		--randk=1 --randtour=3
+rk2_t1		--randk=2 --randtour=1
+rk2_t2		--randk=2 --randtour=2
+rk2_t3		--randk=2 --randtour=3
+rk3_t1		--randk=3 --randtour=1
+rk3_t2		--randk=3 --randtour=2
+rk3_t3		--randk=3 --randtour=3
