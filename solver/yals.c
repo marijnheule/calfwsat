@@ -5058,6 +5058,114 @@ int yals_ddfw_get_random_sat_clause (Yals * yals, int * constraint_type, int sin
     return source;
 }
 
+/*------------------------------------------------------------------------*/
+/* --randk: top-K random-source finder.                                   */
+/* Random-sample satisfied sources (clauses + cards) until 3N have been   */
+/* collected, sort by weight desc, return up to N. Applies the same       */
+/* admission filters as yals_ddfw_get_random_sat_clause (hard/soft        */
+/* compatibility, componentlock, satcnt, --min-weight floor).             */
+/*                                                                        */
+/* Writes (source_cidx, constraint_type) pairs into out_sources/out_types.*/
+/* Returns the count written (0..N).                                      */
+/*------------------------------------------------------------------------*/
+int yals_ddfw_get_random_sat_top_k (Yals * yals, int N, int sink_comp,
+                                    int * out_sources, int * out_types) {
+  if (N <= 0) return 0;
+  int target = 3 * N;
+
+  // Hard/soft compatibility (matches yals_ddfw_get_random_sat_clause).
+  int takes_hard = 1, takes_soft = 1;
+  if (yals->using_maxs_weights && !yals->current_weight_transfer_soft
+      && !yals->opts.maxs_hard_takes_soft.val)
+    takes_soft = 0;
+  if (yals->using_maxs_weights && yals->current_weight_transfer_soft
+      && !yals->opts.maxs_soft_takes_hard.val)
+    takes_hard = 0;
+
+  // Collection buffers.
+  int    * src  = malloc ((size_t) target * sizeof (int));
+  int    * tps  = malloc ((size_t) target * sizeof (int));
+  double * wts  = malloc ((size_t) target * sizeof (double));
+  int collected = 0;
+
+  int cnt = 0;
+  // Generous safety bound -- give 10 attempts per slot before giving up.
+  int cnt_cutoff = 10 * target + 100;
+
+  while (collected < target && cnt < cnt_cutoff) {
+    cnt++;
+    int selection;
+    if (yals->using_maxs_weights && yals->is_pure
+        && yals->cardinality_is_hard
+        && !yals->current_weight_transfer_soft
+        && !yals->opts.maxs_hard_takes_soft.val) {
+      // middle-mile optimization: cards only
+      selection = yals_rand_mod (yals, INT_MAX) % yals->card_nclauses;
+      selection += yals->nclauses;
+    } else {
+      selection = yals_rand_mod (yals, INT_MAX)
+                  % (yals->nclauses + yals->card_nclauses);
+    }
+
+    if (selection < yals->nclauses) {
+      int clause = yals_rand_mod (yals, INT_MAX) % yals->nclauses;
+      int source_hard = yals->hard_clause_ids[clause];
+      if ((source_hard && !takes_hard) || (!source_hard && !takes_soft))
+        continue;
+      if (sink_comp >= 0
+          && yals_cc_comp_of (yals, clause, TYPECLAUSE) != sink_comp)
+        continue;
+      if (yals_satcnt (yals, clause) <= 0) continue;
+      if (yals->ddfw.ddfw_clause_weights[clause]
+          <= yals->opts.min_weight.val) continue;
+      src[collected] = clause;
+      tps[collected] = TYPECLAUSE;
+      wts[collected] = yals->ddfw.ddfw_clause_weights[clause];
+      collected++;
+    } else {
+      int card = yals_rand_mod (yals, INT_MAX) % yals->card_nclauses;
+      int source_hard = yals->hard_card_ids[card];
+      if ((source_hard && !takes_hard) || (!source_hard && !takes_soft))
+        continue;
+      if (sink_comp >= 0
+          && yals_cc_comp_of (yals, card, TYPECARDINALITY) != sink_comp)
+        continue;
+      if (yals_card_satcnt (yals, card) < yals_card_bound (yals, card))
+        continue;
+      if (yals->ddfw.ddfw_card_weights[card]
+          <= yals->opts.min_weight.val) continue;
+      src[collected] = card;
+      tps[collected] = TYPECARDINALITY;
+      wts[collected] = yals->ddfw.ddfw_card_weights[card];
+      collected++;
+    }
+  }
+
+  if (collected == 0) {
+    free (src); free (tps); free (wts);
+    return 0;
+  }
+
+  // Insertion sort by weight desc.
+  for (int i = 1; i < collected; i++) {
+    int s = src[i], t = tps[i];
+    double w = wts[i];
+    int j = i - 1;
+    while (j >= 0 && wts[j] < w) {
+      src[j+1] = src[j]; tps[j+1] = tps[j]; wts[j+1] = wts[j]; j--;
+    }
+    src[j+1] = s; tps[j+1] = t; wts[j+1] = w;
+  }
+
+  int k = (collected < N) ? collected : N;
+  for (int i = 0; i < k; i++) {
+    out_sources[i] = src[i];
+    out_types[i]   = tps[i];
+  }
+  free (src); free (tps); free (wts);
+  return k;
+}
+
 
 /*
   get weight that will be transfered from source to sink
@@ -5168,26 +5276,33 @@ static void yals_ddfw_apply_one_transfer (
 */
 void yals_ddfw_transfer_weights_for_clause (Yals *yals, int sink)
 {
-  int N = yals->opts.maxk.val;
+  int N_max  = yals->opts.maxk.val;
+  int N_rand = yals->opts.randk.val;
   int sink_comp = yals->opts.componentlock.val
     ? yals_cc_comp_of (yals, sink, TYPECLAUSE) : -1;
   LOGCIDX (sink, "Transfer weight to");
 
-  // Source list -- size N for top-k mode, size 1 for single-source mode.
-  int slots = (N > 1) ? N : 1;
+  // Source list -- size = max of {maxk, randk, 1}.
+  int slots = N_max > N_rand ? N_max : N_rand;
+  if (slots < 1) slots = 1;
   int * sources = malloc ((size_t) slots * sizeof (int));
   int * types   = malloc ((size_t) slots * sizeof (int));
   int k = 0;
 
   if (((double) yals_rand_mod (yals, INT_MAX) / (double) INT_MAX)
       <= yals->ddfw.clsselectp) {
-    // clsselectp: skip neighbor scan, go straight to random source.
-    sources[0] = yals_ddfw_get_random_sat_clause (yals, &types[0], sink_comp);
-    if (sources[0] >= 0) k = 1;
+    // clsselectp: skip neighbor scan, go to random source(s).
+    if (N_rand > 0) {
+      k = yals_ddfw_get_random_sat_top_k (yals, N_rand, sink_comp,
+                                          sources, types);
+    } else {
+      sources[0] = yals_ddfw_get_random_sat_clause (yals, &types[0], sink_comp);
+      if (sources[0] >= 0) k = 1;
+    }
   } else {
-    if (N > 1) {
+    if (N_max > 1) {
       k = yals_ddfw_get_top_k_max_weight_sat_clause (
-        yals, sink, TYPECLAUSE, N, sources, types);
+        yals, sink, TYPECLAUSE, N_max, sources, types);
     } else {
       sources[0] = yals_ddfw_get_max_weight_sat_clause (
         yals, sink, TYPECLAUSE, &types[0]);
@@ -5195,9 +5310,14 @@ void yals_ddfw_transfer_weights_for_clause (Yals *yals, int sink)
     }
     if (k == 0) {
       yals->ddfw.source_not_selected++;
-      sources[0] = yals_ddfw_get_random_sat_clause (
-        yals, &types[0], sink_comp);
-      if (sources[0] >= 0) k = 1;
+      if (N_rand > 0) {
+        k = yals_ddfw_get_random_sat_top_k (yals, N_rand, sink_comp,
+                                            sources, types);
+      } else {
+        sources[0] = yals_ddfw_get_random_sat_clause (
+          yals, &types[0], sink_comp);
+        if (sources[0] >= 0) k = 1;
+      }
     }
   }
 
@@ -5233,24 +5353,31 @@ void yals_ddfw_transfer_weights_for_clause (Yals *yals, int sink)
 */
 void yals_ddfw_transfer_weights_for_card (Yals *yals, int sink)
 {
-  int N = yals->opts.maxk.val;
+  int N_max  = yals->opts.maxk.val;
+  int N_rand = yals->opts.randk.val;
   int sink_comp = yals->opts.componentlock.val
     ? yals_cc_comp_of (yals, sink, TYPECARDINALITY) : -1;
   LOGCARDCIDX (sink, "Transfer weight to");
 
-  int slots = (N > 1) ? N : 1;
+  int slots = N_max > N_rand ? N_max : N_rand;
+  if (slots < 1) slots = 1;
   int * sources = malloc ((size_t) slots * sizeof (int));
   int * types   = malloc ((size_t) slots * sizeof (int));
   int k = 0;
 
   if (((double) yals_rand_mod (yals, INT_MAX) / (double) INT_MAX)
       <= yals->ddfw.clsselectp) {
-    sources[0] = yals_ddfw_get_random_sat_clause (yals, &types[0], sink_comp);
-    if (sources[0] >= 0) k = 1;
+    if (N_rand > 0) {
+      k = yals_ddfw_get_random_sat_top_k (yals, N_rand, sink_comp,
+                                          sources, types);
+    } else {
+      sources[0] = yals_ddfw_get_random_sat_clause (yals, &types[0], sink_comp);
+      if (sources[0] >= 0) k = 1;
+    }
   } else {
-    if (N > 1) {
+    if (N_max > 1) {
       k = yals_ddfw_get_top_k_max_weight_sat_clause (
-        yals, sink, TYPECARDINALITY, N, sources, types);
+        yals, sink, TYPECARDINALITY, N_max, sources, types);
     } else {
       sources[0] = yals_ddfw_get_max_weight_sat_clause (
         yals, sink, TYPECARDINALITY, &types[0]);
@@ -5258,9 +5385,14 @@ void yals_ddfw_transfer_weights_for_card (Yals *yals, int sink)
     }
     if (k == 0) {
       yals->ddfw.source_not_selected++;
-      sources[0] = yals_ddfw_get_random_sat_clause (
-        yals, &types[0], sink_comp);
-      if (sources[0] >= 0) k = 1;
+      if (N_rand > 0) {
+        k = yals_ddfw_get_random_sat_top_k (yals, N_rand, sink_comp,
+                                            sources, types);
+      } else {
+        sources[0] = yals_ddfw_get_random_sat_clause (
+          yals, &types[0], sink_comp);
+        if (sources[0] >= 0) k = 1;
+      }
     }
   }
 
