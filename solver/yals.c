@@ -5061,10 +5061,14 @@ int yals_ddfw_get_random_sat_clause (Yals * yals, int * constraint_type, int sin
 /*------------------------------------------------------------------------*/
 /* --randk: top-K random-source finder.                                   */
 /* Random-sample satisfied sources (clauses + cards) until R*K have been  */
-/* collected (R = --randtour, K = --randk), sort by weight desc, return   */
-/* up to K. Applies the same admission filters as                          */
-/* yals_ddfw_get_random_sat_clause (hard/soft compat, componentlock,      */
-/* satcnt, --min-weight floor).                                            */
+/* collected above the --min-weight floor (R = --randtour, K = --randk),  */
+/* sort by weight desc, return up to K. Applies the same admission        */
+/* filters as yals_ddfw_get_random_sat_clause (hard/soft compat,          */
+/* componentlock, satcnt, --min-weight floor).                            */
+/*                                                                        */
+/* Matches rk0's fallback: if the strict-pool (above-floor) ends up       */
+/* empty within cnt_cutoff=1000 attempts, fall back to the top-K heaviest */
+/* satisfied sources seen IGNORING the min-weight floor.                  */
 /*                                                                        */
 /* Writes (source_cidx, constraint_type) pairs into out_sources/out_types.*/
 /* Returns the count written (0..K).                                      */
@@ -5085,15 +5089,22 @@ int yals_ddfw_get_random_sat_top_k (Yals * yals, int K, int sink_comp,
       && !yals->opts.maxs_soft_takes_hard.val)
     takes_hard = 0;
 
-  // Collection buffers.
+  // Strict pool: above-floor sources.
   int    * src  = malloc ((size_t) target * sizeof (int));
   int    * tps  = malloc ((size_t) target * sizeof (int));
   double * wts  = malloc ((size_t) target * sizeof (double));
   int collected = 0;
 
+  // Relaxed-fallback pool: kept sorted desc by weight; tracks the top-K
+  // heaviest satisfied sources seen IGNORING --min-weight. Used only if
+  // the strict pool ends up empty.
+  int    * fsrc = malloc ((size_t) K * sizeof (int));
+  int    * ftps = malloc ((size_t) K * sizeof (int));
+  double * fwts = malloc ((size_t) K * sizeof (double));
+  int fcnt = 0;
+
   int cnt = 0;
-  // Generous safety bound -- give 10 attempts per slot before giving up.
-  int cnt_cutoff = 10 * target + 100;
+  int cnt_cutoff = 1000;  // match yals_ddfw_get_random_sat_clause
 
   while (collected < target && cnt < cnt_cutoff) {
     cnt++;
@@ -5110,62 +5121,88 @@ int yals_ddfw_get_random_sat_top_k (Yals * yals, int K, int sink_comp,
                   % (yals->nclauses + yals->card_nclauses);
     }
 
+    int cidx, ctype, source_hard;
+    double weight;
     if (selection < yals->nclauses) {
-      int clause = yals_rand_mod (yals, INT_MAX) % yals->nclauses;
-      int source_hard = yals->hard_clause_ids[clause];
+      cidx = yals_rand_mod (yals, INT_MAX) % yals->nclauses;
+      ctype = TYPECLAUSE;
+      source_hard = yals->hard_clause_ids[cidx];
       if ((source_hard && !takes_hard) || (!source_hard && !takes_soft))
         continue;
       if (sink_comp >= 0
-          && yals_cc_comp_of (yals, clause, TYPECLAUSE) != sink_comp)
+          && yals_cc_comp_of (yals, cidx, TYPECLAUSE) != sink_comp)
         continue;
-      if (yals_satcnt (yals, clause) <= 0) continue;
-      if (yals->ddfw.ddfw_clause_weights[clause]
-          <= yals->opts.min_weight.val) continue;
-      src[collected] = clause;
-      tps[collected] = TYPECLAUSE;
-      wts[collected] = yals->ddfw.ddfw_clause_weights[clause];
-      collected++;
+      if (yals_satcnt (yals, cidx) <= 0) continue;
+      weight = yals->ddfw.ddfw_clause_weights[cidx];
     } else {
-      int card = yals_rand_mod (yals, INT_MAX) % yals->card_nclauses;
-      int source_hard = yals->hard_card_ids[card];
+      cidx = yals_rand_mod (yals, INT_MAX) % yals->card_nclauses;
+      ctype = TYPECARDINALITY;
+      source_hard = yals->hard_card_ids[cidx];
       if ((source_hard && !takes_hard) || (!source_hard && !takes_soft))
         continue;
       if (sink_comp >= 0
-          && yals_cc_comp_of (yals, card, TYPECARDINALITY) != sink_comp)
+          && yals_cc_comp_of (yals, cidx, TYPECARDINALITY) != sink_comp)
         continue;
-      if (yals_card_satcnt (yals, card) < yals_card_bound (yals, card))
+      if (yals_card_satcnt (yals, cidx) < yals_card_bound (yals, cidx))
         continue;
-      if (yals->ddfw.ddfw_card_weights[card]
-          <= yals->opts.min_weight.val) continue;
-      src[collected] = card;
-      tps[collected] = TYPECARDINALITY;
-      wts[collected] = yals->ddfw.ddfw_card_weights[card];
+      weight = yals->ddfw.ddfw_card_weights[cidx];
+    }
+
+    // Above-floor: append to strict pool.
+    if (weight > yals->opts.min_weight.val) {
+      src[collected] = cidx; tps[collected] = ctype; wts[collected] = weight;
       collected++;
     }
-  }
 
-  if (collected == 0) {
-    free (src); free (tps); free (wts);
-    return 0;
-  }
-
-  // Insertion sort by weight desc.
-  for (int i = 1; i < collected; i++) {
-    int s = src[i], t = tps[i];
-    double w = wts[i];
-    int j = i - 1;
-    while (j >= 0 && wts[j] < w) {
-      src[j+1] = src[j]; tps[j+1] = tps[j]; wts[j+1] = wts[j]; j--;
+    // Track in relaxed pool too: maintain sorted-desc top-K-by-weight,
+    // regardless of floor. Insertion sort with capacity K (cheap since K
+    // is typically small).
+    if (fcnt < K) {
+      int j = fcnt - 1;
+      while (j >= 0 && fwts[j] < weight) {
+        fsrc[j+1] = fsrc[j]; ftps[j+1] = ftps[j]; fwts[j+1] = fwts[j]; j--;
+      }
+      fsrc[j+1] = cidx; ftps[j+1] = ctype; fwts[j+1] = weight;
+      fcnt++;
+    } else if (weight > fwts[K-1]) {
+      // Evict smallest, insert.
+      int j = K - 2;
+      while (j >= 0 && fwts[j] < weight) {
+        fsrc[j+1] = fsrc[j]; ftps[j+1] = ftps[j]; fwts[j+1] = fwts[j]; j--;
+      }
+      fsrc[j+1] = cidx; ftps[j+1] = ctype; fwts[j+1] = weight;
     }
-    src[j+1] = s; tps[j+1] = t; wts[j+1] = w;
   }
 
-  int k = (collected < K) ? collected : K;
+  // Strict pool nonempty: sort it and return top K.
+  if (collected > 0) {
+    for (int i = 1; i < collected; i++) {
+      int s = src[i], t = tps[i];
+      double w = wts[i];
+      int j = i - 1;
+      while (j >= 0 && wts[j] < w) {
+        src[j+1] = src[j]; tps[j+1] = tps[j]; wts[j+1] = wts[j]; j--;
+      }
+      src[j+1] = s; tps[j+1] = t; wts[j+1] = w;
+    }
+    int k = (collected < K) ? collected : K;
+    for (int i = 0; i < k; i++) {
+      out_sources[i] = src[i];
+      out_types[i]   = tps[i];
+    }
+    free (src); free (tps); free (wts);
+    free (fsrc); free (ftps); free (fwts);
+    return k;
+  }
+
+  // Strict empty: use the relaxed fallback (already sorted).
+  int k = fcnt;
   for (int i = 0; i < k; i++) {
-    out_sources[i] = src[i];
-    out_types[i]   = tps[i];
+    out_sources[i] = fsrc[i];
+    out_types[i]   = ftps[i];
   }
   free (src); free (tps); free (wts);
+  free (fsrc); free (ftps); free (fwts);
   return k;
 }
 
