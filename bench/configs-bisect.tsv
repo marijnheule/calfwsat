@@ -5,12 +5,14 @@
 # All rows run with 100 seeds, 8 threads per palsat. Compare flip counts
 # (machine-independent) more than PAR-2.
 #
+# Baseline cutoff is now 50K (set in sweep-one.sh), so rows without an
+# explicit --cutoff inherit 50K; the dedicated cutoff-50K row was removed.
+#
 # name			args
 base-current		--randk=0
 no-bypass		--bypass=0
 no-heat			--heat=0
 min-weight-0		--min-weight=0
-cutoff-50K		--cutoff=50000
 cutoff-20K		--cutoff=20000
 june1-equiv		--bypass=0 --heat=0 --min-weight=0 --cutoff=50000
 june1-plus-randk	--bypass=0 --heat=0 --min-weight=0 --cutoff=50000 --randk=1 --randtour=3

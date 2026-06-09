@@ -28,7 +28,7 @@ set -uo pipefail
 SEEDS_DEFAULT="${SEEDS:-$(seq 1 100 | paste -sd, -)}"
 TIMEOUT_DEFAULT="${TIMEOUT:-900}"
 THREADS_DEFAULT="${THREADS:-8}"
-CUTOFF_DEFAULT="${CUTOFF:-20000}"
+CUTOFF_DEFAULT="${CUTOFF:-50000}"
 CONFIGS_REL="${CONFIGS:-bench/configs-bisect.tsv}"
 # ------------------------------------------------------------------
 
