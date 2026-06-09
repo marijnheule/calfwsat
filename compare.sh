@@ -35,8 +35,18 @@ fi
 SEEDS_DEFAULT="${SEEDS:-$(seq 1 100 | paste -sd, -)}"
 TIMEOUT_DEFAULT="${TIMEOUT:-3600}"
 THREADS_DEFAULT="${THREADS:-8}"
-CUTOFF_DEFAULT="${CUTOFF:-20000}"
+# Empty by default: do NOT override the solver's compiled cutoff default.
+# Override deliberately with e.g. CUTOFF=20000 bash compare.sh <formula...>.
+CUTOFF_DEFAULT="${CUTOFF:-}"
 ARGS_DEFAULT="${ARGS:-}"
+# Human-readable cutoff label and the optional --cutoff= prefix for headers.
+if [ -n "$CUTOFF_DEFAULT" ]; then
+  CUTOFF_LABEL="$CUTOFF_DEFAULT"
+  CUTOFF_PREFIX="--cutoff=$CUTOFF_DEFAULT "
+else
+  CUTOFF_LABEL="(solver default)"
+  CUTOFF_PREFIX=""
+fi
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 TIMESTAMP="$(date +%Y%m%d-%H%M%S)"
@@ -77,16 +87,18 @@ for f in "${FORMULAS[@]}"; do echo "  - $f"; done
 echo "  seeds:    $SEEDS_DEFAULT"
 echo "  timeout:  ${TIMEOUT_DEFAULT}s per run"
 echo "  threads:  $THREADS_DEFAULT per palsat"
-echo "  cutoff:   $CUTOFF_DEFAULT"
+echo "  cutoff:   $CUTOFF_LABEL"
 [ -n "$ARGS_DEFAULT" ] && echo "  args:     $ARGS_DEFAULT"
 echo "  out:      $OUT_DIR"
 echo
 
-# -------- delegate --------
+# -------- delegate (only pass --cutoff when explicitly set) --------
+CUTOFF_ARGS=()
+[ -n "$CUTOFF_DEFAULT" ] && CUTOFF_ARGS=(--cutoff "$CUTOFF_DEFAULT")
 bash "$SCRIPT_DIR/bench-parallel.sh" \
   --timeout "$TIMEOUT_DEFAULT" \
   --threads "$THREADS_DEFAULT" \
-  --cutoff "$CUTOFF_DEFAULT" \
+  ${CUTOFF_ARGS[@]+"${CUTOFF_ARGS[@]}"} \
   "$CONFIGS_TMP" \
   "$INSTANCES_TMP" \
   "$SEEDS_DEFAULT" \
@@ -152,7 +164,7 @@ TXT="$OUT_DIR/email.txt"
   echo "  date:    $DATE"
   echo "  seeds:   $NSEEDS  ($SEEDS_DEFAULT)"
   echo "  timeout: ${TIMEOUT_DEFAULT}s per run"
-  echo "  args:    --cutoff=$CUTOFF_DEFAULT ${ARGS_DEFAULT}"
+  echo "  args:    ${CUTOFF_PREFIX}${ARGS_DEFAULT}"
   echo
   cat "$PFT"
 } > "$TXT"
@@ -165,7 +177,7 @@ MD="$OUT_DIR/email.md"
   echo "- date: $DATE"
   echo "- seeds: $NSEEDS ($SEEDS_DEFAULT)"
   echo "- timeout: ${TIMEOUT_DEFAULT}s per run"
-  echo "- args: \`--cutoff=$CUTOFF_DEFAULT ${ARGS_DEFAULT}\`"
+  echo "- args: \`${CUTOFF_PREFIX}${ARGS_DEFAULT}\`"
   echo
   echo "| formula | runs | SAT | TO | PAR-2 | mean_w | median_w | mean_flips | median_flips |"
   echo "|---|---:|---:|---:|---:|---:|---:|---:|---:|"

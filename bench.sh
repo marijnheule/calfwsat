@@ -77,9 +77,10 @@ while read -r INST; do
       rm -f witness.sol
 
       START_NS=$(date +%s)
+      # Pass only -t and the per-config args; everything else uses the
+      # solver's compiled defaults, so a run differs from defaults only by $CARGS.
       # shellcheck disable=SC2086
       timeout "$TIMEOUT_SEC" ./solver/palsat -t "$THREADS" \
-        --cutoff=2000 --maxtries=1000000 --card_compute=2 \
         $CARGS "$INST" "$SEED" > "$LOG" 2>&1
       RC=$?
 

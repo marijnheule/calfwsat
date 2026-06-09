@@ -28,8 +28,8 @@ while [ "$n" -le "$LAST" ]; do
   inst="ntil-$n.knf"
   log="$LOGDIR/ntil-$n.log"
   rm -f witness.sol
+  # Pass only -t; everything else uses the solver's compiled defaults.
   timeout "$TIMEOUT_SEC" ./solver/palsat -t "$THREADS" \
-    --cutoff=2000 --maxtries=1000000 --card_compute=2 \
     "$inst" "$SEED" > "$log" 2>&1
   rc=$?
 
