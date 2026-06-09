@@ -1,0 +1,14 @@
+# Isolation grid: cutoff x card_compute on a single instance (built for
+# ntil-45, where the true default 300K/cubic regressed badly vs older runs
+# that used 20K-50K cutoff + card_compute=2/exponential).
+#
+# Crosses cutoff {300K=default, 50K, 20K} x card_compute {4=default, 2}.
+# "default" and "cc2" leave cutoff unset, so they inherit the solver's 300K.
+#
+# name		args
+default
+cc2		--card_compute=2
+cut50k		--cutoff=50000
+cut50k-cc2	--cutoff=50000 --card_compute=2
+cut20k		--cutoff=20000
+cut20k-cc2	--cutoff=20000 --card_compute=2
