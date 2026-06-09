@@ -1,0 +1,6 @@
+# Single config: pure solver defaults (no args at all). Use this for a
+# baseline sweep that measures the solver exactly as it ships, with the
+# harness overriding nothing.
+#
+# name	args
+default
