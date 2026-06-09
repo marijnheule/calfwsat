@@ -17,7 +17,8 @@
 #   --threads N        threads each palsat uses      (default 8)
 #   --parallel N       max concurrent palsat procs   (default auto: cores/threads)
 #   --palsat PATH      path to palsat binary         (default ./solver/palsat)
-#   --cutoff N         passed to palsat as --cutoff= (default 2000)
+#   --cutoff N         passed to palsat as --cutoff= (default: unset, i.e.
+#                      use the solver's own compiled default)
 #   --no-skip-existing redo runs even if a row exists (default: skip existing)
 #   -h, --help         show this help
 #
@@ -57,7 +58,9 @@ PALSAT=./solver/palsat
 PER_RUN_THREADS=8
 MAX_PARALLEL=
 TIMEOUT_SEC=60
-CUTOFF=2000
+# Empty = do NOT pass --cutoff; the solver uses its own compiled default.
+# Set explicitly (--cutoff N) only when a sweep deliberately wants to override it.
+CUTOFF=
 SKIP_EXISTING=1
 
 # ---------- arg parsing ----------
@@ -319,7 +322,7 @@ bench-parallel:
   timeout:      ${TIMEOUT_SEC}s per run
   threads/run:  $PER_RUN_THREADS
   parallel:     $MAX_PARALLEL  (~$((MAX_PARALLEL*PER_RUN_THREADS)) cores in use)
-  cutoff:       $CUTOFF
+  cutoff:       ${CUTOFF:-(solver default)}
   palsat:       $PALSAT
   out_dir:      $OUT_DIR
   skip_existing $SKIP_EXISTING
@@ -343,10 +346,16 @@ run_one() {
   mkdir -p "$log_dir"
   rm -f "$log" "$row"
 
+  # The harness deliberately passes NOTHING that would override a solver
+  # default — only thread count, an optional explicit --cutoff, and the
+  # per-config args ($cargs). A run therefore differs from the solver's
+  # compiled defaults ONLY by the options explicitly listed in the config row.
+  local cutoff_arg=""
+  [ -n "$CUTOFF" ] && cutoff_arg="--cutoff=$CUTOFF"
+
   # shellcheck disable=SC2086
   timeout "$TIMEOUT_SEC" "$PALSAT" -t "$PER_RUN_THREADS" \
-    --cutoff="$CUTOFF" --maxtries=1000000 --card_compute=2 \
-    $cargs "$inst" "$seed" > "$log" 2>&1
+    $cutoff_arg $cargs "$inst" "$seed" > "$log" 2>&1
   local rc=$?
 
   local st res wall best vars flips

@@ -5,8 +5,9 @@
 # All rows run with 100 seeds, 8 threads per palsat. Compare flip counts
 # (machine-independent) more than PAR-2.
 #
-# Baseline cutoff is now 50K (set in sweep-one.sh), so rows without an
-# explicit --cutoff inherit 50K; the dedicated cutoff-50K row was removed.
+# The solver's default cutoff is now 50K, and the harness no longer injects
+# any cutoff, so rows without an explicit --cutoff run at the 50K default;
+# the dedicated cutoff-50K row was removed as redundant.
 #
 # name			args
 base-current		--randk=0

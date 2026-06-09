@@ -28,7 +28,10 @@ set -uo pipefail
 SEEDS_DEFAULT="${SEEDS:-$(seq 1 100 | paste -sd, -)}"
 TIMEOUT_DEFAULT="${TIMEOUT:-900}"
 THREADS_DEFAULT="${THREADS:-8}"
-CUTOFF_DEFAULT="${CUTOFF:-50000}"
+# Empty by default: do NOT override the solver's compiled cutoff default.
+# A run differs from solver defaults only by what each config row sets.
+# Override deliberately with e.g. CUTOFF=20000 bash sweep-one.sh <formula>.
+CUTOFF_DEFAULT="${CUTOFF:-}"
 CONFIGS_REL="${CONFIGS:-bench/configs-bisect.tsv}"
 # ------------------------------------------------------------------
 
@@ -49,15 +52,18 @@ echo "  configs:  $CONFIGS"
 echo "  seeds:    $SEEDS_DEFAULT"
 echo "  timeout:  ${TIMEOUT_DEFAULT}s"
 echo "  threads:  $THREADS_DEFAULT per palsat"
-echo "  cutoff:   $CUTOFF_DEFAULT (per-config can override via --cutoff= in args)"
+echo "  cutoff:   ${CUTOFF_DEFAULT:-(solver default; per-config rows can set --cutoff=)}"
 echo "  out:      bench-results/$OUT_NAME"
 echo
 
-# Delegate to bench-parallel.sh
+# Delegate to bench-parallel.sh. Only pass --cutoff when explicitly set, so
+# that by default the solver's own compiled cutoff applies.
+CUTOFF_ARGS=()
+[ -n "$CUTOFF_DEFAULT" ] && CUTOFF_ARGS=(--cutoff "$CUTOFF_DEFAULT")
 bash "$SCRIPT_DIR/bench-parallel.sh" \
   --timeout "$TIMEOUT_DEFAULT" \
   --threads "$THREADS_DEFAULT" \
-  --cutoff "$CUTOFF_DEFAULT" \
+  ${CUTOFF_ARGS[@]+"${CUTOFF_ARGS[@]}"} \
   "$CONFIGS" \
   "$FORMULA" \
   "$SEEDS_DEFAULT" \
