@@ -5,15 +5,16 @@
 # All rows run with 100 seeds, 8 threads per palsat. Compare flip counts
 # (machine-independent) more than PAR-2.
 #
-# The solver's default cutoff is now 50K, and the harness no longer injects
-# any cutoff, so rows without an explicit --cutoff run at the 50K default;
-# the dedicated cutoff-50K row was removed as redundant.
+# The harness no longer injects any cutoff/maxtries/card_compute, so rows
+# without an explicit --cutoff run at the solver's compiled default (300K).
+# base-current therefore genuinely represents current defaults.
 #
 # name			args
 base-current		--randk=0
 no-bypass		--bypass=0
 no-heat			--heat=0
 min-weight-0		--min-weight=0
+cutoff-50K		--cutoff=50000
 cutoff-20K		--cutoff=20000
 june1-equiv		--bypass=0 --heat=0 --min-weight=0 --cutoff=50000
 june1-plus-randk	--bypass=0 --heat=0 --min-weight=0 --cutoff=50000 --randk=1 --randtour=3
