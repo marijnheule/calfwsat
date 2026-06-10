@@ -1339,9 +1339,17 @@ static void yals_topk_free (Yals * yals) {
 /*------------------------------------------------------------------------*/
 
 static inline double yals_wsample_weight_of (Yals * yals, int u) {
-  return u < yals->nclauses
+  double w = u < yals->nclauses
     ? yals->ddfw.ddfw_clause_weights[u]
     : yals->ddfw.ddfw_card_weights[u - yals->nclauses];
+  // --wsamplepow: leaf = weight^p, so the draw probability is proportional to
+  // weight^p (p=1 linear, p=2 quadratic, ...). Only reshapes the draw
+  // distribution; downstream selection still reads the linear ddfw weight.
+  int p = yals->opts.wsamplepow.val;
+  if (p <= 1) return w;
+  double r = w;
+  for (int i = 1; i < p; i++) r *= w;
+  return r;
 }
 
 // Recompute leaves from the current weights and rebuild all internal sums.
