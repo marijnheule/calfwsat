@@ -1329,7 +1329,7 @@ static void yals_topk_free (Yals * yals) {
 }
 
 /*------------------------------------------------------------------------*/
-/* --wsample: weighted-proportional random source sampling.                */
+/* --wsamplepow: weighted-proportional random source sampling.                */
 /* A binary segment sum-tree over the ddfw weight of every constraint.     */
 /* Sampling descends from the root proportional to weight in O(log N); a   */
 /* single weight change updates one leaf-to-root path. Satisfaction is NOT */
@@ -1560,8 +1560,8 @@ void yals_reset_ddfw (Yals * yals)
     }
     // --topk: weights changed in bulk; rebuild the structure.
     if (yals->opts.topk.val > 0) yals_topk_rebuild_all (yals);
-    // --wsample: weights changed in bulk; recompute the sum-tree.
-    if (yals->opts.wsample.val) yals_wsample_refill (yals);
+    // --wsamplepow: weights changed in bulk; recompute the sum-tree.
+    if (yals->opts.wsamplepow.val > 0) yals_wsample_refill (yals);
   }
 }
 
@@ -5290,7 +5290,7 @@ int yals_ddfw_get_random_sat_top_k (Yals * yals, int K,
     int cidx, ctype, source_hard;
     double weight;
 
-    if (yals->opts.wsample.val) {
+    if (yals->opts.wsamplepow.val > 0) {
       // Weighted-proportional draw: pick a unified id with prob ~ weight,
       // then apply the same admission filter (reject -> redraw).
       int u = yals_wsample_draw (yals);
@@ -5491,8 +5491,8 @@ static void yals_ddfw_apply_one_transfer (
     yals_topk_increased (yals,
       (sink_type == TYPECLAUSE) ? sink : yals->nclauses + sink);
   }
-  // --wsample maintenance: update the two changed leaves (source, sink).
-  if (yals->opts.wsample.val) {
+  // --wsamplepow maintenance: update the two changed leaves (source, sink).
+  if (yals->opts.wsamplepow.val > 0) {
     int su = (src_type  == TYPECLAUSE) ? source : yals->nclauses + source;
     int ku = (sink_type == TYPECLAUSE) ? sink   : yals->nclauses + sink;
     yals_wsample_set (yals, su, yals_wsample_weight_of (yals, su));
@@ -6397,10 +6397,10 @@ void yals_init_ddfw (Yals *yals)
   yals->ddfw.topk_built = 0;
   if (yals->opts.topk.val > 0) yals_topk_build (yals);
 
-  // --wsample: build the weighted-source sum-tree now that weights are set.
+  // --wsamplepow: build the weighted-source sum-tree now that weights are set.
   yals->ddfw.wsample_built = 0;
   yals->ddfw.wsample_tree = NULL;
-  if (yals->opts.wsample.val) yals_wsample_build (yals);
+  if (yals->opts.wsamplepow.val > 0) yals_wsample_build (yals);
 
   // --oldestsource: LRU list of all constraints, head = least recently used.
   yals->ddfw.oldsrc_prev = NULL;

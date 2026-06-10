@@ -6,15 +6,16 @@
 # may not have saturated there yet -- push the randtour axis higher to {20,30,
 # 40} and see where it finally turns over.
 #
-# 4th config is the weighted-proportional sampler (--wsample=1) at randtour=1:
-# a single draw with probability proportional to ddfw weight, taken directly --
-# pure proportional, no tournament. This is wsample's natural form (the draw is
-# already biased toward heavy sources, so it doesn't need the R*K-sample-then-
-# top-K tournament to find them). Tests "is proportional sampling alone good
-# enough?" against the uniform-draw tournament rows. randk stays at default (1).
+# 4th config is the weighted-proportional sampler (--wsamplepow=1) at
+# randtour=1: a single draw with probability proportional to ddfw weight, taken
+# directly -- pure proportional, no tournament. This is wsample's natural form
+# (the draw is already biased toward heavy sources, so it doesn't need the
+# R*K-sample-then-top-K tournament to find them). Tests "is proportional
+# sampling alone good enough?" against the uniform-draw tournament rows.
+# (--wsamplepow=0 = off = uniform; =1 linear; =2 quadratic ...) randk default 1.
 #
 # name	args
 t20	--randtour=20
 t30	--randtour=30
 t40	--randtour=40
-ws1	--wsample=1 --randtour=1
+ws1	--wsamplepow=1 --randtour=1

@@ -362,7 +362,7 @@ typedef struct DDFW {
   int64_t topk_stat_diverged;      // (TOPK_VERIFY=1 env var) queries where top-K pick != full-scan pick
   int topk_verify;                 // set from TOPK_VERIFY env at build time
 
-  // --wsample: segment sum-tree over the ddfw weight of every constraint
+  // --wsamplepow: segment sum-tree over the ddfw weight of every constraint
   // (unified id: clause u<nclauses; else card u-nclauses). Leaf u holds the
   // raw ddfw weight; internal nodes hold subtree sums; tree[1] = total. Drawn
   // proportional to weight in O(log N); a single weight change updates one
