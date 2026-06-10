@@ -47,8 +47,17 @@ BASE="${BASE%.cnf}"   # strip .cnf if present
 TIMESTAMP="$(date +%Y%m%d-%H%M%S)"
 OUT_NAME="${BASE}-${TIMESTAMP}"
 
+# Git provenance: the binary under test should be built from this commit.
+# Append "-dirty" if tracked files differ from HEAD (the binary may then not
+# correspond to the recorded commit). Untracked files are ignored on purpose.
+COMMIT="$(git -C "$SCRIPT_DIR" rev-parse --short HEAD 2>/dev/null || echo unknown)"
+if [ "$COMMIT" != unknown ] && ! git -C "$SCRIPT_DIR" diff --quiet HEAD 2>/dev/null; then
+  COMMIT="${COMMIT}-dirty"
+fi
+
 echo "sweep-one: $FORMULA"
 echo "  configs:  $CONFIGS"
+echo "  commit:   $COMMIT"
 echo "  seeds:    $SEEDS_DEFAULT"
 echo "  timeout:  ${TIMEOUT_DEFAULT}s"
 echo "  threads:  $THREADS_DEFAULT per palsat"
@@ -83,6 +92,7 @@ TXT="$OUT_DIR/email.txt"
 {
   echo "palsat sweep on $FORMULA"
   echo "  host:    $HOST"
+  echo "  commit:  $COMMIT"
   echo "  date:    $DATE"
   echo "  seeds:   $NSEEDS  ($SEEDS_DEFAULT)"
   echo "  timeout: ${TIMEOUT_DEFAULT}s per run"
@@ -96,6 +106,7 @@ MD="$OUT_DIR/email.md"
   echo "## palsat sweep on \`$FORMULA\`"
   echo
   echo "- host: \`$HOST\`"
+  echo "- commit: \`$COMMIT\`"
   echo "- date: $DATE"
   echo "- seeds: $NSEEDS ($SEEDS_DEFAULT)"
   echo "- timeout: ${TIMEOUT_DEFAULT}s per run"
