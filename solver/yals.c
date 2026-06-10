@@ -6459,8 +6459,10 @@ void yals_ddfw_update_changed_var_weights (Yals * yals) {
     var = ABS(*pos);
 
     yals->ddfw.uvar_changed_pos[var] = -1;
-    polarity = yals_polarity (yals, var);
     if (yals->is_pure) {
+      // polarity (a yals_val read plus a sign divide) is only consulted on
+      // the is_pure path, so compute it here instead of unconditionally.
+      polarity = yals_polarity (yals, var);
       // hard constraints
       if (polarity != yals->hard_polarity) {
         if (!yals->ddfw.var_unsat_count[var]) { // remove from heap
