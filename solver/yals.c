@@ -3950,6 +3950,17 @@ void yals_del (Yals * yals) {
   free (yals->ddfw.var_unsat_count_soft);
   free (yals->ddfw.card_sat_count_in_clause);
   free (yals->ddfw.card_sat_dirty);
+  free (yals->ddfw.xfer_sources);
+  free (yals->ddfw.xfer_types);
+  free (yals->ddfw.rtk_src);
+  free (yals->ddfw.rtk_tps);
+  free (yals->ddfw.rtk_wts);
+  free (yals->ddfw.rtk_fsrc);
+  free (yals->ddfw.rtk_ftps);
+  free (yals->ddfw.rtk_fwts);
+  free (yals->ddfw.tkm_srcs);
+  free (yals->ddfw.tkm_tps);
+  free (yals->ddfw.tkm_wts);
   free (yals->ddfw.card_helper_hash_clauses);
   free (yals->ddfw.ddfw_card_weights );
   free (yals->ddfw.unsat_weights_soft );
@@ -4792,10 +4803,12 @@ int yals_ddfw_get_top_k_max_weight_sat_clause (
   // we also want a temporary capacity at least as large as the literal
   // count to track all per-literal bests before sort+truncate. Use a
   // growable approach with reasonable initial size.
-  int cap = 64;
-  int * srcs = malloc ((size_t) cap * sizeof (int));
-  int * tps  = malloc ((size_t) cap * sizeof (int));
-  double * wts = malloc ((size_t) cap * sizeof (double));
+  // Persistent per-thread scratch; grows lazily and is retained across calls
+  // so the steady state does no allocation.
+  int cap = yals->ddfw.tkm_cap;
+  int * srcs = yals->ddfw.tkm_srcs;
+  int * tps  = yals->ddfw.tkm_tps;
+  double * wts = yals->ddfw.tkm_wts;
   int n = 0;
   int lit;
   while ((lit = *lits++)) {
@@ -4861,6 +4874,10 @@ int yals_ddfw_get_top_k_max_weight_sat_clause (
         srcs = realloc (srcs, (size_t) cap * sizeof (int));
         tps  = realloc (tps,  (size_t) cap * sizeof (int));
         wts  = realloc (wts,  (size_t) cap * sizeof (double));
+        yals->ddfw.tkm_cap  = cap;
+        yals->ddfw.tkm_srcs = srcs;
+        yals->ddfw.tkm_tps  = tps;
+        yals->ddfw.tkm_wts  = wts;
       }
       srcs[n] = best_src; tps[n] = best_type; wts[n] = best_w;
       n++;
@@ -4881,7 +4898,6 @@ int yals_ddfw_get_top_k_max_weight_sat_clause (
     out_sources[i] = srcs[i];
     out_types[i]   = tps[i];
   }
-  free (srcs); free (tps); free (wts);
   return k;
 }
 
@@ -5146,18 +5162,20 @@ int yals_ddfw_get_random_sat_top_k (Yals * yals, int K, int sink_comp,
       && !yals->opts.maxs_soft_takes_hard.val)
     takes_hard = 0;
 
-  // Strict pool: above-floor sources.
-  int    * src  = malloc ((size_t) target * sizeof (int));
-  int    * tps  = malloc ((size_t) target * sizeof (int));
-  double * wts  = malloc ((size_t) target * sizeof (double));
+  // Strict pool: above-floor sources. Preallocated per-thread scratch
+  // (sized randtour*randk at init); K here is always randk.
+  assert (target <= yals->ddfw.rtk_target && K <= yals->ddfw.rtk_k);
+  int    * src  = yals->ddfw.rtk_src;
+  int    * tps  = yals->ddfw.rtk_tps;
+  double * wts  = yals->ddfw.rtk_wts;
   int collected = 0;
 
   // Relaxed-fallback pool: kept sorted desc by weight; tracks the top-K
   // heaviest satisfied sources seen IGNORING --min-weight. Used only if
   // the strict pool ends up empty.
-  int    * fsrc = malloc ((size_t) K * sizeof (int));
-  int    * ftps = malloc ((size_t) K * sizeof (int));
-  double * fwts = malloc ((size_t) K * sizeof (double));
+  int    * fsrc = yals->ddfw.rtk_fsrc;
+  int    * ftps = yals->ddfw.rtk_ftps;
+  double * fwts = yals->ddfw.rtk_fwts;
   int fcnt = 0;
 
   int cnt = 0;
@@ -5247,8 +5265,6 @@ int yals_ddfw_get_random_sat_top_k (Yals * yals, int K, int sink_comp,
       out_sources[i] = src[i];
       out_types[i]   = tps[i];
     }
-    free (src); free (tps); free (wts);
-    free (fsrc); free (ftps); free (fwts);
     return k;
   }
 
@@ -5258,8 +5274,6 @@ int yals_ddfw_get_random_sat_top_k (Yals * yals, int K, int sink_comp,
     out_sources[i] = fsrc[i];
     out_types[i]   = ftps[i];
   }
-  free (src); free (tps); free (wts);
-  free (fsrc); free (ftps); free (fwts);
   return k;
 }
 
@@ -5379,11 +5393,12 @@ void yals_ddfw_transfer_weights_for_clause (Yals *yals, int sink)
     ? yals_cc_comp_of (yals, sink, TYPECLAUSE) : -1;
   LOGCIDX (sink, "Transfer weight to");
 
-  // Source list -- size = max of {maxk, randk, 1}.
+  // Source list -- size = max of {maxk, randk, 1}; preallocated per-thread.
   int slots = N_max > N_rand ? N_max : N_rand;
   if (slots < 1) slots = 1;
-  int * sources = malloc ((size_t) slots * sizeof (int));
-  int * types   = malloc ((size_t) slots * sizeof (int));
+  assert (slots <= yals->ddfw.xfer_slots);
+  int * sources = yals->ddfw.xfer_sources;
+  int * types   = yals->ddfw.xfer_types;
   int k = 0;
 
   if (((double) yals_rand_mod (yals, INT_MAX) / (double) INT_MAX)
@@ -5420,7 +5435,7 @@ void yals_ddfw_transfer_weights_for_clause (Yals *yals, int sink)
 
   if (k == 0) {
     yals_msg (yals, 3, "could not find satisfied constraint to transfer from");
-    free (sources); free (types); return;
+    return;
   }
 
   yals->ddfw.total_transfers++;
@@ -5436,7 +5451,6 @@ void yals_ddfw_transfer_weights_for_clause (Yals *yals, int sink)
     double w = yals_ddfw_get_weight (yals, src, sink, src_t, TYPECLAUSE) / divk;
     yals_ddfw_apply_one_transfer (yals, src, sink, src_t, TYPECLAUSE, w);
   }
-  free (sources); free (types);
 }
 
 /*
@@ -5458,8 +5472,9 @@ void yals_ddfw_transfer_weights_for_card (Yals *yals, int sink)
 
   int slots = N_max > N_rand ? N_max : N_rand;
   if (slots < 1) slots = 1;
-  int * sources = malloc ((size_t) slots * sizeof (int));
-  int * types   = malloc ((size_t) slots * sizeof (int));
+  assert (slots <= yals->ddfw.xfer_slots);
+  int * sources = yals->ddfw.xfer_sources;
+  int * types   = yals->ddfw.xfer_types;
   int k = 0;
 
   if (((double) yals_rand_mod (yals, INT_MAX) / (double) INT_MAX)
@@ -5495,7 +5510,7 @@ void yals_ddfw_transfer_weights_for_card (Yals *yals, int sink)
 
   if (k == 0) {
     yals_msg (yals, 3, "could not find sat clause to transfer from");
-    free (sources); free (types); return;
+    return;
   }
 
   yals->ddfw.total_transfers++;
@@ -5510,7 +5525,6 @@ void yals_ddfw_transfer_weights_for_card (Yals *yals, int sink)
     double w = yals_ddfw_get_weight (yals, src, sink, src_t, TYPECARDINALITY) / divk;
     yals_ddfw_apply_one_transfer (yals, src, sink, src_t, TYPECARDINALITY, w);
   }
-  free (sources); free (types);
 }
 
 // Loop over all falsified constraints and transfer weight to them
@@ -6204,6 +6218,37 @@ void yals_init_ddfw (Yals *yals)
   yals->ddfw.card_sat_count_in_clause = calloc (yals->card_nclauses, sizeof (int));
   yals->ddfw.card_sat_dirty = calloc (yals->card_nclauses, sizeof (int));
   yals->ddfw.card_helper_hash_clauses = calloc (yals->card_nclauses, sizeof (int));
+
+  /*
+    Preallocate the weight-transfer source-selection scratch buffers once,
+    sized from the (fixed-for-the-run) maxk/randk/randtour options, so the
+    hot local-minimum path never calls malloc/free.
+  */
+  {
+    int maxk = yals->opts.maxk.val, randk = yals->opts.randk.val;
+    int randtour = yals->opts.randtour.val;
+    if (randtour < 1) randtour = 1;
+    int slots = maxk > randk ? maxk : randk;
+    if (slots < 1) slots = 1;
+    yals->ddfw.xfer_slots   = slots;
+    yals->ddfw.xfer_sources = malloc ((size_t) slots * sizeof (int));
+    yals->ddfw.xfer_types   = malloc ((size_t) slots * sizeof (int));
+    int rtk_k = randk < 1 ? 1 : randk;
+    int rtk_target = randtour * rtk_k;
+    if (rtk_target < 1) rtk_target = 1;
+    yals->ddfw.rtk_k      = rtk_k;
+    yals->ddfw.rtk_target = rtk_target;
+    yals->ddfw.rtk_src  = malloc ((size_t) rtk_target * sizeof (int));
+    yals->ddfw.rtk_tps  = malloc ((size_t) rtk_target * sizeof (int));
+    yals->ddfw.rtk_wts  = malloc ((size_t) rtk_target * sizeof (double));
+    yals->ddfw.rtk_fsrc = malloc ((size_t) rtk_k * sizeof (int));
+    yals->ddfw.rtk_ftps = malloc ((size_t) rtk_k * sizeof (int));
+    yals->ddfw.rtk_fwts = malloc ((size_t) rtk_k * sizeof (double));
+    yals->ddfw.tkm_cap  = 64;
+    yals->ddfw.tkm_srcs = malloc ((size_t) yals->ddfw.tkm_cap * sizeof (int));
+    yals->ddfw.tkm_tps  = malloc ((size_t) yals->ddfw.tkm_cap * sizeof (int));
+    yals->ddfw.tkm_wts  = malloc ((size_t) yals->ddfw.tkm_cap * sizeof (double));
+  }
   for (int i = 0; i < yals->card_nclauses; i++) {
      if (yals->opts.maxs_init_weight_relative.val && yals->using_maxs_weights) {
       

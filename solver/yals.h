@@ -317,6 +317,26 @@ typedef struct DDFW {
   int * card_sat_dirty; // 1 iff the sat/unsat partition may have drifted while over-satisfied (needs a full re-sort on re-entry to critical)
   double * ddfw_card_weights; // cardinality constraint ddfw weights
 
+  // Preallocated per-thread scratch for the weight-transfer source-selection
+  // path (each Yals is per-thread, so these need no locking). Avoids the
+  // malloc/free that used to happen at every local minimum -- the allocator
+  // locks were a contention source under high thread counts.
+  int    * xfer_sources;   // [xfer_slots] source ids   (transfer_weights_for_*)
+  int    * xfer_types;     // [xfer_slots] source types
+  int      xfer_slots;
+  int    * rtk_src;        // [rtk_target] strict pool  (get_random_sat_top_k)
+  int    * rtk_tps;        // [rtk_target]
+  double * rtk_wts;        // [rtk_target]
+  int    * rtk_fsrc;       // [rtk_k] relaxed-fallback pool
+  int    * rtk_ftps;       // [rtk_k]
+  double * rtk_fwts;       // [rtk_k]
+  int      rtk_target;     // randtour*randk
+  int      rtk_k;          // randk
+  int    * tkm_srcs;       // grows lazily, persists across calls
+  int    * tkm_tps;        //   (get_top_k_max_weight_sat_clause)
+  double * tkm_wts;
+  int      tkm_cap;
+
   double * card_clause_calculated_weights; // cache of calculted weightes (not in use)
 
   // --litheap: per-literal max-weight neighbor heaps (mixed clause/card).
