@@ -1,0 +1,10 @@
+# --randtour sweep: {3,4,5}, with randk at its new default (1).
+#
+# t3 is the new solver default (randk=1, randtour=3); t4/t5 push the
+# tournament size up to see if a larger heaviest-source bias keeps helping
+# past 3. All other options at default.
+#
+# name	args
+t3	--randtour=3
+t4	--randtour=4
+t5	--randtour=5
