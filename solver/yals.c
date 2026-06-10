@@ -763,6 +763,9 @@ int yals_nunsat_heavy (Yals * yals) {
   return (int) sum;
 }
 
+static void yals_probe_pool_offer_best (Yals * yals, int score,
+                                        int64_t probe_flips);
+
 // save new minimum cost assignment
 // update statistics
 void yals_save_new_minimum (Yals * yals) {
@@ -776,6 +779,12 @@ void yals_save_new_minimum (Yals * yals) {
     LOG ("minimum %d is best assignment since last restart", nunsat);
     memcpy (yals->tmp, yals->vals, bytes);
     yals->stats.tmp = nunsat;
+    // First time this probe reaches `nunsat` -> fewest flips for it this
+    // probe. Offer it to the shared global-best tracker, but only for probes
+    // that started from a random assignment (never cache/best/keep picks).
+    if (yals->stats.probe_random)
+      yals_probe_pool_offer_best (yals, nunsat,
+        yals->stats.flips - yals->stats.probe_start_flips);
   }
   if (yals->stats.best < nunsat) return;
   if (yals->stats.best == nunsat) {
@@ -789,8 +798,10 @@ void yals_save_new_minimum (Yals * yals) {
   yals->stats.best_cardinality = yals_card_nunsat (yals);
   yals->stats.hits = 1;
   memcpy (yals->best, yals->vals, bytes);
-  if (yals->opts.verbose.val >= 2 ||
-      (yals->opts.verbose.val >= 1 && nunsat <= yals->limits.report.min/2)) {
+  // Report every local-best improvement (for this thread) at -v. Previously
+  // verbose==1 was throttled to only print when the minimum had halved since
+  // the last report, so many local improvements went unprinted.
+  if (yals->opts.verbose.val >= 1) {
     yals_report (yals, "new minimum");
     yals->limits.report.min = nunsat;
   }
@@ -2086,6 +2097,12 @@ struct YalsProbePool {
   int     * heat;
   int       heat_nvars;
   int64_t   heat_probes;
+  // Global best score across all workers, with the fewest in-probe flips
+  // seen to reach it. best_score = INT_MAX means "no score recorded yet".
+  // best_score_flips = flips since the probe start when that score was
+  // first reached (smaller is better for an equal score).
+  int       best_score;
+  int64_t   best_score_flips;
 };
 
 YalsProbePool * yals_probe_pool_new (void) {
@@ -2099,6 +2116,8 @@ YalsProbePool * yals_probe_pool_new (void) {
   p->bypass_by_tmp  = calloc ((size_t) p->capacity, sizeof (int64_t));
   p->cutoffs_by_tmp = calloc ((size_t) p->capacity, sizeof (int64_t));
   p->total = 0;
+  p->best_score = INT_MAX;
+  p->best_score_flips = 0;
   return p;
 }
 
@@ -2148,6 +2167,40 @@ static void yals_probe_pool_record (YalsProbePool * p, int v) {
   // increases by 1 for all w < v.
   for (int w = 0; w < v; w++) p->above[w]++;
   pthread_mutex_unlock (&p->lock);
+}
+
+// Offer a candidate (score, probe_flips) to the shared global best. The
+// candidate wins if (a) it strictly improves the best score, or (b) it
+// matches the best score but was reached in fewer flips since its probe
+// started. On a win the global record is updated and, with -v, a line is
+// printed naming the score and the flips-to-reach. probe_flips is the
+// number of flips this worker did since it last began from a freshly
+// picked assignment.
+static void yals_probe_pool_offer_best (Yals * yals, int score,
+                                        int64_t probe_flips) {
+  YalsProbePool * p = yals->probe_pool;
+  if (!p || score < 0) return;
+  int improved = 0;  // 0 = no win, 1 = same score / fewer flips, 2 = new best
+  pthread_mutex_lock (&p->lock);
+  if (score < p->best_score) {
+    p->best_score = score;
+    p->best_score_flips = probe_flips;
+    improved = 2;
+  } else if (score == p->best_score && probe_flips < p->best_score_flips) {
+    p->best_score_flips = probe_flips;
+    improved = 1;
+  }
+  pthread_mutex_unlock (&p->lock);
+  if (improved && yals->opts.verbose.val >= 1) {
+    yals_msglock (yals);
+    fprintf (yals->out,
+      "%s%s global best score %d reached in %lld flips since probe start\n",
+      yals->opts.prefix,
+      (improved == 2) ? "new" : "same",
+      score, (long long) probe_flips);
+    fflush (yals->out);
+    yals_msgunlock (yals);
+  }
 }
 
 // Record one successful bypass at tmp=v.
@@ -2553,7 +2606,11 @@ static int yals_shared_cache_cycle (Yals * yals) {
   if (!yals->shared_cache) return 0;
   yals_shared_cache_release (yals);
   yals_shared_cache_insert (yals);
-  return yals_shared_cache_pick (yals);
+  int picked = yals_shared_cache_pick (yals);
+  // A cached assignment replaced the freshly picked one: this probe did not
+  // start from a random assignment, so exclude it from the global-best tracker.
+  if (picked) yals->stats.probe_random = 0;
+  return picked;
 }
 
 /*------------------------------------------------------------------------*/
@@ -2736,6 +2793,9 @@ static void yals_pick_assignment (Yals * yals, int initial) {
   int idx, pos, neg, i, nvars = yals->nvars, ncache;
   size_t bytes = yals->nvarwords * sizeof (Word);
   const int vl = 1 + !initial;
+  // Assume non-random; the pure-random branch below sets this to 1. A shared
+  // cache override (yals_shared_cache_cycle) clears it again afterwards.
+  yals->stats.probe_random = 0;
   if (!initial && yals->opts.best.val) {
     yals->stats.pick.best++;
     yals_msg (yals, vl, "picking previous best assignment");
@@ -2774,6 +2834,7 @@ PUSH (yals->scores, min);
     memset (yals->vals, 0xff, bytes);
   } else {
     yals->stats.pick.rnd++;
+    yals->stats.probe_random = 1;
     // --heat: bias each variable toward true with probability heat[v]/probes.
     // Falls back to pure per-bit random when heat is disabled or empty.
     YalsProbePool * pool = yals->probe_pool;
@@ -3699,6 +3760,8 @@ Yals * yals_new_with_mem_mgr (void * mgr,
   yals->stats.tmp = INT_MAX;
   yals->stats.best = INT_MAX;
   yals->stats.last = INT_MAX;
+  yals->stats.probe_start_flips = 0;
+  yals->stats.probe_random = 0;
   yals->limits.report.min = INT_MAX;
 
   yals->stats.nheap_updated = 0;
@@ -4198,6 +4261,7 @@ static void yals_restart_inner (Yals * yals) {
       yals_update_sat_and_unsat (yals);
       yals->stats.tmp = INT_MAX;
       yals->stats.maxs_tmp_weight = YALS_DOUBLE_MAX;
+      yals->stats.probe_start_flips = yals->stats.flips;
       yals_save_new_minimum (yals);
     }
   } else {
@@ -4217,6 +4281,7 @@ static void yals_restart_inner (Yals * yals) {
       }
       yals_update_sat_and_unsat (yals);
       yals->stats.tmp = INT_MAX;
+      yals->stats.probe_start_flips = yals->stats.flips;
       yals_save_new_minimum (yals);
     }
   }

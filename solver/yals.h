@@ -111,6 +111,15 @@ typedef struct Stats {
   // end max sat weights
 
   int64_t flips, bzflips, hits, unsum, get_random_sat_cnt, get_random_sat_missed;
+  // Value of `flips` at the start of the current probe (the last time this
+  // worker began from a freshly picked assignment). Used to report how many
+  // flips a probe needed to reach the global best score.
+  int64_t probe_start_flips;
+  // 1 iff the current probe started from a freshly generated random
+  // assignment (not a cached/best/keep/all-polarity pick, and not overridden
+  // by the shared cache). Only random-started probes contribute to the
+  // global-best tracker.
+  int probe_random;
   struct {
     struct { int64_t count; } outer;
     struct { int64_t count; } inner;
