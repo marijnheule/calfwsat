@@ -14,8 +14,12 @@
 # sampling alone good enough?" against the uniform-draw tournament rows.
 # (--wsamplepow=0 = off = uniform; =1 linear; =2 quadratic ...) randk default 1.
 #
+# NOTE: --wsamplepow=1 --randtour=1 is now the compiled default, so the t-rows
+# below pin --wsamplepow=0 explicitly to stay uniform-draw tournaments (the
+# original comparison). ws1 reproduces the new weighted-proportional default.
+#
 # name	args
-t20	--randtour=20
-t30	--randtour=30
-t40	--randtour=40
+t20	--randtour=20 --wsamplepow=0
+t30	--randtour=30 --wsamplepow=0
+t40	--randtour=40 --wsamplepow=0
 ws1	--wsamplepow=1 --randtour=1
