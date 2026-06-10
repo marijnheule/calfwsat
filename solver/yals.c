@@ -1680,13 +1680,19 @@ void yals_make_clauses_after_flipping_lit (Yals * yals, int lit) {
     // oldnsat before the bump and oldnsat+1 after -- both held here).
     double card_c = yals->ddfw.ddfw_card_weights [cidx];
 
-    // Compute upfront: w(d_old) and the derivative at d_old.
-    card_old_unsat_weight = yals_card_w_at (yals, cidx, bound, oldnsat, card_c);
-    card_old_critical_weight = yals_card_change_neg_at (yals, cidx, bound, oldnsat, card_c);
-
     // increment satcnt of cardinality constraint, move lit to correct partition
+    // (always required, independent of case). ddfw weight is unchanged by
+    // incsatcnt and the polynomial evals below take explicit (bound, oldnsat,
+    // card_c), so deferring them past the bump is value-preserving and lets
+    // case 1 skip all three.
     yals_card_incsatcnt (yals, cidx, lit, len);
 
+    // 1) overly satisfied (oldnsat > bound): no ddfw weight change at all.
+    // Early-out before the (up to 3) polynomial evaluations the other cases
+    // need -- on these long constraints this is the common case.
+    if (oldnsat > bound) continue;
+
+    // Compute upfront: w(d_old), the derivative at d_old, and w(d_old+1).
     // After incsatcnt: new_nsat = old_nsat + 1, so d_new = d_old - 1, and
     // card_new_critical_weight = w(d_new+1) - w(d_new) = w(d_old) - w(d_old-1)
     //                          = -(card_new_unsat - card_old_unsat)
@@ -1695,6 +1701,8 @@ void yals_make_clauses_after_flipping_lit (Yals * yals, int lit) {
     // card_exp (now hardcoded cubic), so this identity holds exactly for all
     // remaining card_compute modes. Saves one _change_neg query per touched
     // cardinality constraint.
+    card_old_unsat_weight = yals_card_w_at (yals, cidx, bound, oldnsat, card_c);
+    card_old_critical_weight = yals_card_change_neg_at (yals, cidx, bound, oldnsat, card_c);
     card_new_unsat_weight = yals_card_w_at (yals, cidx, bound, oldnsat + 1, card_c);
     card_unsat_weight_change = card_new_unsat_weight - card_old_unsat_weight;
     card_new_critical_weight = -card_unsat_weight_change;
@@ -1703,21 +1711,11 @@ void yals_make_clauses_after_flipping_lit (Yals * yals, int lit) {
 
     assert (card_unsat_weight_change <= 0); // weight must get smaller or stay the same
 
-    // Debugging information
-    // if (oldnsat <= bound) {
-    //   LOG ("PRELOG");
-    //   LOGCARDCIDX (cidx, "old nsat %d new nsat %d bound %d",oldnsat,  yals_card_satcnt (yals, cidx), bound);
-    //   LOG ("old unsat %lf new unsat %lf unsat change %lf old crit %lf new crit %lf",\
-    //   card_old_unsat_weight, card_new_unsat_weight, card_unsat_weight_change, card_old_critical_weight, card_new_critical_weight );
-    // }
-    
     soft = 0;
     if (yals->using_maxs_weights && !yals->hard_card_ids[cidx])
       soft = 1;
 
-    if (oldnsat > bound) { // 1)
-      continue;
-    } else if (oldnsat == bound) { // 2)
+    if (oldnsat == bound) { // 2)
       // remove critical weights
       yals_card_sat_weight_update (yals, cidx, -card_old_critical_weight, lit);
     } else if (oldnsat == bound - 1) { // 3)
@@ -1864,6 +1862,18 @@ void yals_break_clauses_after_flipping_lit (Yals * yals, int lit) {
     // oldnsat-1 after -- both held here.
     double card_c = yals->ddfw.ddfw_card_weights [cidx];
 
+    // decrement satcnt of cardinality constraint, move lit to correct partition
+    // (always required, independent of case). ddfw weight is unchanged by
+    // decsatcnt and the polynomial evals below take explicit (bound, oldnsat,
+    // card_c), so deferring them past the decrement is value-preserving and
+    // lets case 1 skip all three.
+    yals_card_decsatcnt (yals, cidx,-lit, len);
+
+    // 1) overly satisfied (oldnsat > bound+1): no ddfw weight change at all.
+    // Early-out before the (up to 3) polynomial evaluations the other cases
+    // need -- on these long constraints this is the common case.
+    if (oldnsat > bound+1) continue;
+
     // Note: card_old_critical_weight = _change_neg(d_old) = w(d_old+1) - w(d_old)
     // which equals card_unsat_weight_change (computed below from the two
     // calculate_weight calls). The previous author noted "caused error" when
@@ -1872,10 +1882,6 @@ void yals_break_clauses_after_flipping_lit (Yals * yals, int lit) {
     // nsat >= 1 and the substitution is safe. Saves one weight query per
     // touched cardinality constraint.
     card_old_unsat_weight = yals_card_w_at (yals, cidx, bound, oldnsat, card_c);
-
-    // decrement satcnt of cardinality constraint, move lit to correct partition
-    yals_card_decsatcnt (yals, cidx,-lit, len);
-
     card_new_unsat_weight = yals_card_w_at (yals, cidx, bound, oldnsat - 1, card_c);
     card_unsat_weight_change = card_new_unsat_weight - card_old_unsat_weight;
     card_old_critical_weight = card_unsat_weight_change;
@@ -1883,20 +1889,11 @@ void yals_break_clauses_after_flipping_lit (Yals * yals, int lit) {
 
     card_critical_weight_change = card_new_critical_weight - card_old_critical_weight;
 
-    // Debugging information
-    // if (oldnsat <= bound+1) {
-    //   LOGCARDCIDX (cidx, "old nsat %d new nsat %d bound %d",oldnsat,  yals_card_satcnt (yals, cidx), bound);
-    //   LOG ("old unsat %lf new unsat %lf unsat change %lf old crit %lf new crit %lf",\
-    //   card_old_unsat_weight, card_new_unsat_weight, card_unsat_weight_change, card_old_critical_weight, card_new_critical_weight );
-    // }
-
     soft = 0;
     if (yals->using_maxs_weights && !yals->hard_card_ids[cidx])
       soft = 1;
 
-    if (oldnsat > bound+1) { // 1)
-      continue;
-    } else if (oldnsat == bound+1) { // 2)
+    if (oldnsat == bound+1) { // 2)
       // add critical weights
       yals_card_sat_weight_update (yals, cidx, card_new_critical_weight, -lit);
     } else if (oldnsat == bound) { // 3)
