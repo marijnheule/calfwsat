@@ -1,0 +1,19 @@
+# --wsamplepow {1,2} on harder instances. 200 seeds, 3600s.
+#
+# wsamplepow=1 is the compiled default: a single weighted-proportional draw
+# from the segment tree with probability proportional to ddfw weight^1 (linear).
+# wsamplepow=2 squares the weight (weight^2), concentrating the random-source
+# draw harder onto heavy sources. randtour=1 (default) -- pure proportional,
+# no tournament. Only the draw distribution differs between the two rows;
+# top-K selection, the weight floor, and the transfer amount all still use the
+# linear weight.
+#
+# u20 is the uniform-draw tournament baseline (--wsamplepow=0 --randtour=20):
+# the config that won ntil-45 in the randtour sweep. Included so this sweep can
+# tell whether proportional sampling is the right regime on hard instances at
+# all, rather than only comparing p1 vs p2 within that regime.
+#
+# name	args
+p1	--wsamplepow=1
+p2	--wsamplepow=2
+u20	--wsamplepow=0 --randtour=20

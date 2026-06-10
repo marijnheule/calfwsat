@@ -26,13 +26,13 @@ set -uo pipefail
 # Any of these can be overridden by setting an env var when invoking:
 #   TIMEOUT=300 SEEDS="1,2,3" bash sweep-one.sh <formula>
 SEEDS_DEFAULT="${SEEDS:-$(seq 1001 1200 | paste -sd, -)}"
-TIMEOUT_DEFAULT="${TIMEOUT:-900}"
+TIMEOUT_DEFAULT="${TIMEOUT:-3600}"
 THREADS_DEFAULT="${THREADS:-8}"
 # Empty by default: do NOT override the solver's compiled cutoff default.
 # A run differs from solver defaults only by what each config row sets.
 # Override deliberately with e.g. CUTOFF=20000 bash sweep-one.sh <formula>.
 CUTOFF_DEFAULT="${CUTOFF:-}"
-CONFIGS_REL="${CONFIGS:-bench/configs-randtour.tsv}"
+CONFIGS_REL="${CONFIGS:-bench/configs-wsamplepow.tsv}"
 # ------------------------------------------------------------------
 
 FORMULA="${1:?usage: $0 <formula.knf>}"
