@@ -959,10 +959,13 @@ static inline double yals_nbr_weight (Yals * yals, int u) {
 // (no ties), so topk's pick is deterministic.
 // e1, e2 are edge ids.
 static inline int yals_nbr_better (Yals * yals, int e1, int e2) {
-  int u1 = yals->ddfw.nbr_con[e1], u2 = yals->ddfw.nbr_con[e2];
-  double w1 = yals_nbr_weight (yals, u1), w2 = yals_nbr_weight (yals, u2);
+  // Common path reads the per-edge weight cache (nbr_w), avoiding the
+  // nbr_con indirection + clause/card branch of yals_nbr_weight. nbr_w holds
+  // the identical double that yals_nbr_weight would return, so the comparison
+  // is bit-identical. nbr_con is only touched on an exact-weight tie.
+  double w1 = yals->ddfw.nbr_w[e1], w2 = yals->ddfw.nbr_w[e2];
   if (w1 != w2) return w1 > w2;
-  return u1 < u2;
+  return yals->ddfw.nbr_con[e1] < yals->ddfw.nbr_con[e2];
 }
 
 static void yals_nbr_free (Yals * yals) {
@@ -1086,7 +1089,10 @@ static void yals_topk_increased (Yals * yals, int u) {
   int * cstart = yals->ddfw.nbr_cstart;
   int * lit_of = yals->ddfw.nbr_lit;
   int * pos = yals->ddfw.topk_pos;
+  double * nbr_w = yals->ddfw.nbr_w;
+  double nw = yals_nbr_weight (yals, u);  // u's new (increased) weight
   for (int e = cstart[u]; e < cstart[u+1]; e++) {
+    nbr_w[e] = nw;  // keep the cache in sync for every edge of u
     int p = lit_of[e];
     if (pos[e] >= 0) yals_topk_bubble_up (yals, p, e);
     else yals_topk_insert (yals, p, e);
@@ -1103,7 +1109,10 @@ static void yals_topk_decreased (Yals * yals, int u) {
   int * lit_of = yals->ddfw.nbr_lit;
   int * pos = yals->ddfw.topk_pos;
   int * count = yals->ddfw.topk_count;
+  double * nbr_w = yals->ddfw.nbr_w;
+  double nw = yals_nbr_weight (yals, u);  // u's new (decreased) weight
   for (int e = cstart[u]; e < cstart[u+1]; e++) {
+    nbr_w[e] = nw;  // keep the cache in sync for every edge of u
     int p = lit_of[e];
     if (pos[e] < 0) continue;
     yals_topk_bubble_down (yals, p, e);
@@ -1147,6 +1156,10 @@ static void yals_topk_rebuild_lit (Yals * yals, int p) {
   int lo = yals->ddfw.nbr_lstart[p], hi = yals->ddfw.nbr_lstart[p+1];
   for (int s = lo; s < hi; s++) {
     int e = yals->ddfw.nbr_heap[s];
+    // Refresh the weight cache for this edge. Idempotent on the hot path
+    // (weights already current); on the post-bulk-reset rebuild_all this is
+    // what re-syncs the cache for every edge after a wholesale weight reset.
+    yals->ddfw.nbr_w[e] = yals_nbr_weight (yals, yals->ddfw.nbr_con[e]);
     if (count[p] < K) {
       int i = count[p]++;
       list[i] = e; pos[e] = i;
@@ -1283,6 +1296,12 @@ static void yals_topk_build (Yals * yals) {
   yals->ddfw.topk_count = calloc (nlits, sizeof (int));
   yals->ddfw.topk_pos = malloc (E * sizeof (int));
   for (int i = 0; i < E; i++) yals->ddfw.topk_pos[i] = -1;
+  // Per-edge weight cache (read by yals_nbr_better). Seed every edge with its
+  // constraint's current weight; kept in sync thereafter at every weight
+  // change (apply_one_transfer's increased/decreased sweeps, and rebuild_lit).
+  yals->ddfw.nbr_w = malloc (E * sizeof (double));
+  for (int e = 0; e < E; e++)
+    yals->ddfw.nbr_w[e] = yals_nbr_weight (yals, yals->ddfw.nbr_con[e]);
   // Zero diagnostics + read TOPK_VERIFY env var (set to 1 to compare each
   // top-K pick against a fresh full literal scan -- slow but reveals when
   // the approximation diverges from the actual max-weight eligible source).
@@ -1305,6 +1324,7 @@ static void yals_topk_free (Yals * yals) {
   free (yals->ddfw.topk_list); yals->ddfw.topk_list = NULL;
   free (yals->ddfw.topk_count); yals->ddfw.topk_count = NULL;
   free (yals->ddfw.topk_pos); yals->ddfw.topk_pos = NULL;
+  free (yals->ddfw.nbr_w); yals->ddfw.nbr_w = NULL;
   yals->ddfw.topk_built = 0;
 }
 

@@ -356,6 +356,7 @@ typedef struct DDFW {
   int * topk_list;   // [nlits * K] flat array; slots p*K .. p*K + count[p] hold the entries (edge ids), sorted by (weight, id) descending
   int * topk_count;  // [nlits] current size per literal (0..K)
   int * topk_pos;    // [E] edge -> index within owning literal's slice (0..K-1), -1 if not in list
+  double * nbr_w;    // [E] edge -> cached weight of nbr_con[e]; kept in sync on every weight change so yals_nbr_better avoids the nbr_con indirection + clause/card branch per comparison
   // Diagnostics (printed by yals_print_stats when --topk>0).
   int64_t topk_stat_q;             // total yals_topk_best queries
   int64_t topk_stat_rebuild;       // queries that triggered an empty-list rebuild
