@@ -481,6 +481,61 @@ void yals_card_unsat_weight_update (Yals *yals, int cidx, double w_diff, int avo
   }
 }
 
+/*
+  Fused sat-partition + unsat-partition weight update for a touched
+  cardinality constraint. Used by the hot "still falsified" case (case 4 of
+  both make and break), where the previous code issued two back-to-back
+  external calls -- yals_card_sat_weight_update followed by
+  yals_card_unsat_weight_update -- with the SAME avoid_lit and nothing
+  interleaved between them.
+
+  This does the same work in one (static, inlinable) call: the soft lookup,
+  weight-array selection, and pos/uvars pointer fetches are computed once
+  instead of twice. The sat partition is walked first and the unsat partition
+  second -- exactly the order the two separate calls used -- so the sequence
+  in which changed variables are pushed onto uvars_changed (and therefore the
+  entire downstream search trajectory) is bit-identical. Per-partition early
+  exits on |w| < 0.01 match the originals' early returns.
+*/
+static void yals_card_sat_then_unsat_weight_update (
+    Yals *yals, int cidx, double w_sat, double w_unsat, int avoid_lit) {
+  assert_valid_card_cidx (cidx);
+  int soft = (yals->using_maxs_weights && !yals->hard_card_ids[cidx]);
+  int * pos = yals->ddfw.uvar_changed_pos;
+  STACK_INT * uvars = &yals->ddfw.uvars_changed;
+  int *begin, *end;
+
+  if (fabs (w_sat) >= 0.01) {
+    double * sat1 = soft ? yals->ddfw.sat1_weights_soft
+                         : yals->ddfw.sat1_weights;
+    yals_card_sat_iters (yals, cidx, &begin, &end);
+    for (; begin != end; begin++) {
+      int lit = *begin;
+      if (lit == avoid_lit) continue;
+      sat1[get_pos (lit)] += w_sat;
+      int var = ABS (lit);
+      if (pos[var] < 0) { pos[var] = 1; PUSH (*uvars, var); }
+    }
+  }
+
+  if (fabs (w_unsat) >= 0.01) {
+    double * unsat = soft ? yals->ddfw.unsat_weights_soft
+                          : yals->ddfw.unsat_weights;
+    int param_pos_active = (yals->opts.paramPos.val != 1000);
+    double param_pos_factor = (double) yals->opts.paramPos.val / 1000.0;
+    yals_card_unsat_iters (yals, cidx, &begin, &end);
+    for (; begin != end; begin++) {
+      int lit = *begin;
+      if (lit == avoid_lit) continue;
+      double delta = (param_pos_active && lit > 0) ? w_unsat * param_pos_factor
+                                                   : w_unsat;
+      unsat[get_pos (lit)] += delta;
+      int var = ABS (lit);
+      if (pos[var] < 0) { pos[var] = 1; PUSH (*uvars, var); }
+    }
+  }
+}
+
 
 /*------------------------------------------------------------------------*/
 
@@ -1569,11 +1624,10 @@ void yals_make_clauses_after_flipping_lit (Yals * yals, int lit) {
       // sat1_weights[get_pos (lit)] += card_new_critical_weight;
       yals_ddfw_update_var_weight (yals, lit, soft,1,card_new_critical_weight);
 
-      // change critical weights of lits
-      yals_card_sat_weight_update (yals, cidx, card_critical_weight_change, lit);
-
-      // change unsat weights of lits
-      yals_card_unsat_weight_update (yals, cidx, card_unsat_weight_change, lit);
+      // change critical weights of sat lits, then unsat weights of unsat lits
+      // (fused; same avoid_lit, sat partition first -- preserves push order)
+      yals_card_sat_then_unsat_weight_update (
+        yals, cidx, card_critical_weight_change, card_unsat_weight_change, lit);
 
       // yals_remove_a_var_from_uvars (yals, lit, soft);
     }
@@ -1742,11 +1796,10 @@ void yals_break_clauses_after_flipping_lit (Yals * yals, int lit) {
       // unsat_weights[get_pos (-lit)] += card_new_unsat_weight;
       yals_ddfw_update_var_weight (yals,-lit, soft, 0, card_new_unsat_weight);
 
-      // change critical weights of lits
-      yals_card_sat_weight_update (yals, cidx, card_critical_weight_change, -lit);
-
-      // change unsat weights of lits
-      yals_card_unsat_weight_update (yals, cidx, card_unsat_weight_change, -lit);
+      // change critical weights of sat lits, then unsat weights of unsat lits
+      // (fused; same avoid_lit, sat partition first -- preserves push order)
+      yals_card_sat_then_unsat_weight_update (
+        yals, cidx, card_critical_weight_change, card_unsat_weight_change, -lit);
 
       // when flipped lit in constraint already broken, should be added to uvars (not enqueued though)
       yals_add_a_var_to_uvars (yals, lit, soft);
