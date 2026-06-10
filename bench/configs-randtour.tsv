@@ -1,4 +1,4 @@
-# --randtour high sweep {20,30,40} + wsample A/B. Seeds 801-1000, 900s.
+# --randtour high sweep {20,30,40} + pure-proportional wsample. Seeds 801-1000, 900s.
 #
 # The {10,14,20} sweep showed ntil-45 plateaus from randtour 10->20 (t10~=t20
 # on solves; t20 has a modest flip-efficiency edge; the t14 dip was noise).
@@ -6,16 +6,15 @@
 # may not have saturated there yet -- push the randtour axis higher to {20,30,
 # 40} and see where it finally turns over.
 #
-# 4th config is the weighted-proportional sampler (--wsample=1): draw each
-# random-source candidate with probability proportional to its ddfw weight
-# instead of uniformly, then take the top-K as usual. Held at randtour=20 so
-# it is a matched-budget A/B against the t20 row -- same number of candidates
-# sampled per transfer, the only difference is the draw distribution (weighted
-# vs uniform). Isolates "does a weighted draw beat a uniform draw + tournament
-# at equal cost?". randk stays at its default (1).
+# 4th config is the weighted-proportional sampler (--wsample=1) at randtour=1:
+# a single draw with probability proportional to ddfw weight, taken directly --
+# pure proportional, no tournament. This is wsample's natural form (the draw is
+# already biased toward heavy sources, so it doesn't need the R*K-sample-then-
+# top-K tournament to find them). Tests "is proportional sampling alone good
+# enough?" against the uniform-draw tournament rows. randk stays at default (1).
 #
 # name	args
 t20	--randtour=20
 t30	--randtour=30
 t40	--randtour=40
-ws20	--wsample=1 --randtour=20
+ws1	--wsample=1 --randtour=1
