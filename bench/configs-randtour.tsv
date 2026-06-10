@@ -1,10 +1,13 @@
-# --randtour sweep: {3,4,5}, with randk at its new default (1).
+# --randtour sweep: {5, 7, 10}.
 #
-# t3 is the new solver default (randk=1, randtour=3); t4/t5 push the
-# tournament size up to see if a larger heaviest-source bias keeps helping
-# past 3. All other options at default.
+# The {3,4,5} sweep improved monotonically (t5 best on ntil-43/ntil-45 with
+# no reversal), so the optimum is >=5 and not yet located. t5 is carried over
+# as the known-good anchor; t7/t10 probe higher with wider spacing to bracket
+# the knee. randk stays at its default (1); all other options at default.
+# Larger randtour costs more rejection sampling per transfer (rtk buffers are
+# preallocated, so no malloc penalty).
 #
 # name	args
-t3	--randtour=3
-t4	--randtour=4
 t5	--randtour=5
+t7	--randtour=7
+t10	--randtour=10
