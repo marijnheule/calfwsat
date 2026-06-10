@@ -847,7 +847,6 @@ int main (int argc, char** argv) {
       else seed = atoull (argv[i]), seedset = 1;
     }  
     
-    else if (!strcmp (argv[i], "--ignorewtcriteria")) setopt ("ignorewtcriteria", 1);
     else if (!strcmp (argv[i], "--clsselectp")) setopt ("clsselectp", atoll (argv[++i]));
     else if (!strcmp (argv[i], "--wtadd")) setopt ("wtadd", atoll (argv[++i]));
     else if (!strcmp (argv[i], "--wtmul")) setopt ("wtmul", atoll (argv[++i]));

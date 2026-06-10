@@ -29,12 +29,10 @@ This code extends the solver yal-lin (Md Solimul Chowdhury, Cayden Codel, Marijn
   OPT (cachemax,(1<<10),0,(1<<20),"max cache size of saved assignments"); \
   OPT (cachemin,1,0,(1<<10),"minimum cache size of saved assignments"); \
   OPT (clsselectp, 12 , 1, 100, "Clause selection probability for weight transfer."); \
-  OPT (rndlit,0,0,1,"max-weight source selection: scan neighbors of only one randomly chosen falsified literal of the sink"); \
   OPT (topk,8,0,64,"per-literal top-K sorted list of heaviest neighbors (K=0 falls back to full scan)"); \
   OPT (cutoff,300000,0,INT_MAX,"flips per try (0 = unlimited; controls inner-restart and shared-cache cycle frequency)"); \
   OPT (defrag,1,0,1,"defragemtation of unsat queue"); \
   OPT (fixed,1,0,INT_MAX,"fixed default strategy frequency (1=always)"); \
-  OPT (ignorewtcriteria,0,0,1,"ignore the check with initial weight while deciding a neighboring satisfied clause during weight transfer"); \
   OPT (wtadd,0,-1000,1000,"weight transfer additive term c (c = init_weight * wtadd/1000); negative subtracts from the transfer"); \
   OPT (wtmul,167,0,1000,"weight transfer multiplicative factor a (a = wtmul/1000)"); \
   OPT (wtpow,0,0,1000,"weight transfer power term; exponent p chosen so pow(init_weight,p) = init_weight*wtpow/1000 (0 disables term; 1000 = linear)"); \

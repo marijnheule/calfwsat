@@ -1071,15 +1071,15 @@ static void yals_topk_rebuild_all (Yals * yals) {
 }
 
 // Test eligibility of a single unified-id constraint (satisfied AND
-// weight >= initial threshold, unless --ignorewtcriteria). Used by
-// yals_topk_best and the verify path. Sets *ret_con_type on success.
+// weight >= initial threshold). Used by yals_topk_best and the verify
+// path. Sets *ret_con_type on success.
 static inline int yals_topk_eligible (Yals * yals, int u, int relative, int * ret_con_type) {
   if (u < yals->nclauses) {
     double thr = (relative && !yals->hard_clause_ids[u])
                  ? PEEK (yals->maxs_clause_weights, u)
                  : (double) yals->opts.init_clause_weight.val;
     if (yals_satcnt (yals, u) > 0 &&
-        (yals->opts.ignorewtcriteria.val || yals->ddfw.ddfw_clause_weights[u] >= thr)) {
+        (yals->ddfw.ddfw_clause_weights[u] >= thr)) {
       *ret_con_type = TYPECLAUSE; return 1;
     }
   } else {
@@ -1088,7 +1088,7 @@ static inline int yals_topk_eligible (Yals * yals, int u, int relative, int * re
                  ? PEEK (yals->maxs_card_weights, c)
                  : (double) yals->opts.init_card_weight.val;
     if (yals_card_satcnt (yals, c) >= yals_card_bound (yals, c) &&
-        (yals->opts.ignorewtcriteria.val || yals->ddfw.ddfw_card_weights[c] >= thr)) {
+        (yals->ddfw.ddfw_card_weights[c] >= thr)) {
       *ret_con_type = TYPECARDINALITY; return 1;
     }
   }
@@ -1124,7 +1124,7 @@ static int yals_topk_scan_best (Yals * yals, int lit, int * ret_con_type) {
 }
 
 // Find max-weight ELIGIBLE neighbor of `lit`. Eligibility = satisfied AND
-// weight >= initial (unless --ignorewtcriteria). Returns the per-type cidx
+// weight >= initial. Returns the per-type cidx
 // and sets *ret_con_type. Returns -1 if no eligible source is found in the
 // top-K -- caller should fall back to the full scan.
 static int yals_topk_best (Yals * yals, int lit, int * ret_con_type) {
@@ -4396,11 +4396,8 @@ double linear_wt (Yals * yals, int source, int type_source)
   Given a constraint (either clause or cardinality),
   find neighboring sat clause/constraint with largest weight.
   Weight must be larger than initial weight. 
-  If relative, initial weight for soft constraints is 
+  If relative, initial weight for soft constraints is
   MaxSAT weight.
-
-  Could return max weighted, even if not greater than initial weight
-  (option ignorewtcriteria=1)
 
   Could return -1 if no source for weight transfer was found.
 
@@ -4462,17 +4459,6 @@ int yals_ddfw_get_max_weight_sat_clause (Yals *yals, int cidx, int constraint_ty
     lits = yals_card_lits (yals, cidx);
   } else {yals_abort (yals, "incorrect constraint type");}
 
-  // --rndlit: instead of scanning the neighbors of every falsified literal of
-  // the sink, pick one falsified literal uniformly at random and only scan its
-  // neighbors. rndlit_target is the index (among falsified lits) to process.
-  int rndlit_target = -1, rndlit_seen = -1;
-  if (yals->opts.rndlit.val) {
-    int nfalse = 0, * rp = lits, rl;
-    while ((rl = *rp++)) if (!yals_val (yals, rl)) nfalse++;
-    if (!nfalse) return -1;
-    rndlit_target = yals_rand_mod (yals, nfalse);
-  }
-
   // loop over neighbors
   //   constraints with same literal same polarity
   while ((lit=*lits++))
@@ -4483,8 +4469,6 @@ int yals_ddfw_get_max_weight_sat_clause (Yals *yals, int cidx, int constraint_ty
     //   don't this would save much time unless constraints
     //   were huge)
     if (yals_val (yals, lit)) continue;
-    // rndlit: skip every falsified literal except the randomly chosen one
-    if (rndlit_target >= 0 && ++rndlit_seen != rndlit_target) continue;
 
     if (yals->opts.topk.val > 0) {
       // --topk: peek this literal's heaviest eligible neighbor via its
@@ -4519,7 +4503,7 @@ int yals_ddfw_get_max_weight_sat_clause (Yals *yals, int cidx, int constraint_ty
         // check if clause has geq it's initial weight, then (weight, id) tie-break
         double thr = (relative && !source_hard) ? PEEK (yals->maxs_clause_weights, nidx)
                                                  : (double) yals->opts.init_clause_weight.val;
-        if (yals->opts.ignorewtcriteria.val || yals->ddfw.ddfw_clause_weights [nidx] >= thr) {
+        if (yals->ddfw.ddfw_clause_weights [nidx] >= thr) {
           double cw = yals->ddfw.ddfw_clause_weights [nidx];
           if (cw > best_w || (cw == best_w && nidx < best_uid)) {
             source = nidx; best_w = cw; best_uid = nidx; *return_con_type = TYPECLAUSE;
@@ -4540,7 +4524,7 @@ int yals_ddfw_get_max_weight_sat_clause (Yals *yals, int cidx, int constraint_ty
         // check if cardinality constraint has geq it's initial weight, then (weight, id) tie-break
         double thr = (relative && !source_hard) ? PEEK (yals->maxs_card_weights, nidx)
                                                  : (double) yals->opts.init_card_weight.val;
-        if (yals->opts.ignorewtcriteria.val || yals->ddfw.ddfw_card_weights [nidx] >= thr) {
+        if (yals->ddfw.ddfw_card_weights [nidx] >= thr) {
           double cw = yals->ddfw.ddfw_card_weights [nidx];
           int cuid = yals->nclauses + nidx;
           if (cw > best_w || (cw == best_w && cuid < best_uid)) {
@@ -4549,8 +4533,6 @@ int yals_ddfw_get_max_weight_sat_clause (Yals *yals, int cidx, int constraint_ty
         }
       }
     }
-    // rndlit: only the one chosen literal's neighbors are examined
-    if (rndlit_target >= 0) break;
   }
 
   best_w = 0.0; // reset best weight for pass of neighbors+
@@ -4586,13 +4568,13 @@ int yals_ddfw_get_max_weight_sat_clause (Yals *yals, int cidx, int constraint_ty
 
         if (yals_satcnt (yals, nidx)>= 1) {
           if (relative && !source_hard) {
-            if ( (yals->opts.ignorewtcriteria.val || yals->ddfw.ddfw_clause_weights [nidx] >= PEEK (yals->maxs_clause_weights, nidx))  && yals->ddfw.ddfw_clause_weights [nidx] >= best_w) {
+            if ( (yals->ddfw.ddfw_clause_weights [nidx] >= PEEK (yals->maxs_clause_weights, nidx))  && yals->ddfw.ddfw_clause_weights [nidx] >= best_w) {
               source = nidx;
               best_w = yals->ddfw.ddfw_clause_weights [nidx];
               *return_con_type = TYPECLAUSE;
             }
           } else {
-            if ( (yals->opts.ignorewtcriteria.val || yals->ddfw.ddfw_clause_weights [nidx] >= yals->opts.init_clause_weight.val) && yals->ddfw.ddfw_clause_weights [nidx] >= best_w) {
+            if ( (yals->ddfw.ddfw_clause_weights [nidx] >= yals->opts.init_clause_weight.val) && yals->ddfw.ddfw_clause_weights [nidx] >= best_w) {
               source = nidx;
               best_w = yals->ddfw.ddfw_clause_weights [nidx];
               *return_con_type = TYPECLAUSE;
@@ -4612,13 +4594,13 @@ int yals_ddfw_get_max_weight_sat_clause (Yals *yals, int cidx, int constraint_ty
         if (yals_card_satcnt (yals, nidx)>= yals_card_bound (yals, nidx)) { // constraint satisfied
           // check if cardinality constraint has geq it's initial weight
           if (relative && !source_hard) {
-            if ( (yals->opts.ignorewtcriteria.val || yals->ddfw.ddfw_card_weights [nidx] >= PEEK (yals->maxs_card_weights, nidx))  && yals->ddfw.ddfw_card_weights [nidx] >= best_w) {
+            if ( (yals->ddfw.ddfw_card_weights [nidx] >= PEEK (yals->maxs_card_weights, nidx))  && yals->ddfw.ddfw_card_weights [nidx] >= best_w) {
                 source = nidx;
                 best_w = yals->ddfw.ddfw_card_weights [nidx];
                 *return_con_type = TYPECARDINALITY;
               }
           } else {
-            if ((yals->opts.ignorewtcriteria.val || yals->ddfw.ddfw_card_weights [nidx] >= yals->opts.init_card_weight.val) && yals->ddfw.ddfw_card_weights [nidx] >= best_w) {
+            if ((yals->ddfw.ddfw_card_weights [nidx] >= yals->opts.init_card_weight.val) && yals->ddfw.ddfw_card_weights [nidx] >= best_w) {
               source = nidx;
               best_w = yals->ddfw.ddfw_card_weights [nidx];
               *return_con_type = TYPECARDINALITY;
@@ -4658,13 +4640,13 @@ int yals_ddfw_get_max_weight_sat_clause (Yals *yals, int cidx, int constraint_ty
 
         if (yals_satcnt (yals, nidx)> 1) { // clause overly! satisifed
           if (relative && !source_hard) {
-            if ( (yals->opts.ignorewtcriteria.val || yals->ddfw.ddfw_clause_weights [nidx] >= PEEK (yals->maxs_clause_weights, nidx))  && yals->ddfw.ddfw_clause_weights [nidx] >= best_w) {
+            if ( (yals->ddfw.ddfw_clause_weights [nidx] >= PEEK (yals->maxs_clause_weights, nidx))  && yals->ddfw.ddfw_clause_weights [nidx] >= best_w) {
               source = nidx;
               best_w = yals->ddfw.ddfw_clause_weights [nidx];
               *return_con_type = TYPECLAUSE;
             }
           } else {
-            if ( (yals->opts.ignorewtcriteria.val || yals->ddfw.ddfw_clause_weights [nidx] >= yals->opts.init_clause_weight.val) && yals->ddfw.ddfw_clause_weights [nidx] >= best_w) {
+            if ( (yals->ddfw.ddfw_clause_weights [nidx] >= yals->opts.init_clause_weight.val) && yals->ddfw.ddfw_clause_weights [nidx] >= best_w) {
               source = nidx;
               best_w = yals->ddfw.ddfw_clause_weights [nidx];
               *return_con_type = TYPECLAUSE;
@@ -4684,13 +4666,13 @@ int yals_ddfw_get_max_weight_sat_clause (Yals *yals, int cidx, int constraint_ty
         if (yals_card_satcnt (yals, nidx)> yals_card_bound (yals, nidx)) { // constraint overly! satisfied
           // check if cardinality constraint has geq it's initial weight
           if (relative && !source_hard) {
-            if ( (yals->opts.ignorewtcriteria.val || yals->ddfw.ddfw_card_weights [nidx] >= PEEK (yals->maxs_card_weights, nidx))  && yals->ddfw.ddfw_card_weights [nidx] >= best_w) {
+            if ( (yals->ddfw.ddfw_card_weights [nidx] >= PEEK (yals->maxs_card_weights, nidx))  && yals->ddfw.ddfw_card_weights [nidx] >= best_w) {
                 source = nidx;
                 best_w = yals->ddfw.ddfw_card_weights [nidx];
                 *return_con_type = TYPECARDINALITY;
               }
           } else {
-            if ((yals->opts.ignorewtcriteria.val || yals->ddfw.ddfw_card_weights [nidx] >= yals->opts.init_card_weight.val) && yals->ddfw.ddfw_card_weights [nidx] >= best_w) {
+            if ((yals->ddfw.ddfw_card_weights [nidx] >= yals->opts.init_card_weight.val) && yals->ddfw.ddfw_card_weights [nidx] >= best_w) {
               source = nidx;
               best_w = yals->ddfw.ddfw_card_weights [nidx];
               *return_con_type = TYPECARDINALITY;
@@ -4766,8 +4748,7 @@ int yals_ddfw_get_top_k_max_weight_sat_clause (
           double thr = (relative && !source_hard)
                        ? PEEK (yals->maxs_clause_weights, nidx)
                        : (double) yals->opts.init_clause_weight.val;
-          if (yals->opts.ignorewtcriteria.val
-              || yals->ddfw.ddfw_clause_weights[nidx] >= thr) {
+          if (yals->ddfw.ddfw_clause_weights[nidx] >= thr) {
             double cw = yals->ddfw.ddfw_clause_weights[nidx];
             if (cw > best_w || (cw == best_w && nidx < best_uid)) {
               best_src = nidx; best_type = TYPECLAUSE;
@@ -4786,8 +4767,7 @@ int yals_ddfw_get_top_k_max_weight_sat_clause (
           double thr = (relative && !source_hard)
                        ? PEEK (yals->maxs_card_weights, nidx)
                        : (double) yals->opts.init_card_weight.val;
-          if (yals->opts.ignorewtcriteria.val
-              || yals->ddfw.ddfw_card_weights[nidx] >= thr) {
+          if (yals->ddfw.ddfw_card_weights[nidx] >= thr) {
             double cw = yals->ddfw.ddfw_card_weights[nidx];
             int cuid = yals->nclauses + nidx;
             if (cw > best_w || (cw == best_w && cuid < best_uid)) {
