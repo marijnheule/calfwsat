@@ -304,7 +304,8 @@ static unsigned yals_card_incsatcnt (Yals * yals, int cidx, int lit, int len) {
     bound = yals_card_bound (yals, cidx);
     if ( res <= bound ) { // add new lit to correct position
       yals_card_new_sat (yals, cidx, lit);
-    }
+    } else // over-satisfied: partition left unmaintained, mark for lazy re-sort
+      yals->ddfw.card_sat_dirty [cidx] = 1;
   }
   LOG ("Finished incsat");
   return res >= yals_card_bound (yals, cidx); // was already SAT
@@ -383,8 +384,16 @@ static unsigned yals_card_decsatcnt (Yals * yals, int cidx, int lit, int len) {
 
   if (yals->card_crit) {
     bound = yals_card_bound (yals, cidx);
-    if (oldnsat == bound + 1)  // 2) becomes critical
-        yals_card_sort_sat ( yals, cidx);
+    if (oldnsat == bound + 1) { // 2) becomes critical
+        // Only re-sort if the partition actually drifted while over-satisfied.
+        // On a clean partition the two-pointer sort is a no-op, so skipping it
+        // is behaviour-preserving (identical array) and saves an O(len) scan.
+        if (yals->ddfw.card_sat_dirty [cidx]) {
+          yals_card_sort_sat ( yals, cidx);
+          yals->ddfw.card_sat_dirty [cidx] = 0;
+        }
+    } else if (oldnsat > bound + 1) // over-satisfied: partition left unmaintained
+        yals->ddfw.card_sat_dirty [cidx] = 1;
     // new literal moves position
       if ( oldnsat <= (bound + 1) ) { // 3) move literal to correct spot
         yals_card_new_unsat (yals, cidx, lit);
@@ -2894,7 +2903,9 @@ void yals_update_sat_and_unsat (Yals * yals) {
     if (satcnt <= bound) {
       LOGCARDCIDX (cidx, "critical, sorting");
       yals_card_sort_sat (yals, cidx);
-    }   
+      yals->ddfw.card_sat_dirty [cidx] = 0;
+    } else // over-satisfied: partition left unsorted, mark for lazy re-sort
+      yals->ddfw.card_sat_dirty [cidx] = 1;
 
     len = p - lits;
     cappedlen = MIN (len, MAXLEN);
@@ -3875,6 +3886,7 @@ void yals_del (Yals * yals) {
   free (yals->ddfw.uvar_pos_soft);
   free (yals->ddfw.var_unsat_count_soft);
   free (yals->ddfw.card_sat_count_in_clause);
+  free (yals->ddfw.card_sat_dirty);
   free (yals->ddfw.card_helper_hash_clauses);
   free (yals->ddfw.ddfw_card_weights );
   free (yals->ddfw.unsat_weights_soft );
@@ -6125,6 +6137,7 @@ void yals_init_ddfw (Yals *yals)
   yals->ddfw.ddfw_card_weights = malloc (yals->card_nclauses* sizeof (double));
   // yals->ddfw.card_clause_calculated_weights = malloc (yals->card_nclauses* sizeof (double));
   yals->ddfw.card_sat_count_in_clause = calloc (yals->card_nclauses, sizeof (int));
+  yals->ddfw.card_sat_dirty = calloc (yals->card_nclauses, sizeof (int));
   yals->ddfw.card_helper_hash_clauses = calloc (yals->card_nclauses, sizeof (int));
   for (int i = 0; i < yals->card_nclauses; i++) {
      if (yals->opts.maxs_init_weight_relative.val && yals->using_maxs_weights) {

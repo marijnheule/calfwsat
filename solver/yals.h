@@ -305,6 +305,7 @@ typedef struct DDFW {
   STACK (int) card_helper_hash_changed_idx;
   int * card_helper_hash_clauses;
   int * card_sat_count_in_clause;
+  int * card_sat_dirty; // 1 iff the sat/unsat partition may have drifted while over-satisfied (needs a full re-sort on re-entry to critical)
   double * ddfw_card_weights; // cardinality constraint ddfw weights
 
   double * card_clause_calculated_weights; // cache of calculted weightes (not in use)
