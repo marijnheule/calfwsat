@@ -584,29 +584,38 @@ static inline double yals_card_maxs_mult (Yals * yals, int cidx) {
   return 1.0;
 }
 
-double yals_card_calculate_weight (Yals * yals, int bound, int nsat, double c_weight, int cidx) {
+// Core cardinality-constraint weight from explicit (bound, nsat, c). This is
+// the single source of truth shared by the external query wrappers below
+// (used by invariants/debug and the non-hot callsites) and by the make/break
+// hot path, which already holds bound/nsat/c in locals and so calls this
+// directly -- avoiding the redundant card_bound / card_sat_count_in_clause /
+// ddfw_card_weights reloads the wrappers would do, plus the call overhead,
+// since this inlines. card_compute and using_maxs_weights are constant for a
+// whole run, so the switch/maxs_mult branches predict perfectly.
+static inline double yals_card_w_at (Yals * yals, int cidx,
+                                     int bound, int nsat, double c) {
   int d = bound - nsat;
   if (d <= 0) return 0.0;
 
-  assert (c_weight > 0);
+  assert (c > 0);
 
   double w;
   switch (yals->opts.card_compute.val) {
     case 1:   // linear: c * d
-      w = c_weight * d;
+      w = c * d;
       break;
     case 2: { // exponential: c^d, capped at d=7
-      if (c_weight < 1) c_weight = 1; // prevent fractions in the exponential
+      if (c < 1) c = 1; // prevent fractions in the exponential
       if (d >= 8) { w = WEIGHT_MAX; break; }
       w = 1.0;
-      for (int i = 0; i < d; i++) w *= c_weight;
+      for (int i = 0; i < d; i++) w *= c;
       break;
     }
     case 3:   // quadratic: c * d^2
-      w = c_weight * d * d;
+      w = c * d * d;
       break;
     case 4:   // cubic: c * d^3
-      w = c_weight * d * d * d;
+      w = c * d * d * d;
       break;
     default:
       yals_abort (yals, "incorrect card_compute");
@@ -616,11 +625,47 @@ double yals_card_calculate_weight (Yals * yals, int bound, int nsat, double c_we
   return w * yals_card_maxs_mult (yals, cidx);
 }
 
+// Core "unsat weight INCREASE when one fewer literal is satisfied" = w(d+1) -
+// w(d), from explicit (bound, nsat, c). Shared by the external wrapper and the
+// make/break hot path (see yals_card_w_at for the rationale).
+static inline double yals_card_change_neg_at (Yals * yals, int cidx,
+                                              int bound, int nsat, double c) {
+  if (nsat == 0) return 0.0;  // can't lose another satisfier; keep semantics
+  int d = bound - nsat;
+  if (d < 0) return 0.0;       // already so over-satisfied that w(d+1)=w(d)=0
+  double diff;
+  switch (yals->opts.card_compute.val) {
+    case 1:   // (d+1) - d = 1     -> c
+      diff = c;
+      break;
+    case 3:   // (d+1)^2 - d^2 = 2d + 1
+      diff = c * (2*d + 1);
+      break;
+    case 4:   // (d+1)^3 - d^3 = 3d^2 + 3d + 1
+      diff = c * (3*d*d + 3*d + 1);
+      break;
+    case 2:
+    default: {
+      double w      = yals_card_w_at (yals, cidx, bound, nsat,   c);
+      double w_next = yals_card_w_at (yals, cidx, bound, nsat-1, c);
+      assert (w_next - w > -0.01);
+      return w_next - w;
+    }
+  }
+  assert (diff >= 0);
+  return diff * yals_card_maxs_mult (yals, cidx);
+}
+
+double yals_card_calculate_weight (Yals * yals, int bound, int nsat, double c_weight, int cidx) {
+  return yals_card_w_at (yals, cidx, bound, nsat, c_weight);
+}
+
 // get unsat weight for a cardinality constraint
 double yals_card_get_calculated_weight (Yals * yals, int cidx) {
-  int bound = yals_card_bound (yals, cidx);
-  int nsat = yals->ddfw.card_sat_count_in_clause[cidx];
-  return yals_card_calculate_weight (yals, bound, nsat, yals->ddfw.ddfw_card_weights [cidx], cidx);
+  return yals_card_w_at (yals, cidx,
+                         yals_card_bound (yals, cidx),
+                         yals->ddfw.card_sat_count_in_clause[cidx],
+                         yals->ddfw.ddfw_card_weights [cidx]);
 }
 
 // get unsat weight DECREASE when one more literal becomes satisfied
@@ -666,33 +711,10 @@ double yals_card_get_calculated_weight_change_pos (Yals * yals, int cidx) {
 //   = w(d+1) - w(d)   where d = bound - nsat
 // Closed-form derivatives avoid two function calls per query.
 double yals_card_get_calculated_weight_change_neg (Yals * yals, int cidx) {
-  int bound = yals_card_bound (yals, cidx);
-  int nsat = yals->ddfw.card_sat_count_in_clause[cidx];
-  if (nsat == 0) return 0.0;  // can't lose another satisfier; keep original semantics
-  int d = bound - nsat;
-  if (d < 0) return 0.0;       // already so over-satisfied that w(d+1) = w(d) = 0
-  double c = yals->ddfw.ddfw_card_weights [cidx];
-  double diff;
-  switch (yals->opts.card_compute.val) {
-    case 1:   // (d+1) - d = 1     -> c
-      diff = c;
-      break;
-    case 3:   // (d+1)^2 - d^2 = 2d + 1
-      diff = c * (2*d + 1);
-      break;
-    case 4:   // (d+1)^3 - d^3 = 3d^2 + 3d + 1
-      diff = c * (3*d*d + 3*d + 1);
-      break;
-    case 2:
-    default: {
-      double w      = yals_card_calculate_weight (yals, bound, nsat,   c, cidx);
-      double w_next = yals_card_calculate_weight (yals, bound, nsat-1, c, cidx);
-      assert (w_next - w > -0.01);
-      return w_next - w;
-    }
-  }
-  assert (diff >= 0);
-  return diff * yals_card_maxs_mult (yals, cidx);
+  return yals_card_change_neg_at (yals, cidx,
+                                  yals_card_bound (yals, cidx),
+                                  yals->ddfw.card_sat_count_in_clause[cidx],
+                                  yals->ddfw.ddfw_card_weights [cidx]);
 }
 
 
@@ -1552,10 +1574,14 @@ void yals_make_clauses_after_flipping_lit (Yals * yals, int lit) {
 
     bound = yals_card_bound (yals, cidx);
     oldnsat = yals_card_satcnt (yals, cidx);
+    // ddfw weight is unchanged by incsatcnt; load once and reuse for all three
+    // polynomial evaluations (the satcnt the wrappers would reload equals
+    // oldnsat before the bump and oldnsat+1 after -- both held here).
+    double card_c = yals->ddfw.ddfw_card_weights [cidx];
 
     // Compute upfront: w(d_old) and the derivative at d_old.
-    card_old_unsat_weight = yals_card_get_calculated_weight (yals, cidx);
-    card_old_critical_weight = yals_card_get_calculated_weight_change_neg (yals, cidx);
+    card_old_unsat_weight = yals_card_w_at (yals, cidx, bound, oldnsat, card_c);
+    card_old_critical_weight = yals_card_change_neg_at (yals, cidx, bound, oldnsat, card_c);
 
     // increment satcnt of cardinality constraint, move lit to correct partition
     yals_card_incsatcnt (yals, cidx, lit, len);
@@ -1568,7 +1594,7 @@ void yals_make_clauses_after_flipping_lit (Yals * yals, int lit) {
     // card_exp (now hardcoded cubic), so this identity holds exactly for all
     // remaining card_compute modes. Saves one _change_neg query per touched
     // cardinality constraint.
-    card_new_unsat_weight = yals_card_get_calculated_weight (yals, cidx);
+    card_new_unsat_weight = yals_card_w_at (yals, cidx, bound, oldnsat + 1, card_c);
     card_unsat_weight_change = card_new_unsat_weight - card_old_unsat_weight;
     card_new_critical_weight = -card_unsat_weight_change;
 
@@ -1732,6 +1758,10 @@ void yals_break_clauses_after_flipping_lit (Yals * yals, int lit) {
 
     bound = yals_card_bound (yals, cidx);
     oldnsat = yals_card_satcnt (yals, cidx);
+    // ddfw weight is unchanged by decsatcnt; load once and reuse. The satcnt
+    // the wrappers would reload equals oldnsat before the decrement and
+    // oldnsat-1 after -- both held here.
+    double card_c = yals->ddfw.ddfw_card_weights [cidx];
 
     // Note: card_old_critical_weight = _change_neg(d_old) = w(d_old+1) - w(d_old)
     // which equals card_unsat_weight_change (computed below from the two
@@ -1740,15 +1770,15 @@ void yals_break_clauses_after_flipping_lit (Yals * yals, int lit) {
     // return, but here -lit is currently satisfying the constraint so old
     // nsat >= 1 and the substitution is safe. Saves one weight query per
     // touched cardinality constraint.
-    card_old_unsat_weight = yals_card_get_calculated_weight (yals, cidx);
+    card_old_unsat_weight = yals_card_w_at (yals, cidx, bound, oldnsat, card_c);
 
     // decrement satcnt of cardinality constraint, move lit to correct partition
     yals_card_decsatcnt (yals, cidx,-lit, len);
 
-    card_new_unsat_weight = yals_card_get_calculated_weight (yals, cidx);
+    card_new_unsat_weight = yals_card_w_at (yals, cidx, bound, oldnsat - 1, card_c);
     card_unsat_weight_change = card_new_unsat_weight - card_old_unsat_weight;
     card_old_critical_weight = card_unsat_weight_change;
-    card_new_critical_weight = yals_card_get_calculated_weight_change_neg (yals, cidx);
+    card_new_critical_weight = yals_card_change_neg_at (yals, cidx, bound, oldnsat - 1, card_c);
 
     card_critical_weight_change = card_new_critical_weight - card_old_critical_weight;
 
