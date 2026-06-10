@@ -1329,6 +1329,77 @@ static void yals_topk_free (Yals * yals) {
 }
 
 /*------------------------------------------------------------------------*/
+/* --wsample: weighted-proportional random source sampling.                */
+/* A binary segment sum-tree over the ddfw weight of every constraint.     */
+/* Sampling descends from the root proportional to weight in O(log N); a   */
+/* single weight change updates one leaf-to-root path. Satisfaction is NOT */
+/* encoded (it churns every flip and is ~all-SAT during the transfer       */
+/* phase); the caller rejection-filters drawn sources for SAT / min-weight */
+/* / hard-soft, which is distributionally exact and ~1 draw in expectation.*/
+/*------------------------------------------------------------------------*/
+
+static inline double yals_wsample_weight_of (Yals * yals, int u) {
+  return u < yals->nclauses
+    ? yals->ddfw.ddfw_clause_weights[u]
+    : yals->ddfw.ddfw_card_weights[u - yals->nclauses];
+}
+
+// Recompute leaves from the current weights and rebuild all internal sums.
+// O(M). Used on (re)build and after a bulk weight reset.
+static void yals_wsample_refill (Yals * yals) {
+  int N = yals->ddfw.wsample_N, M = yals->ddfw.wsample_M;
+  double * t = yals->ddfw.wsample_tree;
+  for (int i = 0; i < M; i++)
+    t[M + i] = (i < N) ? yals_wsample_weight_of (yals, i) : 0.0;
+  for (int i = M - 1; i >= 1; i--) t[i] = t[2*i] + t[2*i + 1];
+}
+
+static void yals_wsample_build (Yals * yals) {
+  int N = yals->nclauses + yals->card_nclauses;
+  int M = 1; while (M < N) M <<= 1;     // next power of two >= N (>=1)
+  yals->ddfw.wsample_N = N;
+  yals->ddfw.wsample_M = M;
+  yals->ddfw.wsample_tree = malloc ((size_t) 2 * M * sizeof (double));
+  yals_wsample_refill (yals);
+  yals->ddfw.wsample_built = 1;
+}
+
+static void yals_wsample_free (Yals * yals) {
+  if (!yals->ddfw.wsample_built) return;
+  free (yals->ddfw.wsample_tree); yals->ddfw.wsample_tree = NULL;
+  yals->ddfw.wsample_built = 0;
+}
+
+// Set leaf u to weight w and climb updating sums. O(log M).
+static inline void yals_wsample_set (Yals * yals, int u, double w) {
+  double * t = yals->ddfw.wsample_tree;
+  int i = yals->ddfw.wsample_M + u;
+  t[i] = w;
+  for (i >>= 1; i >= 1; i >>= 1) t[i] = t[2*i] + t[2*i + 1];
+}
+
+// Draw a unified constraint id with probability proportional to its weight.
+// Returns -1 if total weight is non-positive. The invariant r < subtree-sum
+// is preserved down the descent, so the landing leaf always has weight > 0
+// (zero-weight padding leaves are never reached).
+static inline int yals_wsample_draw (Yals * yals) {
+  double * t = yals->ddfw.wsample_tree;
+  int M = yals->ddfw.wsample_M;
+  double total = t[1];
+  if (total <= 0.0) return -1;
+  double r = ((double) yals_rand_mod (yals, INT_MAX) / (double) INT_MAX) * total;
+  int i = 1;
+  while (i < M) {
+    int l = 2*i;
+    if (r < t[l]) i = l;
+    else { r -= t[l]; i = l + 1; }
+  }
+  int u = i - M;
+  if (u >= yals->ddfw.wsample_N) u = yals->ddfw.wsample_N - 1;  // FP guard
+  return u;
+}
+
+/*------------------------------------------------------------------------*/
 /* --oldestsource: LRU list over all constraints (unified ids).           */
 /* Head = least-recently used as a source. Moved on every source pick.    */
 /*------------------------------------------------------------------------*/
@@ -1481,6 +1552,8 @@ void yals_reset_ddfw (Yals * yals)
     }
     // --topk: weights changed in bulk; rebuild the structure.
     if (yals->opts.topk.val > 0) yals_topk_rebuild_all (yals);
+    // --wsample: weights changed in bulk; recompute the sum-tree.
+    if (yals->opts.wsample.val) yals_wsample_refill (yals);
   }
 }
 
@@ -4028,6 +4101,7 @@ void yals_del (Yals * yals) {
 
   // weight-transfer data structures allocated using malloc/calloc
   yals_topk_free (yals);
+  yals_wsample_free (yals);
   yals_nbr_free (yals);
   yals_oldsrc_free (yals);
   free (yals->ddfw.max_weighted_neighbour);
@@ -5205,6 +5279,31 @@ int yals_ddfw_get_random_sat_top_k (Yals * yals, int K,
 
   while (collected < target && cnt < cnt_cutoff) {
     cnt++;
+    int cidx, ctype, source_hard;
+    double weight;
+
+    if (yals->opts.wsample.val) {
+      // Weighted-proportional draw: pick a unified id with prob ~ weight,
+      // then apply the same admission filter (reject -> redraw).
+      int u = yals_wsample_draw (yals);
+      if (u < 0) break;                          // no positive weight anywhere
+      if (u < yals->nclauses) {
+        cidx = u; ctype = TYPECLAUSE;
+        source_hard = yals->hard_clause_ids[cidx];
+        if ((source_hard && !takes_hard) || (!source_hard && !takes_soft))
+          continue;
+        if (yals_satcnt (yals, cidx) <= 0) continue;
+        weight = yals->ddfw.ddfw_clause_weights[cidx];
+      } else {
+        cidx = u - yals->nclauses; ctype = TYPECARDINALITY;
+        source_hard = yals->hard_card_ids[cidx];
+        if ((source_hard && !takes_hard) || (!source_hard && !takes_soft))
+          continue;
+        if (yals_card_satcnt (yals, cidx) < yals_card_bound (yals, cidx))
+          continue;
+        weight = yals->ddfw.ddfw_card_weights[cidx];
+      }
+    } else {
     int selection;
     if (yals->using_maxs_weights && yals->is_pure
         && yals->cardinality_is_hard
@@ -5218,8 +5317,6 @@ int yals_ddfw_get_random_sat_top_k (Yals * yals, int K,
                   % (yals->nclauses + yals->card_nclauses);
     }
 
-    int cidx, ctype, source_hard;
-    double weight;
     if (selection < yals->nclauses) {
       cidx = yals_rand_mod (yals, INT_MAX) % yals->nclauses;
       ctype = TYPECLAUSE;
@@ -5237,6 +5334,7 @@ int yals_ddfw_get_random_sat_top_k (Yals * yals, int K,
       if (yals_card_satcnt (yals, cidx) < yals_card_bound (yals, cidx))
         continue;
       weight = yals->ddfw.ddfw_card_weights[cidx];
+    }
     }
 
     // Above-floor: append to strict pool.
@@ -5384,6 +5482,13 @@ static void yals_ddfw_apply_one_transfer (
       (src_type == TYPECLAUSE) ? source : yals->nclauses + source);
     yals_topk_increased (yals,
       (sink_type == TYPECLAUSE) ? sink : yals->nclauses + sink);
+  }
+  // --wsample maintenance: update the two changed leaves (source, sink).
+  if (yals->opts.wsample.val) {
+    int su = (src_type  == TYPECLAUSE) ? source : yals->nclauses + source;
+    int ku = (sink_type == TYPECLAUSE) ? sink   : yals->nclauses + sink;
+    yals_wsample_set (yals, su, yals_wsample_weight_of (yals, su));
+    yals_wsample_set (yals, ku, yals_wsample_weight_of (yals, ku));
   }
   // Per-literal weight updates.
   yals_ddfw_update_lit_weights_on_weight_transfer (
@@ -6283,6 +6388,11 @@ void yals_init_ddfw (Yals *yals)
   yals->ddfw.nbr_built = 0;
   yals->ddfw.topk_built = 0;
   if (yals->opts.topk.val > 0) yals_topk_build (yals);
+
+  // --wsample: build the weighted-source sum-tree now that weights are set.
+  yals->ddfw.wsample_built = 0;
+  yals->ddfw.wsample_tree = NULL;
+  if (yals->opts.wsample.val) yals_wsample_build (yals);
 
   // --oldestsource: LRU list of all constraints, head = least recently used.
   yals->ddfw.oldsrc_prev = NULL;

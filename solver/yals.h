@@ -362,6 +362,17 @@ typedef struct DDFW {
   int64_t topk_stat_diverged;      // (TOPK_VERIFY=1 env var) queries where top-K pick != full-scan pick
   int topk_verify;                 // set from TOPK_VERIFY env at build time
 
+  // --wsample: segment sum-tree over the ddfw weight of every constraint
+  // (unified id: clause u<nclauses; else card u-nclauses). Leaf u holds the
+  // raw ddfw weight; internal nodes hold subtree sums; tree[1] = total. Drawn
+  // proportional to weight in O(log N); a single weight change updates one
+  // leaf-to-root path. Satisfaction is NOT encoded here (the caller
+  // rejection-filters drawn sources for SAT / min-weight / hard-soft).
+  int wsample_built;
+  int wsample_N;          // real leaves = nclauses + card_nclauses
+  int wsample_M;          // tree base = next power of two >= N
+  double * wsample_tree;  // [2*M] segment tree (index 1 = root = total)
+
   // Per-variable last-flip step number (stats.flips value at the moment v
   // was last flipped). Used by:
   //   - --tabu: v is tabu while stats.flips - last_flipped[v] < opts.tabu.val
