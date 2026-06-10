@@ -1,14 +1,21 @@
-# --randtour sweep: {10, 14, 20} -- locate ntil-45's knee.
+# --randtour high sweep {20,30,40} + wsample A/B. Seeds 801-1000, 900s.
 #
-# The {5,7,10} sweep diverged by instance: ntil-43 peaks at ~5 (t5~=t7, t10
-# hurts), but ntil-45 (the hard, timeout-bound instance) improved strongly to
-# t10 (+5 solves, PAR-2 452->368 vs t5) and had not peaked. Push higher on
-# ntil-45 to find where it turns over. t10 is carried as the known-good
-# anchor on a fresh seed block (801-1000), re-baselining t10 over 200
-# independent seeds. randk stays at its default (1). (For ntil-43, higher
-# randtour only hurts -- this sweep is really about ntil-45.)
+# The {10,14,20} sweep showed ntil-45 plateaus from randtour 10->20 (t10~=t20
+# on solves; t20 has a modest flip-efficiency edge; the t14 dip was noise).
+# ntil-43 still improved monotonically to t20, so the uniform-draw tournament
+# may not have saturated there yet -- push the randtour axis higher to {20,30,
+# 40} and see where it finally turns over.
+#
+# 4th config is the weighted-proportional sampler (--wsample=1): draw each
+# random-source candidate with probability proportional to its ddfw weight
+# instead of uniformly, then take the top-K as usual. Held at randtour=20 so
+# it is a matched-budget A/B against the t20 row -- same number of candidates
+# sampled per transfer, the only difference is the draw distribution (weighted
+# vs uniform). Isolates "does a weighted draw beat a uniform draw + tournament
+# at equal cost?". randk stays at its default (1).
 #
 # name	args
-t10	--randtour=10
-t14	--randtour=14
 t20	--randtour=20
+t30	--randtour=30
+t40	--randtour=40
+ws20	--wsample=1 --randtour=20
