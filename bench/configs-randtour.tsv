@@ -1,13 +1,14 @@
-# --randtour sweep: {5, 7, 10}.
+# --randtour sweep: {10, 14, 20} -- locate ntil-45's knee.
 #
-# The {3,4,5} sweep improved monotonically (t5 best on ntil-43/ntil-45 with
-# no reversal), so the optimum is >=5 and not yet located. t5 is carried over
-# as the known-good anchor; t7/t10 probe higher with wider spacing to bracket
-# the knee. randk stays at its default (1); all other options at default.
-# Larger randtour costs more rejection sampling per transfer (rtk buffers are
-# preallocated, so no malloc penalty).
+# The {5,7,10} sweep diverged by instance: ntil-43 peaks at ~5 (t5~=t7, t10
+# hurts), but ntil-45 (the hard, timeout-bound instance) improved strongly to
+# t10 (+5 solves, PAR-2 452->368 vs t5) and had not peaked. Push higher on
+# ntil-45 to find where it turns over. t10 is carried as the known-good
+# anchor on a fresh seed block (801-1000), re-baselining t10 over 200
+# independent seeds. randk stays at its default (1). (For ntil-43, higher
+# randtour only hurts -- this sweep is really about ntil-45.)
 #
 # name	args
-t5	--randtour=5
-t7	--randtour=7
 t10	--randtour=10
+t14	--randtour=14
+t20	--randtour=20
