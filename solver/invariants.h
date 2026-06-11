@@ -257,7 +257,7 @@ void yals_maxs_check_global_weight_invariant (Yals * yals) {
   LOG("Clause weights"); // printing out each constraint's weights
   for (cidx = 0; cidx < yals->nclauses; cidx++) {
     soft = 0;
-    if (!yals->hard_clause_ids[cidx]) soft = 1;
+    if (!yals->f->hard_clause_ids[cidx]) soft = 1;
     if (yals_satcnt (yals, cidx) > 0) {
       LOGCIDX (cidx, "SOFT?%d SAT Weight %lf and multiplier %lf",soft,yals->ddfw.clause_weights[cidx],PEEK (yals->maxs_clause_weights,cidx));
     } else {
@@ -302,7 +302,7 @@ void yals_maxs_check_global_weight_invariant (Yals * yals) {
   LOG("Cardinality weights"); // printing out each constraints weights
   for (cidx = 0; cidx < yals->card_nclauses; cidx++) {
     soft = 0;
-    if (!yals->hard_card_ids[cidx]) soft = 1;
+    if (!yals->f->hard_card_ids[cidx]) soft = 1;
     if (yals_card_satcnt (yals, cidx) >= yals_card_bound (yals, cidx)) {
       LOGCARDCIDX (cidx, "SOFT?%d SAT Weight %lf and multiplier %lf",soft,yals->ddfw.card_weights[cidx], PEEK (yals->maxs_card_weights,cidx)); 
     } else {
@@ -502,7 +502,7 @@ void yals_maxs_check_global_satisfaction_invariant (Yals * yals) {
     for (p = yals_lits (yals, cidx), sat = 0; (lit = *p); p++)
       if (yals_val (yals, lit)) sat++;
     assert (yals_satcnt (yals, cidx) == sat);
-    if (!yals->hard_clause_ids[cidx]) {
+    if (!yals->f->hard_clause_ids[cidx]) {
       if (!sat) nunsat_soft++;
       int pos = yals->pos_soft[cidx];
       if (sat) assert (pos < 0);
@@ -537,7 +537,7 @@ void yals_maxs_check_global_satisfaction_invariant (Yals * yals) {
       if (yals_val (yals, lit)) sat++;
     LOGCARDCIDX (cidx, "nsat %d satcnt %d", sat, yals_card_satcnt (yals, cidx) );
     assert (yals_card_satcnt (yals, cidx) == sat);
-    if (!yals->hard_card_ids[cidx]) {
+    if (!yals->f->hard_card_ids[cidx]) {
       if (sat < bound) nunsat_soft++;
       int pos = yals->card_pos_soft[cidx];
       if (sat >= bound) assert (pos < 0);

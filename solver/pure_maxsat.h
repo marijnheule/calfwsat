@@ -169,7 +169,7 @@ void yals_init_assignment_pure (Yals *yals) {
   //  init assignment to polarity of hard constraints
   //  set all variables inside of soft constraints to true
   for (int cls_idx = 0; cls_idx  < yals->nclauses; cls_idx ++) {
-    if (yals->hard_clause_ids [cls_idx]) continue;
+    if (yals->f->hard_clause_ids [cls_idx]) continue;
     lits = yals_lits (yals, cls_idx);
     for (p = lits; (lit = *p); p++ ) {
       if (!hard_polarity) SETBIT (yals->vals, yals->nvarwords, ABS (lit));
@@ -177,7 +177,7 @@ void yals_init_assignment_pure (Yals *yals) {
     }
   }
   for (int cls_idx = 0; cls_idx  < yals->card_nclauses; cls_idx ++) {
-    if (yals->hard_card_ids [cls_idx]) continue;
+    if (yals->f->hard_card_ids [cls_idx]) continue;
     lits = yals_card_lits (yals, cls_idx);
     for (p = lits; (lit = *p); p++ ) {
       if (!hard_polarity) SETBIT (yals->vals, yals->nvarwords, ABS (lit));

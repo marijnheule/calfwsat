@@ -50,7 +50,7 @@ void yals_preprocess (Yals * yals) {
   int *temp_c, *watched_lit_pos;
   int curr_len;
 
-  FIT (yals->cdb);
+  FIT (yals->f->cdb);
 
   NEWN (vals, 2*nvars);
   vals += nvars;
@@ -58,7 +58,7 @@ void yals_preprocess (Yals * yals) {
   NEWN (watches, 2*nvars);
   watches += nvars; // put pointer into middle of stack so you can directly index negative literals
   int cls_cnt = 0;
-  for (c = yals->cdb.start; c < yals->cdb.top; c++) {
+  for (c = yals->f->cdb.start; c < yals->f->cdb.top; c++) {
     
     // can only propagate on hard constraints
     if (yals->using_maxs_weights) {
@@ -70,7 +70,7 @@ void yals_preprocess (Yals * yals) {
       }
     }
     
-    occ = c - yals->cdb.start;
+    occ = c - yals->f->cdb.start;
     assert (occ >= 0);
     if (!(w0 = *c)) continue;
     if (!(w1 = *++c)) continue;
@@ -83,14 +83,14 @@ void yals_preprocess (Yals * yals) {
   }
 
   // cardinality constraint watches
-  FIT (yals->card_cdb);
+  FIT (yals->f->card_cdb);
 
   NEWN (card_watches, 2*nvars);
   card_watches += nvars;
 
-  c = yals->card_cdb.start;
+  c = yals->f->card_cdb.start;
   cls_cnt = 0;
-  while (c < yals->card_cdb.top) {
+  while (c < yals->f->card_cdb.top) {
 
     // can only propagate on hard constraints
     if (yals->using_maxs_weights) {
@@ -103,7 +103,7 @@ void yals_preprocess (Yals * yals) {
       }
     }
 
-    occ = c - yals->card_cdb.start;
+    occ = c - yals->f->card_cdb.start;
     bound = *c++;
     assert (bound > 0);
     len = 0;
@@ -147,8 +147,8 @@ void yals_preprocess (Yals * yals) {
       for (p = s->start; !yals->mt && p < s->top; p++) {
         occ = *p;
         assert (occ >= 0);
-        c = yals->cdb.start + occ;
-        assert (c < yals->cdb.top);
+        c = yals->f->cdb.start + occ;
+        assert (c < yals->f->cdb.top);
         if (c[1] != -lit) SWAP (int, c[0], c[1]);
         assert (c[1] == -lit);
         if (vals[w0 = c[0]] > 0) continue;
@@ -174,8 +174,8 @@ void yals_preprocess (Yals * yals) {
       for (p = s1->start; !yals->mt && p < s1->top; p++) {
         occ = *p;
         assert (occ >= 0);
-        c = yals->card_cdb.start + occ;
-        assert (c < yals->card_cdb.top);
+        c = yals->f->card_cdb.start + occ;
+        assert (c < yals->f->card_cdb.top);
         bound = *c++;
         nWatches = bound+1;
         assert (bound > 0);
@@ -224,7 +224,7 @@ void yals_preprocess (Yals * yals) {
   for (lit = -nvars; lit < nvars; lit++) RELEASE (watches[lit]);
   watches -= nvars;
   DELN (watches, 2*nvars);
-  oldnlits = COUNT (yals->cdb);
+  oldnlits = COUNT (yals->f->cdb);
 
   // free card_watches
   for (lit = -nvars; lit < nvars; lit++) RELEASE (card_watches[lit]);
@@ -239,8 +239,8 @@ void yals_preprocess (Yals * yals) {
   nstr = nsat = 0;
   int cls_size = 0;
   int falsified = 0;
-  q = yals->cdb.start;
-  for (c = q; c < yals->cdb.top; c++) {
+  q = yals->f->cdb.start;
+  for (c = q; c < yals->f->cdb.top; c++) {
     satisfied = 0;
     for (p = c; (lit = *p); p++)
       if (vals[lit] > 0) satisfied = 1;
@@ -262,7 +262,7 @@ void yals_preprocess (Yals * yals) {
 
         assert (satisfied || cls_size); 
         cls_size = 0;
-        assert (q >= yals->cdb.start + 1);
+        assert (q >= yals->f->cdb.start + 1);
         assert (q[-1]); //assert (q[-2]); // may be units
         *q++ = 0;
         // remap weights
@@ -285,9 +285,9 @@ void yals_preprocess (Yals * yals) {
     FIT (yals->maxs_clause_weights);
   }
 
-  yals->cdb.top = q;
-  FIT (yals->cdb);
-  newnlits = COUNT (yals->cdb);
+  yals->f->cdb.top = q;
+  FIT (yals->f->cdb);
+  newnlits = COUNT (yals->f->cdb);
   assert (newnlits <= oldnlits);
   yals_msg (yals, 1, "removed %d satisfied clauses", nsat);
   yals_msg (yals, 1, "removed %d falsified clauses", falsified);
@@ -299,10 +299,10 @@ void yals_preprocess (Yals * yals) {
 
   // reduce cardinality constraint literals
   cls_cnt = curr_cnt = 0;
-  oldnlits = COUNT (yals->card_cdb);
+  oldnlits = COUNT (yals->f->card_cdb);
   nstr = nsat = falsified = 0;
-  q = yals->card_cdb.start;
-  for (c = q; c < yals->card_cdb.top; c++) {
+  q = yals->f->card_cdb.start;
+  for (c = q; c < yals->f->card_cdb.top; c++) {
     satisfied = 0;
     bound = *c++;
     curr_len = 0;
@@ -336,7 +336,7 @@ void yals_preprocess (Yals * yals) {
 
           
         }
-        assert (q >= yals->card_cdb.start + 2);
+        assert (q >= yals->f->card_cdb.start + 2);
         assert (q[-1]); assert (q[-2]);
         *q++ = 0;
       }
@@ -353,9 +353,9 @@ void yals_preprocess (Yals * yals) {
     yals->maxs_card_weights.top = curr_cnt + yals->maxs_card_weights.start;
     FIT (yals->maxs_card_weights);
   }
-  yals->card_cdb.top = q;
-  FIT (yals->card_cdb);
-  newnlits = COUNT (yals->card_cdb);
+  yals->f->card_cdb.top = q;
+  FIT (yals->f->card_cdb);
+  newnlits = COUNT (yals->f->card_cdb);
   assert (newnlits <= oldnlits);
   yals_msg (yals, 1, "removed %d satisfied cardinality constraints", nsat);
   yals_msg (yals, 1, "removed %d falsified literal occurrences", nstr);

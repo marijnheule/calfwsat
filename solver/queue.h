@@ -184,7 +184,7 @@ static inline void yals_dequeue_stack (Yals * yals, int cidx, int constraint_typ
   int * pos = 0;
   UNSAT_STACK *unsat = 0;
   if (constraint_type == TYPECLAUSE) {
-    if (yals->using_maxs_weights && !yals->hard_clause_ids[cidx]) {
+    if (yals->using_maxs_weights && !yals->f->hard_clause_ids[cidx]) {
       unsat = &(yals->unsat_soft);
       pos = yals->pos_soft;
     }
@@ -193,7 +193,7 @@ static inline void yals_dequeue_stack (Yals * yals, int cidx, int constraint_typ
       pos = yals->pos;
     }
   } else if (constraint_type == TYPECARDINALITY) {
-    if (yals->using_maxs_weights && !yals->hard_card_ids[cidx]) {
+    if (yals->using_maxs_weights && !yals->f->hard_card_ids[cidx]) {
       unsat = &(yals->card_unsat_soft);
       pos = yals->card_pos_soft;
     }
@@ -287,7 +287,7 @@ static inline void yals_enqueue_stack (Yals * yals, int cidx, int constraint_typ
   int * pos = 0;
   UNSAT_STACK *unsat = 0;
   if (constraint_type == TYPECLAUSE) {
-    if (yals->using_maxs_weights && !yals->hard_clause_ids[cidx]) {
+    if (yals->using_maxs_weights && !yals->f->hard_clause_ids[cidx]) {
       unsat = &(yals->unsat_soft);
       pos = yals->pos_soft;
     }
@@ -298,7 +298,7 @@ static inline void yals_enqueue_stack (Yals * yals, int cidx, int constraint_typ
     if (yals->stats.maxstacksize < (size = SIZE (unsat->stack) + 1))
       yals->stats.maxstacksize = size;
   } else if (constraint_type == TYPECARDINALITY) {
-    if (yals->using_maxs_weights && !yals->hard_card_ids[cidx]) {
+    if (yals->using_maxs_weights && !yals->f->hard_card_ids[cidx]) {
       unsat = &(yals->card_unsat_soft);
       pos = yals->card_pos_soft;
     }

@@ -94,7 +94,7 @@ static double yals_soft_cost_of_flip (Yals * yals, int lit) {
   occs = yals_occs (yals, lit);
   for (p = occs; (occ = *p) >= 0; p++) {
     int cidx = occ >> LENSHIFT;
-    if (yals->hard_clause_ids[cidx]) continue;
+    if (yals->f->hard_clause_ids[cidx]) continue;
     if (yals_satcnt (yals, cidx) == 0) {// made
       change_in_cost -= PEEK (yals->maxs_clause_weights, cidx);
     }
@@ -102,7 +102,7 @@ static double yals_soft_cost_of_flip (Yals * yals, int lit) {
   occs = yals_card_occs (yals, lit);
   for (p = occs; (occ = *p) >= 0; p++) {
     int cidx = occ >> LENSHIFT;
-    if (yals->hard_card_ids[cidx]) continue;
+    if (yals->f->hard_card_ids[cidx]) continue;
     bound = yals_card_bound (yals, cidx);
     if (bound - yals_card_satcnt (yals, cidx) == -1) {// made
       change_in_cost -= PEEK (yals->maxs_card_weights, cidx);
@@ -113,7 +113,7 @@ static double yals_soft_cost_of_flip (Yals * yals, int lit) {
   occs = yals_occs (yals, -lit);
   for (p = occs; (occ = *p) >= 0; p++) {
     int cidx = occ >> LENSHIFT;
-    if (yals->hard_clause_ids[cidx]) continue;
+    if (yals->f->hard_clause_ids[cidx]) continue;
     if (yals_satcnt (yals, cidx) == 1) {// broken
       change_in_cost += PEEK (yals->maxs_clause_weights, cidx);
     }
@@ -121,7 +121,7 @@ static double yals_soft_cost_of_flip (Yals * yals, int lit) {
   occs = yals_card_occs (yals, -lit);
   for (p = occs; (occ = *p) >= 0; p++) {
     int cidx = occ >> LENSHIFT;
-    if (yals->hard_card_ids[cidx]) continue;
+    if (yals->f->hard_card_ids[cidx]) continue;
     bound = yals_card_bound (yals, cidx);
     if (bound - yals_card_satcnt (yals, cidx) == 0) {// broken
       change_in_cost += PEEK (yals->maxs_card_weights, cidx);

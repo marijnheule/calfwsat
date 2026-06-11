@@ -438,19 +438,41 @@ typedef struct UNSAT_STACK {
   int usequeue; int hard_cnt; double maxs_weight; Queue queue; STACK_INT stack;
 } UNSAT_STACK;
 
+// Read-only formula data: built once during parsing and yals_connect /
+// yals_card_connect, then immutable for the rest of the search. Factored out
+// of Yals so a single copy can be shared across all palsat worker threads --
+// each Yals points its 'f' at the same YalsFormula.
+typedef struct YalsFormula {
+  // clause database
+  STACK(int) cdb;                 // clause literals, 0-separated
+  int * lits;                     // clause cidx -> offset into cdb
+  int * occs, noccs;              // occurrence lists + total size
+  int * refs;                     // literal -> offset into occs
+  int * hard_clause_ids;          // 1 if clause is hard, 0 if soft (MaxSAT)
+  unsigned char * clause_has_neg; // --heavy: 1 if clause has a negative literal
+  STACK(int) clause_size;         // clause cidx -> length
+  // cardinality database (card_cdb stores: bound, literals, 0, ...)
+  STACK(int) card_cdb;
+  int * card_lits, * card_refs;
+  int * card_occs, card_noccs;
+  int * hard_card_ids;
+  unsigned char * card_has_neg;
+  STACK(int) card_size;
+} YalsFormula;
+
 // structure for solver
 typedef struct Yals {
   RNG rng;
   FILE * out;
   UNSAT_STACK unsat; // falsified hard (all if not MaxSAT) constraints
-  int nvars, * refs; int64_t * flips;
+  YalsFormula * f; // shared read-only formula data (see YalsFormula above)
+  int nvars; int64_t * flips;
   STACK(signed char) mark;
   int trivial, mt, pick;
   Word * vals, * best, * tmp, * clear, * set, *curr; int nvarwords;
-  STACK(int) cdb, trail, phases, clause, mins;
+  STACK(int) trail, phases, clause, mins;
   int satcntbytes; union { U1 * satcnt1; U2 * satcnt2; U4 * satcnt4; };
-  int * occs, noccs;
-  int * pos, * lits; Lnk ** lnk;
+  int * pos; Lnk ** lnk;
   int * crit;
   int nclauses, nbin, ntrn, minlen, maxlen; double avglen;
   STACK(unsigned) breaks; STACK(double) scores; STACK(int) cands;
@@ -465,7 +487,6 @@ typedef struct Yals {
   FPU fpu;
   Exp exp;
   DDFW ddfw;
-  STACK (int) clause_size;
   int wid;
   int consecutive_non_improvement, last_flip_unsat_count;
 
@@ -480,8 +501,6 @@ typedef struct Yals {
   double parsed_weight;
   double maxs_hard_weight; // weight of hard constraints
   double maxs_acc_hard_weight;
-  int * hard_clause_ids; // clauses that are hard (=1) or soft (=0)
-  unsigned char * clause_has_neg;  // --heavy: 1 if clause cidx contains any negative literal
 
   int * pos_soft;
   int * card_pos_soft; 
@@ -503,11 +522,6 @@ typedef struct Yals {
 
   int card_crit;
 
-  STACK(int) card_cdb; // bound, literals, 0, ...
-  STACK (int) card_size;
-  int * card_lits, * card_refs;
-  int * card_occs, card_noccs;
-
   int bound, card_nclauses;
 
   double card_avglen;
@@ -519,8 +533,6 @@ typedef struct Yals {
   // int ** card_crit; // critical literals for a cardinality constraint
 
   STACK (double) maxs_card_weights; // soft constraint costs
-  int * hard_card_ids; // cardinality constraints that are hard (=1) or soft (=0)
-  unsigned char * card_has_neg;  // --heavy: 1 if card cidx contains any negative literal
 
   // Optional pointer to a process-wide cache of assignments shared across
   // palsat workers. NULL when no shared cache is attached.
@@ -769,7 +781,7 @@ static inline int compare_lit_score (const void *a, const void *b) {
 /*------------------------------------------------------------------------*/
 
 #define assert_valid_occs(OCCS) \
-  do { assert (0 <= OCCS), assert (OCCS < yals->noccs); } while (0)
+  do { assert (0 <= OCCS), assert (OCCS < yals->f->noccs); } while (0)
 
 #define assert_valid_idx(IDX) \
   do { assert (0 <= IDX), assert (IDX < yals->nvars); } while (0)
@@ -787,7 +799,7 @@ static inline int compare_lit_score (const void *a, const void *b) {
 
 
 #define assert_valid_card_occs(OCCS) \
-  do { assert (0 <= OCCS), assert (OCCS < yals->card_noccs); } while (0)
+  do { assert (0 <= OCCS), assert (OCCS < yals->f->card_noccs); } while (0)
 
 #define assert_valid_card_cidx(CIDX) \
   do { assert (0 <= CIDX), assert (CIDX < yals->card_nclauses); } while (0)
@@ -815,15 +827,15 @@ static inline int get_pos (int lit)
 static inline int * yals_refs (Yals * yals, int lit) {
   int idx = ABS (lit);
   assert_valid_idx (idx);
-  assert (yals->refs);
-  return yals->refs + 2*idx + (lit < 0);
+  assert (yals->f->refs);
+  return yals->f->refs + 2*idx + (lit < 0);
 }
 
 static inline int * yals_card_refs (Yals * yals, int lit) {
   int idx = ABS (lit);
   assert_valid_idx (idx);
-  assert (yals->card_refs);
-  return yals->card_refs + 2*idx + (lit < 0);
+  assert (yals->f->card_refs);
+  return yals->f->card_refs + 2*idx + (lit < 0);
 }
 
 static inline int * yals_occs (Yals * yals, int lit) {
@@ -831,7 +843,7 @@ static inline int * yals_occs (Yals * yals, int lit) {
   INC (occs);
   occs = *yals_refs (yals, lit);
   assert_valid_occs (occs);
-  return yals->occs + occs;
+  return yals->f->occs + occs;
 }
 
 static inline int * yals_card_occs (Yals * yals, int lit) {
@@ -839,7 +851,7 @@ static inline int * yals_card_occs (Yals * yals, int lit) {
   INC (occs);
   occs = *yals_card_refs (yals, lit);
   assert_valid_card_occs (occs);
-  return yals->card_occs + occs;
+  return yals->f->card_occs + occs;
 }
 
 static inline int yals_val (Yals * yals, int lit) {
@@ -1129,7 +1141,7 @@ static inline unsigned yals_rand_mod (Yals * yals, unsigned mod) {
 static inline int * yals_lits (Yals * yals, int cidx) {
   INC (lits);
   assert_valid_cidx (cidx);
-  return yals->cdb.start + yals->lits[cidx];
+  return yals->f->cdb.start + yals->f->lits[cidx];
 }
 
 /*
@@ -1146,14 +1158,14 @@ static inline int * yals_lits (Yals * yals, int cidx) {
 static inline int * yals_card_lits (Yals * yals, int cidx) {
   INC (lits); // incrementing lits access?
   assert_valid_card_cidx (cidx);
-  return yals->card_cdb.start + yals->card_lits[cidx] + 1; // +1 to avoid bound
+  return yals->f->card_cdb.start + yals->f->card_lits[cidx] + 1; // +1 to avoid bound
 }
 
 // return the bound for a cardinality constraint
 static inline int yals_card_bound (Yals * yals, int cidx) {
   INC (lits);
   assert_valid_card_cidx (cidx);
-  return *(yals->card_cdb.start + yals->card_lits[cidx]); 
+  return *(yals->f->card_cdb.start + yals->f->card_lits[cidx]); 
 }
 
 /*
@@ -1167,7 +1179,7 @@ static inline int yals_card_length (Yals * yals, int cidx) {
   // INC (lits); // incrementing lits access?
 
 
-  return PEEK (yals->card_size, cidx);
+  return PEEK (yals->f->card_size, cidx);
 }
 
 /*
