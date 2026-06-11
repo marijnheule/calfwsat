@@ -3147,6 +3147,25 @@ static void yals_init_weight_to_score_table (Yals * yals) {
 
 /*------------------------------------------------------------------------*/
 
+// One-shot build barrier for the shared formula. A non-owning worker blocks
+// here at the start of yals_connect until the owner has finished building all
+// shared arrays (signalled at the end of yals_card_connect). In non-shared mode
+// owns_formula is 1 for every worker, so nobody ever waits.
+static void yals_formula_wait_built (Yals * yals) {
+  YalsFormula * f = yals->f;
+  pthread_mutex_lock (&f->build_lock);
+  while (!f->built) pthread_cond_wait (&f->build_cond, &f->build_lock);
+  pthread_mutex_unlock (&f->build_lock);
+}
+
+static void yals_formula_signal_built (Yals * yals) {
+  YalsFormula * f = yals->f;
+  pthread_mutex_lock (&f->build_lock);
+  f->built = 1;
+  pthread_cond_broadcast (&f->build_cond);
+  pthread_mutex_unlock (&f->build_lock);
+}
+
 static void yals_connect (Yals * yals) {
   int idx, n, lit, nvars = yals->nvars, * count, cidx, sign;
   long long sumoccs, sumlen; int minoccs, maxoccs, minlen, maxlen;
@@ -3156,8 +3175,12 @@ static void yals_connect (Yals * yals) {
 
   LOG ("CONNECT Clauses");
 
+  // In shared mode, a non-owner must not read the clause DB until the owner has
+  // finished building every shared array (signalled at end of yals_card_connect).
+  if (!yals->owns_formula) yals_formula_wait_built (yals);
+
   // connect clauses
-  FIT (yals->f->cdb);
+  if (yals->owns_formula) FIT (yals->f->cdb);
   RELEASE (yals->mark);
   RELEASE (yals->clause);
 
@@ -3211,6 +3234,10 @@ static void yals_connect (Yals * yals) {
   yals->nclauses = nclauses;
   yals->nbin = nbin;
   yals->ntrn = ntrn;
+  // Build the shared clause index (lits / occs / refs / clause_has_neg). In
+  // shared mode only the owner runs this; non-owners inherit it. Per-thread
+  // scalars (nclauses/nbin/ntrn above, avglen below) are computed by everyone.
+  if (yals->owns_formula) {
   yals_msg (yals, 1, "connecting %d clauses", nclauses);
   NEWN (yals->f->lits, nclauses);
   NEWN (yals->f->hard_clause_ids, nclauses);
@@ -3357,6 +3384,10 @@ static void yals_connect (Yals * yals) {
   yals_msg (yals, 1,
     "average literal occurrence %.2f (min %d, max %d)",
     yals_avg (sumoccs, yals->nvars)/2.0, minoccs, maxoccs);
+  } // end owns_formula: shared clause index built
+
+  // avglen is read during search, so non-owners need it too.
+  yals->avglen = yals_avg (sumlen, yals->nclauses);
 
   yals->pick = 0;
 
@@ -3387,11 +3418,21 @@ static void yals_connect (Yals * yals) {
   NEWN (yals->set, yals->nvarwords);
   NEWN (yals->clear, yals->nvarwords);
   memset (yals->clear, 0xff, yals->nvarwords * sizeof (Word));
-  while (!EMPTY (yals->trail)) {
-    lit = POP (yals->trail);
-    idx = ABS (lit);
-    if (lit < 0) CLRBIT (yals->clear, yals->nvarwords, idx);
-    else SETBIT (yals->set, yals->nvarwords, idx);
+  // The forced assignment (post-preprocess trail) is part of the shared formula.
+  // The owner captures its trail into f->forced once; every worker then seeds its
+  // own set/clear masks from f->forced (bit writes are order-independent). For a
+  // shared owner the trail was already drained in yals_prepare_shared_formula, so
+  // this capture is a no-op there.
+  if (yals->owns_formula)
+    while (!EMPTY (yals->trail)) PUSH (yals->f->forced, POP (yals->trail));
+  {
+    const int * fp;
+    for (fp = yals->f->forced.start; fp < yals->f->forced.top; fp++) {
+      lit = *fp;
+      idx = ABS (lit);
+      if (lit < 0) CLRBIT (yals->clear, yals->nvarwords, idx);
+      else SETBIT (yals->set, yals->nvarwords, idx);
+    }
   }
   RELEASE (yals->trail);
 
@@ -3434,7 +3475,7 @@ void yals_card_connect (Yals * yals) {
 
   LOG ("CONNECT Cardinality Constriants");
 
-  FIT (yals->f->card_cdb);
+  FIT (yals->card_cdb); // per-thread: each worker owns/fits its own card_cdb
   RELEASE (yals->mark);
   RELEASE (yals->clause);
 
@@ -3443,7 +3484,7 @@ void yals_card_connect (Yals * yals) {
   minlen = INT_MAX;
   nclauses = nbin = ntrn = nquad = nlarge = 0;
 
-  for (p = yals->f->card_cdb.start; p < yals->f->card_cdb.top; p = q + 1) {
+  for (p = yals->card_cdb.start; p < yals->card_cdb.top; p = q + 1) {
     for (q = p; *q; q++)
       ;
     len = q - p - 1; // -1 for the bound at the beggining of the clause
@@ -3480,6 +3521,8 @@ void yals_card_connect (Yals * yals) {
       (INT_MAX >> LENSHIFT));
 
   yals->card_nclauses = nclauses;
+  // Build the shared cardinality index. Owner-only in shared mode (see yals_connect).
+  if (yals->owns_formula) {
   yals_msg (yals, 1, "connecting %d cardinality constraints", nclauses);
   NEWN (yals->f->card_lits, nclauses);
   NEWN (yals->f->hard_card_ids, nclauses);
@@ -3488,7 +3531,7 @@ void yals_card_connect (Yals * yals) {
   lits = 0;
   for (cidx = 0; cidx < nclauses; cidx++) {
     yals->f->card_lits[cidx] = lits;
-    while (PEEK (yals->f->card_cdb, lits)) lits++;
+    while (PEEK (yals->card_cdb, lits)) lits++;
     lits++;
     if (yals->using_maxs_weights) {
     if (PEEK (yals->maxs_card_weights, cidx) == yals->maxs_hard_weight)
@@ -3497,7 +3540,7 @@ void yals_card_connect (Yals * yals) {
       yals->f->hard_card_ids[cidx] = 0;
     }
   }
-  assert (lits == COUNT (yals->f->card_cdb));
+  assert (lits == COUNT (yals->card_cdb));
 
   // --heavy: precompute whether each card constraint contains any negative literal.
   NEWN (yals->f->card_has_neg, nclauses);
@@ -3610,6 +3653,10 @@ void yals_card_connect (Yals * yals) {
   yals_msg (yals, 1,
     "average literal occurrence %.2f (min %d, max %d)",
     yals_avg (sumoccs, yals->nvars)/2.0, minoccs, maxoccs);
+  } // end owns_formula: shared cardinality index built
+
+  // card_avglen is read during search, so non-owners need it too.
+  yals->card_avglen = yals_avg (sumlen, yals->nclauses);
 
   yals->card_unsat.usequeue = 0; // always a stack!
 
@@ -3649,6 +3696,10 @@ void yals_card_connect (Yals * yals) {
   yals_msg (yals, 1,
     "need %d bytes per cardinality constraint for counting satisfied literals",
     yals->card_satcntbytes);
+
+  // The shared formula is now fully built: release any non-owners waiting at the
+  // top of yals_connect. Harmless in non-shared mode (nobody is waiting).
+  if (yals->owns_formula) yals_formula_signal_built (yals);
 }
 
 
@@ -3816,10 +3867,15 @@ Yals * yals_new_with_mem_mgr (void * mgr,
   yals->mem.malloc = m;
   yals->mem.realloc = r;
   yals->mem.free = f;
-  // Read-only formula data lives in a separate heap struct so it can later be
-  // shared across palsat workers. For now each Yals owns its own copy.
+  // Read-only formula data lives in a separate heap struct so it can be shared
+  // across palsat workers. Each worker starts owning its own copy; in shared
+  // mode the non-owners later drop theirs and point at the owner's (see
+  // yals_share_formula).
   yals->f = yals_malloc (yals, sizeof *yals->f);
   memset (yals->f, 0, sizeof *yals->f);
+  yals->owns_formula = 1;
+  pthread_mutex_init (&yals->f->build_lock, 0);
+  pthread_cond_init (&yals->f->build_cond, 0);
   yals->stats.tmp = INT_MAX;
   yals->stats.best = INT_MAX;
   yals->stats.last = INT_MAX;
@@ -3904,7 +3960,9 @@ void yals_del (Yals * yals) {
   yals_reset_cache (yals);
   yals_reset_unsat (yals);
   free (yals->curr);
-  RELEASE (yals->f->cdb);
+  // Shared formula arrays (everything reached through yals->f) are freed only by
+  // the owner; non-owners merely borrow them.
+  if (yals->owns_formula) RELEASE (yals->f->cdb);
   RELEASE (yals->clause);
   RELEASE (yals->mark);
   RELEASE (yals->mins);
@@ -3919,7 +3977,7 @@ void yals_del (Yals * yals) {
   RELEASE (yals->minlits);
   if (yals->unsat.usequeue) DELN (yals->lnk, yals->nclauses);
   else DELN (yals->pos, yals->nclauses);
-  DELN (yals->f->lits, yals->nclauses);
+  if (yals->owns_formula) DELN (yals->f->lits, yals->nclauses);
   if (yals->crit) DELN (yals->crit, yals->nclauses);
   if (yals->satcntbytes == 1) DELN (yals->satcnt1, yals->nclauses);
   else if (yals->satcntbytes == 2) DELN (yals->satcnt2, yals->nclauses);
@@ -3929,22 +3987,22 @@ void yals_del (Yals * yals) {
   DELN (yals->tmp, yals->nvarwords);
   DELN (yals->clear, yals->nvarwords);
   DELN (yals->set, yals->nvarwords);
-  DELN (yals->f->occs, yals->f->noccs);
-  if (yals->f->refs) DELN (yals->f->refs, 2*yals->nvars);
+  if (yals->owns_formula) DELN (yals->f->occs, yals->f->noccs);
+  if (yals->owns_formula && yals->f->refs) DELN (yals->f->refs, 2*yals->nvars);
   if (yals->flips) DELN (yals->flips, yals->nvars);
 #ifndef NYALSTATS
   DELN (yals->stats.inc, yals->stats.nincdec);
   DELN (yals->stats.dec, yals->stats.nincdec);
 #endif
 
-  RELEASE (yals->f->clause_size); // missing from original....
+  if (yals->owns_formula) RELEASE (yals->f->clause_size); // missing from original....
   // cardinality structures
-  RELEASE (yals->f->card_cdb);
-  RELEASE (yals->f->card_size);
+  RELEASE (yals->card_cdb); // per-thread: every worker frees its own copy
+  if (yals->owns_formula) RELEASE (yals->f->card_size);
   DELN (yals->card_pos, yals->card_nclauses);
-  if (yals->f->card_refs) DELN (yals->f->card_refs, 2*yals->nvars);
-  DELN (yals->f->card_lits, yals->card_nclauses);
-  DELN (yals->f->card_occs, yals->f->card_noccs);
+  if (yals->owns_formula && yals->f->card_refs) DELN (yals->f->card_refs, 2*yals->nvars);
+  if (yals->owns_formula) DELN (yals->f->card_lits, yals->card_nclauses);
+  if (yals->owns_formula) DELN (yals->f->card_occs, yals->f->card_noccs);
   if (yals->card_satcntbytes == 1) DELN (yals->card_satcnt1, yals->card_nclauses);
   else if (yals->satcntbytes == 2) DELN (yals->card_satcnt2, yals->card_nclauses);
   else DELN (yals->card_satcnt4, yals->card_nclauses);
@@ -3956,10 +4014,10 @@ void yals_del (Yals * yals) {
   //maxs
   RELEASE (yals->maxs_clause_weights);
   RELEASE (yals->maxs_card_weights);
-  DELN (yals->f->hard_clause_ids, yals->nclauses);
-  DELN (yals->f->hard_card_ids, yals->card_nclauses);
-  DELN (yals->f->clause_has_neg, yals->nclauses);
-  DELN (yals->f->card_has_neg, yals->card_nclauses);
+  if (yals->owns_formula) DELN (yals->f->hard_clause_ids, yals->nclauses);
+  if (yals->owns_formula) DELN (yals->f->hard_card_ids, yals->card_nclauses);
+  if (yals->owns_formula) DELN (yals->f->clause_has_neg, yals->nclauses);
+  if (yals->owns_formula) DELN (yals->f->card_has_neg, yals->card_nclauses);
   // more to be deledted that is untracked
 
   if (yals->using_maxs_weights) {
@@ -4030,12 +4088,63 @@ void yals_del (Yals * yals) {
   free (yals->ddfw.sat1_weights_soft);
 
 
-  yals_free (yals, yals->f, sizeof *yals->f);
+  // Free the shared formula struct itself only from its owner. Non-owners had
+  // their own (empty) copy released earlier in yals_share_formula.
+  if (yals->owns_formula) {
+    RELEASE (yals->f->forced);
+    pthread_mutex_destroy (&yals->f->build_lock);
+    pthread_cond_destroy (&yals->f->build_cond);
+    yals_free (yals, yals->f, sizeof *yals->f);
+  }
 
   yals_strdel (yals, yals->opts.prefix);
   yals_dec_allocated (yals, sizeof *yals);
   assert (getenv ("YALSLEAK") || !yals->stats.allocated.current);
   yals->mem.free (yals->mem.mgr, yals, sizeof *yals);
+}
+
+/*------------------------------------------------------------------------*/
+
+// palsat shared-formula support (see yals.h). Simplify the owner's parsed
+// formula once and capture the forced assignment into the shared formula. This
+// mirrors the preprocessing yals_sat would otherwise do per worker, but runs a
+// single time before the worker threads start. Returns 20 if unsatisfiable.
+int yals_prepare_shared_formula (Yals * yals) {
+  assert (yals->owns_formula);
+  if (yals->mt) return 20;
+  if (yals->opts.prep.val && !EMPTY (yals->trail)) {
+    yals_preprocess (yals);
+    if (yals->mt) return 20;
+  }
+  // Drain the (post-propagation) trail into the shared forced assignment; every
+  // worker's yals_connect seeds its set/clear masks from f->forced instead.
+  while (!EMPTY (yals->trail)) PUSH (yals->f->forced, POP (yals->trail));
+  return 0;
+}
+
+// Point a non-owner worker at the owner's already-parsed formula. The non-owner
+// must not have parsed anything: its own (empty) YalsFormula is released here.
+void yals_share_formula (Yals * dst, Yals * src) {
+  Yals * yals = dst; // PUSH/ENLARGE allocate via the 'yals' in scope
+  assert (dst->owns_formula);
+  assert (EMPTY (dst->f->cdb));
+  assert (EMPTY (dst->card_cdb));
+  pthread_mutex_destroy (&dst->f->build_lock);
+  pthread_cond_destroy (&dst->f->build_cond);
+  yals_free (dst, dst->f, sizeof *dst->f);
+  dst->f = src->f;
+  dst->owns_formula = 0;
+  // card_cdb is per-thread (its literals get reordered in place during search),
+  // so the non-owner needs its OWN copy of the owner's (already preprocessed)
+  // cardinality DB. The layout matches the shared card_lits/card_size indices.
+  {
+    const int * p;
+    for (p = src->card_cdb.start; p < src->card_cdb.top; p++)
+      PUSH (dst->card_cdb, *p);
+  }
+  // Replicate the parse-time scalars the non-owner skipped computing.
+  dst->nvars = src->nvars;
+  dst->mt = src->mt;
 }
 
 void yals_setprefix (Yals * yals, const char * prefix) {
@@ -5399,7 +5508,7 @@ static void yals_check_assignment (Yals * yals) {
 
 // check after preprocessing (unit propagation) if all variables are assigned
 int yals_all_assigned (Yals * yals) {
-  if (SIZE (yals->f->card_cdb) == 0 && SIZE (yals->f->cdb) == 0) {
+  if (SIZE (yals->card_cdb) == 0 && SIZE (yals->f->cdb) == 0) {
     yals_set_units (yals);
     yals_save_new_minimum (yals);
     LOG ("Yals all assigned");
@@ -7208,13 +7317,13 @@ void yals_new_cardinality_constraint (Yals * yals) {
         PUSH (yals->trail, lit);
       }    
   }
-  PUSH (yals->f->card_cdb, bound);
+  PUSH (yals->card_cdb, bound);
   for (p = yals->clause.start; p < yals->clause.top; p++) {
     lit = *p;
-    PUSH (yals->f->card_cdb, lit);
+    PUSH (yals->card_cdb, lit);
   }
-  PUSH (yals->f->card_cdb, 0);
-  LOGLITS (yals->f->card_cdb.top - len - 2, "new length %d", len+1);
+  PUSH (yals->card_cdb, 0);
+  LOGLITS (yals->card_cdb.top - len - 2, "new length %d", len+1);
   if (yals->using_maxs_weights) {
     PUSH (yals->maxs_card_weights, yals->parsed_weight);
     if (yals->parsed_weight != yals->maxs_hard_weight)

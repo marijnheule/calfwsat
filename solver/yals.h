@@ -20,6 +20,7 @@ This code extends the solver yal-lin (Md Solimul Chowdhury, Cayden Codel, Marijn
 #include "options.h"
 #include "assert.h"
 #include "heap.h"
+#include <pthread.h> // palsat workers share one YalsFormula via a build barrier
 
 #if defined(__linux__)
 #include <fpu_control.h> // Set FPU to double precision on Linux.
@@ -451,13 +452,26 @@ typedef struct YalsFormula {
   int * hard_clause_ids;          // 1 if clause is hard, 0 if soft (MaxSAT)
   unsigned char * clause_has_neg; // --heavy: 1 if clause has a negative literal
   STACK(int) clause_size;         // clause cidx -> length
-  // cardinality database (card_cdb stores: bound, literals, 0, ...)
-  STACK(int) card_cdb;
+  // cardinality index (the card_cdb literal array itself is NOT here: the
+  // solver reorders literals within each constraint in place during search,
+  // so card_cdb must stay per-thread -- it lives in Yals below). These index
+  // arrays only depend on which literals occur in which constraint, not their
+  // order, so they remain shared and read-only.
   int * card_lits, * card_refs;
   int * card_occs, card_noccs;
   int * hard_card_ids;
   unsigned char * card_has_neg;
   STACK(int) card_size;
+  // Forced assignment derived during parsing + preprocessing (the trail after
+  // unit propagation). Read-only after the formula is built; every worker seeds
+  // its set/clear masks from this, so it is shared along with the clause DB.
+  STACK(int) forced;
+  // One-shot build barrier. In shared mode only the owning worker builds the
+  // arrays above; the others block on this until 'built' is set. In non-shared
+  // mode each worker owns its own YalsFormula and signals it harmlessly.
+  pthread_mutex_t build_lock;
+  pthread_cond_t build_cond;
+  int built;
 } YalsFormula;
 
 // structure for solver
@@ -466,6 +480,13 @@ typedef struct Yals {
   FILE * out;
   UNSAT_STACK unsat; // falsified hard (all if not MaxSAT) constraints
   YalsFormula * f; // shared read-only formula data (see YalsFormula above)
+  int owns_formula; // 1 if this worker built and owns *f (frees it); 0 if it
+                    // merely shares another worker's *f (read-only)
+  // Cardinality clause DB (bound, literals, 0, ...). Per-thread, NOT in the
+  // shared *f: the solver reorders literals within each constraint in place
+  // during search (yals_card_sort_sat / incsatcnt partition moves), so every
+  // worker needs its own mutable copy. The card index arrays in *f stay shared.
+  STACK(int) card_cdb;
   int nvars; int64_t * flips;
   STACK(signed char) mark;
   int trivial, mt, pick;
@@ -551,6 +572,17 @@ void yals_del (Yals *);
 
 
 Yals * yals_new_with_mem_mgr (void*, YalsMalloc, YalsRealloc, YalsFree);
+
+/*------------------------------------------------------------------------*/
+
+// palsat shared-formula support. After the formula has been parsed into a
+// single owner worker, 'yals_prepare_shared_formula' simplifies it once
+// (unit propagation, if enabled) and captures the resulting forced assignment
+// into the owner's YalsFormula. Returns 20 if the formula is already
+// unsatisfiable (empty clause), else 0. 'yals_share_formula' then points a
+// non-owner worker at the owner's formula so a single copy is shared.
+int yals_prepare_shared_formula (Yals * owner);
+void yals_share_formula (Yals * dst, Yals * src);
 
 /*------------------------------------------------------------------------*/
 
@@ -1158,14 +1190,14 @@ static inline int * yals_lits (Yals * yals, int cidx) {
 static inline int * yals_card_lits (Yals * yals, int cidx) {
   INC (lits); // incrementing lits access?
   assert_valid_card_cidx (cidx);
-  return yals->f->card_cdb.start + yals->f->card_lits[cidx] + 1; // +1 to avoid bound
+  return yals->card_cdb.start + yals->f->card_lits[cidx] + 1; // +1 to avoid bound
 }
 
 // return the bound for a cardinality constraint
 static inline int yals_card_bound (Yals * yals, int cidx) {
   INC (lits);
   assert_valid_card_cidx (cidx);
-  return *(yals->f->card_cdb.start + yals->f->card_lits[cidx]); 
+  return *(yals->card_cdb.start + yals->f->card_lits[cidx]);
 }
 
 /*

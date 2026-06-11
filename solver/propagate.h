@@ -83,14 +83,14 @@ void yals_preprocess (Yals * yals) {
   }
 
   // cardinality constraint watches
-  FIT (yals->f->card_cdb);
+  FIT (yals->card_cdb);
 
   NEWN (card_watches, 2*nvars);
   card_watches += nvars;
 
-  c = yals->f->card_cdb.start;
+  c = yals->card_cdb.start;
   cls_cnt = 0;
-  while (c < yals->f->card_cdb.top) {
+  while (c < yals->card_cdb.top) {
 
     // can only propagate on hard constraints
     if (yals->using_maxs_weights) {
@@ -103,7 +103,7 @@ void yals_preprocess (Yals * yals) {
       }
     }
 
-    occ = c - yals->f->card_cdb.start;
+    occ = c - yals->card_cdb.start;
     bound = *c++;
     assert (bound > 0);
     len = 0;
@@ -174,8 +174,8 @@ void yals_preprocess (Yals * yals) {
       for (p = s1->start; !yals->mt && p < s1->top; p++) {
         occ = *p;
         assert (occ >= 0);
-        c = yals->f->card_cdb.start + occ;
-        assert (c < yals->f->card_cdb.top);
+        c = yals->card_cdb.start + occ;
+        assert (c < yals->card_cdb.top);
         bound = *c++;
         nWatches = bound+1;
         assert (bound > 0);
@@ -299,10 +299,10 @@ void yals_preprocess (Yals * yals) {
 
   // reduce cardinality constraint literals
   cls_cnt = curr_cnt = 0;
-  oldnlits = COUNT (yals->f->card_cdb);
+  oldnlits = COUNT (yals->card_cdb);
   nstr = nsat = falsified = 0;
-  q = yals->f->card_cdb.start;
-  for (c = q; c < yals->f->card_cdb.top; c++) {
+  q = yals->card_cdb.start;
+  for (c = q; c < yals->card_cdb.top; c++) {
     satisfied = 0;
     bound = *c++;
     curr_len = 0;
@@ -336,7 +336,7 @@ void yals_preprocess (Yals * yals) {
 
           
         }
-        assert (q >= yals->f->card_cdb.start + 2);
+        assert (q >= yals->card_cdb.start + 2);
         assert (q[-1]); assert (q[-2]);
         *q++ = 0;
       }
@@ -353,9 +353,9 @@ void yals_preprocess (Yals * yals) {
     yals->maxs_card_weights.top = curr_cnt + yals->maxs_card_weights.start;
     FIT (yals->maxs_card_weights);
   }
-  yals->f->card_cdb.top = q;
-  FIT (yals->f->card_cdb);
-  newnlits = COUNT (yals->f->card_cdb);
+  yals->card_cdb.top = q;
+  FIT (yals->card_cdb);
+  newnlits = COUNT (yals->card_cdb);
   assert (newnlits <= oldnlits);
   yals_msg (yals, 1, "removed %d satisfied cardinality constraints", nsat);
   yals_msg (yals, 1, "removed %d falsified literal occurrences", nstr);

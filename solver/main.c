@@ -753,6 +753,12 @@ int main (int argc, char** argv) {
   double weight;
   int is_weighted = 0;
   double max_weight;
+#ifdef PALSAT
+  // When set, the formula is parsed into worker 0 only and shared (read-only)
+  // with the other workers, instead of giving each worker its own copy. Decided
+  // once the header is parsed (see below). MaxSAT keeps per-worker formulas.
+  int share_formula = 0;
+#endif
 
 #ifdef PALSAT
   // Initialize mutexes before any option handling: '-h'/usage() allocates via
@@ -1039,6 +1045,15 @@ HEADER:
   msg ("clause variable ratio %.2f", average (C,V));
   lit = 0;
 
+#ifdef PALSAT
+  // Share a single read-only formula across workers when running more than one
+  // worker on a non-MaxSAT instance. MaxSAT carries per-worker weight state, so
+  // it stays on the per-worker parse path.
+  share_formula = (threads > 1 && !is_weighted);
+  if (share_formula)
+    msg ("parsing formula once and sharing it across %d workers", threads);
+#endif
+
 cardinality = bound = 0; // track when a cardinality constraint is parsed
 weight = 0.0;
 got_weight = 0;
@@ -1088,9 +1103,10 @@ BODY:
   lit *= sign;
   if (!lit) n--;
 #ifdef PALSAT
+  // In shared mode parse into worker 0 only; otherwise into every worker.
   if (is_weighted && !got_weight) {
-    int i;
-    for (i = 0; i < threads; i++) {
+    int i, nw = share_formula ? 1 : threads;
+    for (i = 0; i < nw; i++) {
       if (cardinality)
         yals_card_add_weight (worker[i].yals, weight);
       else
@@ -1101,19 +1117,19 @@ BODY:
     goto BODY;
   }
   if (cardinality && !bound) {
-    int i;
-    for (i = 0; i < threads; i++)
+    int i, nw = share_formula ? 1 : threads;
+    for (i = 0; i < nw; i++)
       yals_card_add (worker[i].yals, lit, 1); // add bound for new cardinality constraint
     bound = 1;
     goto BODY;
   }
   {
-    int i;
+    int i, nw = share_formula ? 1 : threads;
     if (cardinality) {
-      for (i = 0; i < threads; i++)
+      for (i = 0; i < nw; i++)
         yals_card_add (worker[i].yals, lit, 0); // add literal to cardinality constraint
     } else {
-      for (i = 0; i < threads; i++)
+      for (i = 0; i < nw; i++)
         yals_add (worker[i].yals, lit);
     }
   }
@@ -1151,7 +1167,19 @@ DONE:
   msg ("finished parsing after %.2f seconds",  getime ());
   msg ("allocated %.1f MB after parsing", mem.allocated/(double)(1<<20));
 #ifdef PALSAT
-  res = palsat ();
+  if (share_formula) {
+    // Simplify the formula once on the owner, then point the other workers at it
+    // so a single read-only copy is shared instead of one per worker.
+    if (yals_prepare_shared_formula (worker[0].yals) == 20)
+      res = 20;
+    else {
+      for (i = 1; i < threads; i++)
+        yals_share_formula (worker[i].yals, worker[0].yals);
+      msg ("allocated %.1f MB after sharing", mem.allocated/(double)(1<<20));
+      res = palsat ();
+    }
+  } else
+    res = palsat ();
 #else
   if (flipsset) yals_setflipslimit (yals, flips);
   if (memsset) yals_setmemslimit (yals, mems);
