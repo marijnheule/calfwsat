@@ -134,11 +134,11 @@ static void yals_check_global_weight_invariant (Yals * yals) {
   LOG("Clause weights"); // printing out each constraints weights
   for (cidx = 0; cidx < yals->nclauses; cidx++) {
     if (yals_satcnt (yals, cidx) > 0) {
-      LOGCIDX (cidx, "SAT Weight %lf",yals->ddfw.ddfw_clause_weights[cidx]);
+      LOGCIDX (cidx, "SAT Weight %lf",yals->ddfw.clause_weights[cidx]);
     } else {
-      LOGCIDX (cidx, "UNSAT Weight %lf",yals->ddfw.ddfw_clause_weights[cidx]);
+      LOGCIDX (cidx, "UNSAT Weight %lf",yals->ddfw.clause_weights[cidx]);
     }
-    actual_total_weight += yals->ddfw.ddfw_clause_weights[cidx];
+    actual_total_weight += yals->ddfw.clause_weights[cidx];
     expected_total_weight += yals->opts.init_clause_weight.val; // each clause started with this
 
     // look at actual unsat and sat1 weights
@@ -148,22 +148,22 @@ static void yals_check_global_weight_invariant (Yals * yals) {
     }
     if (sat == 1) {
       for (p = yals_lits (yals, cidx), sat = 0; (lit = *p); p++) {
-        if (yals_val (yals, lit)) expected_sat1_weights[get_pos (lit)] += yals->ddfw.ddfw_clause_weights[cidx];
+        if (yals_val (yals, lit)) expected_sat1_weights[get_pos (lit)] += yals->ddfw.clause_weights[cidx];
       }
     } else if (sat == 0) {
       for (p = yals_lits (yals, cidx), sat = 0; (lit = *p); p++) {
-        expected_unsat_weights[get_pos (lit)] += yals->ddfw.ddfw_clause_weights[cidx];
+        expected_unsat_weights[get_pos (lit)] += yals->ddfw.clause_weights[cidx];
       }
     }
   }
   LOG("Cardinality weights"); // printing out each constraints weights
   for (cidx = 0; cidx < yals->card_nclauses; cidx++) {
     if (yals_card_satcnt (yals, cidx) >= yals_card_bound (yals, cidx)) {
-      LOGCARDCIDX (cidx, "SAT Weight %lf",yals->ddfw.ddfw_card_weights[cidx]); 
+      LOGCARDCIDX (cidx, "SAT Weight %lf",yals->ddfw.card_weights[cidx]); 
     } else {
-      LOGCARDCIDX (cidx, "UNSAT Weight %lf",yals->ddfw.ddfw_card_weights[cidx]); 
+      LOGCARDCIDX (cidx, "UNSAT Weight %lf",yals->ddfw.card_weights[cidx]); 
     }
-    actual_total_weight += yals->ddfw.ddfw_card_weights[cidx];
+    actual_total_weight += yals->ddfw.card_weights[cidx];
     expected_total_weight += yals->opts.init_card_weight.val; // each cardinality constraint started with this
 
     // look at actual unsat and sat1 weights
@@ -259,9 +259,9 @@ void yals_maxs_check_global_weight_invariant (Yals * yals) {
     soft = 0;
     if (!yals->hard_clause_ids[cidx]) soft = 1;
     if (yals_satcnt (yals, cidx) > 0) {
-      LOGCIDX (cidx, "SOFT?%d SAT Weight %lf and multiplier %lf",soft,yals->ddfw.ddfw_clause_weights[cidx],PEEK (yals->maxs_clause_weights,cidx));
+      LOGCIDX (cidx, "SOFT?%d SAT Weight %lf and multiplier %lf",soft,yals->ddfw.clause_weights[cidx],PEEK (yals->maxs_clause_weights,cidx));
     } else {
-      LOGCIDX (cidx, "SOFT?%d UNSAT Weight %lf and multiplier %lf",soft,yals->ddfw.ddfw_clause_weights[cidx],PEEK (yals->maxs_clause_weights,cidx));
+      LOGCIDX (cidx, "SOFT?%d UNSAT Weight %lf and multiplier %lf",soft,yals->ddfw.clause_weights[cidx],PEEK (yals->maxs_clause_weights,cidx));
     }
 
 
@@ -274,7 +274,7 @@ void yals_maxs_check_global_weight_invariant (Yals * yals) {
       expected_total_weight += PEEK (yals->maxs_clause_weights, cidx);
     } else expected_total_weight += yals->opts.init_clause_weight.val; // each clause started with this
     
-    actual_total_weight += yals->ddfw.ddfw_clause_weights[cidx];
+    actual_total_weight += yals->ddfw.clause_weights[cidx];
     
     // look at actual unsat and sat1 weights
     unsigned sat;
@@ -285,17 +285,17 @@ void yals_maxs_check_global_weight_invariant (Yals * yals) {
       for (p = yals_lits (yals, cidx), sat = 0; (lit = *p); p++) {
         if (yals_val (yals, lit)) {
           if (soft)
-            expected_sat1_weights_soft[get_pos (lit)] += yals->ddfw.ddfw_clause_weights[cidx] * maxs_weight;
+            expected_sat1_weights_soft[get_pos (lit)] += yals->ddfw.clause_weights[cidx] * maxs_weight;
           else 
-            expected_sat1_weights[get_pos (lit)] += yals->ddfw.ddfw_clause_weights[cidx];
+            expected_sat1_weights[get_pos (lit)] += yals->ddfw.clause_weights[cidx];
         }
       }
     } else if (sat == 0) {
       for (p = yals_lits (yals, cidx), sat = 0; (lit = *p); p++) {
         if (soft)
-          expected_unsat_weights_soft[get_pos (lit)] += yals->ddfw.ddfw_clause_weights[cidx] * maxs_weight;
+          expected_unsat_weights_soft[get_pos (lit)] += yals->ddfw.clause_weights[cidx] * maxs_weight;
         else
-          expected_unsat_weights[get_pos (lit)] += yals->ddfw.ddfw_clause_weights[cidx];
+          expected_unsat_weights[get_pos (lit)] += yals->ddfw.clause_weights[cidx];
       }
     }
   }
@@ -304,9 +304,9 @@ void yals_maxs_check_global_weight_invariant (Yals * yals) {
     soft = 0;
     if (!yals->hard_card_ids[cidx]) soft = 1;
     if (yals_card_satcnt (yals, cidx) >= yals_card_bound (yals, cidx)) {
-      LOGCARDCIDX (cidx, "SOFT?%d SAT Weight %lf and multiplier %lf",soft,yals->ddfw.ddfw_card_weights[cidx], PEEK (yals->maxs_card_weights,cidx)); 
+      LOGCARDCIDX (cidx, "SOFT?%d SAT Weight %lf and multiplier %lf",soft,yals->ddfw.card_weights[cidx], PEEK (yals->maxs_card_weights,cidx)); 
     } else {
-      LOGCARDCIDX (cidx, "SOFT?%d UNSAT Weight %lf and multiplier %lf",soft,yals->ddfw.ddfw_card_weights[cidx], PEEK (yals->maxs_card_weights,cidx)); 
+      LOGCARDCIDX (cidx, "SOFT?%d UNSAT Weight %lf and multiplier %lf",soft,yals->ddfw.card_weights[cidx], PEEK (yals->maxs_card_weights,cidx)); 
     }
 
     double maxs_weight = 1.0;
@@ -318,7 +318,7 @@ void yals_maxs_check_global_weight_invariant (Yals * yals) {
       expected_total_weight += PEEK (yals->maxs_card_weights, cidx);
     } else expected_total_weight += yals->opts.init_card_weight.val; // each clause started with this
 
-    actual_total_weight += yals->ddfw.ddfw_card_weights[cidx];
+    actual_total_weight += yals->ddfw.card_weights[cidx];
 
     // look at actual unsat and sat1 weights
     unsigned sat;

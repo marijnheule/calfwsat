@@ -62,27 +62,27 @@ void yals_srand (Yals *, unsigned long long);
 
 /* weight-transfer non-static methods */
 int get_pos (int lit);
-void yals_ddfw_update_lit_weights_on_make (Yals * yals, int cidx, int lit);
-void yals_ddfw_update_lit_weights_at_start (Yals * yals, int cidx, int satcnt, int crit);
-void yals_ddfw_update_lit_weights_at_restart (Yals *yals);
-void yals_ddfw_compute_neighborhood_for_clause (Yals *yals, int cidx);
-void yals_ddfw_compute_uwrvs (Yals * yals);
+void yals_update_lit_weights_on_make (Yals * yals, int cidx, int lit);
+void yals_update_lit_weights_at_start (Yals * yals, int cidx, int satcnt, int crit);
+void yals_update_lit_weights_at_restart (Yals *yals);
+void yals_compute_neighborhood_for_clause (Yals *yals, int cidx);
+void yals_compute_uwrvs (Yals * yals);
 int yals_pick_non_increasing (Yals * yals);
-void yals_ddfw_init_build (Yals *yals);
+void yals_init_build (Yals *yals);
 int yals_pick_literals_random (Yals * yals);
-void yals_ddfw_update_lit_weights_on_break (Yals * yals, int cidx, int lit);
+void yals_update_lit_weights_on_break (Yals * yals, int cidx, int lit);
 void yals_add_vars_to_uvars (Yals* yals, int cidx, int constraint_type);
 int yals_var_in_unsat (Yals *yals, int v);
 void yals_delete_vars_from_uvars (Yals* yals, int cidx, int constraint_type);
-void yals_ddfw_update_var_unsat_count (Yals *yals, int cidx);
+void yals_update_var_unsat_count (Yals *yals, int cidx);
 void yals_print_stats (Yals * yals);
-void yals_ddfw_update_uvars (Yals *yals, int cidx);
+void yals_update_uvars (Yals *yals, int cidx);
 void set_options (Yals * yals);
 void yals_outer_loop_maxtries (Yals * yals);
 void yals_set_wid (Yals * yals, int widx);
 int yals_inner_loop_max_tries (Yals * yals);
 void yals_flip_ddfw (Yals * yals, int lit);
-void yals_ddfw_transfer_weights (Yals *yals);
+void yals_transfer_weights (Yals *yals);
 
 int * yals_card_lits (Yals * yals, int cidx);
 int yals_card_bound (Yals * yals, int cidx) ;
@@ -112,16 +112,16 @@ int yals_nunsat (Yals * yals);
 void yals_preprocess (Yals * yals) ;
 
 double default_card_wt (Yals * yals, int source, int sink);
-void yals_ddfw_transfer_weights_for_card (Yals *yals, int sink);
+void yals_transfer_weights_for_card (Yals *yals, int sink);
 
 
-void yals_ddfw_card_update_lit_weights_on_make (Yals * yals, int cidx, int lit);
+void yals_card_update_lit_weights_on_make (Yals * yals, int cidx, int lit);
 
-void yals_card_ddfw_update_lit_weights_at_start (Yals * yals, int cidx, int satcnt, int bound);
+void yals_card_update_lit_weights_at_start (Yals * yals, int cidx, int satcnt, int bound);
 
 void yals_card_add_vars_to_uvars (Yals* yals, int cidx);
 void yals_card_delete_vars_from_uvars (Yals* yals, int cidx, int constraint_type);
-void yals_card_ddfw_update_uvars (Yals *yals, int cidx);
+void yals_card_update_uvars (Yals *yals, int cidx);
 
 void yals_new_cardinality_constraint (Yals * yals);
 void yals_card_add (Yals * yals, int lit, int is_bound) ;

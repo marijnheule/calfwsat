@@ -53,7 +53,7 @@ This code extends the solver yal-lin (Md Solimul Chowdhury, Cayden Codel, Marijn
   OPT (init_solution,0,0,1,"start from initial solution provided at <init.sol> [currently only in (Pure) MaxSAT]"); \
   OPT (init_clause_weight,100,1,INT_MAX,"initial clause weight"); \
   OPT (init_card_weight,100,1,INT_MAX,"initial cardinality constraint weight"); \
-  OPT (sat_ddfw_init_card_weight,100,1,INT_MAX,"initial cardinality constraint weight for SAT"); \
+  OPT (sat_init_card_weight,100,1,INT_MAX,"initial cardinality constraint weight for SAT"); \
   OPT (maxs_transfer_soft,0,0,1,"transfer weight for soft constraints"); \
   OPT (maxs_soft_takes_hard,0,0,1,"soft constraints can take from hard in random transfer"); \
   OPT (maxs_hard_takes_soft,0,0,1,"hard constraints can take from soft in random transfer"); \

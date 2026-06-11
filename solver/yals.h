@@ -224,7 +224,7 @@ typedef struct DDFW {
   int prev_unsat_weights;
  
  
-  double * ddfw_clause_weights; // ddfw weight of each clause
+  double * clause_weights; // ddfw weight of each clause
   double * unsat_weights; // ddfw weight gain for flipping lit (unsat to sat)
   double * sat1_weights; // ddfw weight lost for flipping lit (sat to unsat)
   int init_weight_done;
@@ -274,14 +274,14 @@ typedef struct DDFW {
   double update_candidate_sat_clause_time, compute_uwvars_from_unsat_clauses_time; 
   double init_neighborhood_time;
 
-  int ddfw_active;
+  int active;
   int recent_max_reduction;
   int flip_span;
   int prob_check_window;
   int alg_switch;
 
   double time_ddfw;
-  int flips_ddfw_temp, flips_ddfw;
+  int flips_temp, flips_ddfw;
 
   double sum_uwr;
   double clsselectp;
@@ -310,7 +310,7 @@ typedef struct DDFW {
   int * card_helper_hash_clauses;
   int * card_sat_count_in_clause;
   int * card_sat_dirty; // 1 iff the sat/unsat partition may have drifted while over-satisfied (needs a full re-sort on re-entry to critical)
-  double * ddfw_card_weights; // cardinality constraint ddfw weights
+  double * card_weights; // cardinality constraint ddfw weights
 
   // Preallocated per-thread scratch for the weight-transfer source-selection
   // path (each Yals is per-thread, so these need no locking). Avoids the
@@ -704,12 +704,12 @@ void yals_update_sat_and_unsat (Yals * yals);
 
 int yals_pick_literal_from_heap (Yals * yals, int soft);
 
-void yals_ddfw_update_score_function_weights (Yals * yals);
+void yals_update_score_function_weights (Yals * yals);
 
 void yals_remove_trailing_bits (Yals * yals);
 void yals_set_units (Yals * yals);
 
-void yals_ddfw_update_changed_var_weights (Yals * yals);
+void yals_update_changed_var_weights (Yals * yals);
 
 /*
 --------------------------------------------------------------------------------
@@ -1198,7 +1198,7 @@ static inline void yals_card_unsat_iters (Yals *yals, int cidx, int **begin, int
 
 // wrapper for weight updates
 // needed in order to account for changes in the heap
-static inline void yals_ddfw_update_var_weight (Yals *yals, int lit, int soft, int sat, double weight_change) {
+static inline void yals_update_var_weight (Yals *yals, int lit, int soft, int sat, double weight_change) {
   double *weights;
   STACK_INT *uvars;
   int * pos;
