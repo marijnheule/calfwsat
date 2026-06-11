@@ -1,19 +1,14 @@
 # clsselectp sweep: probability of pulling weight from a RANDOM satisfied
 # clause instead of the max-weight same-sign neighbor (also the only channel
 # that moves weight between the positive- and negative-literal constraint
-# classes). clsselectp = paramval/100.
+# classes). clsselectp = paramval/100  (yals.c:5308/5382).
 #
-# Default aeq=ceq=0.167 (wtmul=wtadd=167, /1000 scale). Cache OFF,
-# cutoff=20000, 20 seeds, 900s timeout. 10 configs.
-# Default clsselectp = 12 (0.12).
+# Keep all other defaults (cutoff=20000, maxtries=INT_MAX, cache OFF).
+# 200 seeds, 900s timeout, -t 8. Default clsselectp = 12 (baseline cls12).
 # name	args
 cls08	--clsselectp=8
-cls09	--clsselectp=9
 cls10	--clsselectp=10
-cls11	--clsselectp=11
 cls12	--clsselectp=12
-cls13	--clsselectp=13
 cls14	--clsselectp=14
-cls15	--clsselectp=15
 cls16	--clsselectp=16
-cls17	--clsselectp=17
+cls18	--clsselectp=18
