@@ -1,19 +1,21 @@
-# --wsamplepow {1,2} on harder instances. 200 seeds, 3600s.
+# wsamplepow x randtour grid on harder instances. 200 seeds, 900s.
 #
-# wsamplepow=1 is the compiled default: a single weighted-proportional draw
-# from the segment tree with probability proportional to ddfw weight^1 (linear).
-# wsamplepow=2 squares the weight (weight^2), concentrating the random-source
-# draw harder onto heavy sources. randtour=1 (default) -- pure proportional,
-# no tournament. Only the draw distribution differs between the two rows;
+# wsamplepow=p draws the random source from the segment tree with probability
+# proportional to ddfw weight^p: p=1 linear (compiled default), p=2 squares the
+# weight (concentrates draws on heavy sources), p=3 cubes it (harder still).
+# randtour=t runs a t-way tournament over candidate draws (t=1 = pure
+# proportional, no tournament). Only the draw distribution differs across rows;
 # top-K selection, the weight floor, and the transfer amount all still use the
 # linear weight.
 #
-# u20 is the uniform-draw tournament baseline (--wsamplepow=0 --randtour=20):
-# the config that won ntil-45 in the randtour sweep. Included so this sweep can
-# tell whether proportional sampling is the right regime on hard instances at
-# all, rather than only comparing p1 vs p2 within that regime.
+# Grid: p in {1,2,3} crossed with small t, to locate the best peaking/tournament
+# combination on the hard ntil instances (p1 = wsamplepow=1 was consistently the
+# worst regime on ntil-45/47/49; p2 and uniform tournaments won).
 #
 # name	args
-p1	--wsamplepow=1
-p2	--wsamplepow=2
-u20	--wsamplepow=0 --randtour=20
+p1t1	--wsamplepow=1 --randtour=1
+p1t2	--wsamplepow=1 --randtour=2
+p1t3	--wsamplepow=1 --randtour=3
+p2t1	--wsamplepow=2 --randtour=1
+p2t2	--wsamplepow=2 --randtour=2
+p3t1	--wsamplepow=3 --randtour=1
