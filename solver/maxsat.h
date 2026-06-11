@@ -239,7 +239,7 @@ void yals_update_minimum_cost (Yals * yals) {
 
 
 void yals_init_assignment_parse (Yals *yals) {
-  int i, ch, sign, lit;
+  int ch, sign, lit;
   FILE * file;
   double start = yals_time_phase (yals);
 
@@ -286,8 +286,7 @@ DONE:
 }
 
 void yals_init_assignment_random (Yals *yals) {
-  int i, ch, sign, lit;
-  FILE * file;
+  int i;
   double start = yals_time_phase (yals);
 
   for (i = 0; i < yals->nvarwords; i++)
@@ -364,9 +363,7 @@ double yals_batt_score (Yals * yals, int var) {
 int yals_ass_maxs_inner_loop (Yals * yals) {
   LOG ("Pure MaxSAT inner loop with %d max tries with %d cutoff", yals->opts.maxtries.val,yals->opts.cutoff.val);
   int lit = 0, c = 0;
-  int phase1_flips = 1;
   int inner_flips, inner_bound;
-  int offset = 0;
   inner_flips = 0;
 
   inner_bound = 10;
@@ -383,7 +380,6 @@ int yals_ass_maxs_inner_loop (Yals * yals) {
         yals_save_new_minimum_cost (yals);
         if (!yals_get_cost (yals)) // 0 cost solution, all soft satisfied
           return 1;
-        phase1_flips = 1;
         inner_flips = 0;
         yals->maxs_hard_offset = 0;
         yals_ddfw_update_score_function_weights (yals);

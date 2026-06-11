@@ -311,8 +311,6 @@ int yals_pure_maxs_inner_loop (Yals * yals) {
   int phase1_flips = 1;
   int inner_flips, inner_bound, orig_inner_bound;
   int outer_flips, outer_bound;
-  int init_card_wt = yals->opts.init_card_weight.val;
-  int init_clause_wt = yals->opts.init_clause_weight.val;
 
   orig_inner_bound = inner_bound = yals->opts.maxs_inner_bound.val;
   hit_bound = orig_hit_bound = yals->opts.maxs_hit_bound.val;

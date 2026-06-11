@@ -280,15 +280,13 @@ static unsigned yals_incsatcnt (Yals * yals, int cidx, int lit, int len) {
 */
 static unsigned yals_card_incsatcnt (Yals * yals, int cidx, int lit, int len) {
   unsigned res;
-  int bound, oldnsat;
+  int bound;
   assert_valid_card_cidx (cidx);
   assert_valid_card_len (len);
   res = yals_card_satcnt (yals, cidx);
   yals_card_setsatcnt (yals, cidx, res+1);
 
   LOGCARDCIDX (cidx, "new satcnt %d ", yals_card_satcnt (yals, cidx));
-
-  oldnsat = res;
 
   yals->ddfw.card_sat_count_in_clause [cidx] = (int) res+1;
 // #ifndef NYALSTATS
@@ -3029,7 +3027,7 @@ static void yals_log_assignment (Yals * yals) {
   Check the global invariants after initialization.
 */
 void yals_update_sat_and_unsat (Yals * yals) {
-  int lit, cidx, len, cappedlen, crit, bound;
+  int lit, cidx, len, crit, bound;
   const int * lits, * p;
   unsigned satcnt;
   yals_log_assignment (yals);
@@ -3059,7 +3057,6 @@ void yals_update_sat_and_unsat (Yals * yals) {
     if (yals->crit) yals->crit[cidx] = crit;
 
     len = p - lits;
-    cappedlen = MIN (len, MAXLEN);
     LOGCIDX (cidx, "sat count %u length %d for", satcnt, len);
     yals_setsatcnt (yals, cidx, satcnt);
     if (!satcnt) {
@@ -3091,7 +3088,6 @@ void yals_update_sat_and_unsat (Yals * yals) {
       yals->ddfw.card_sat_dirty [cidx] = 1;
 
     len = p - lits;
-    cappedlen = MIN (len, MAXLEN);
     LOGCARDCIDX (cidx,
        "sat count %u length %d weight %u bound %d for",
        satcnt, len, yals->ddfw.ddfw_card_weights[cidx], bound);
@@ -4541,8 +4537,7 @@ int yals_ddfw_get_max_weight_sat_clause (Yals *yals, int cidx, int constraint_ty
 
   takes_hard = takes_soft = 1;
 
-  double best_cls_wt, best_card_wt;
-  best_cls_wt = best_card_wt = best_w = 0.0;
+  best_w = 0.0;
   // Tie-break: among equal-weight eligible neighbors prefer the smallest
   // unified id (clause u, or nclauses+card). Shared by the scan and the heap
   // so both pick the same source -> identical search path with/without litheap.
@@ -4937,8 +4932,6 @@ int yals_ddfw_get_random_sat_clause (Yals * yals, int * constraint_type) {
     int source = -1;
     int selection, cnt = -1;
     int cnt_cutoff = 1000;// number of iterations before giving up
-
-    int relative = (yals->opts.maxs_init_weight_relative.val && yals->using_maxs_weights);
 
     bool get_something = true; // if cnt_cutoff is reached, select best so far, otherwise return Nothing
     int best_idx_card = -1;
