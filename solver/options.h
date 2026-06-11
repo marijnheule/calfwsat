@@ -36,7 +36,6 @@ This code extends the solver yal-lin (Md Solimul Chowdhury, Cayden Codel, Marijn
   OPT (wtadd,0,-1000,1000,"weight transfer additive term c (c = init_weight * wtadd/1000); negative subtracts from the transfer"); \
   OPT (wtmul,167,0,1000,"weight transfer multiplicative factor a (a = wtmul/1000)"); \
   OPT (wtpow,0,0,1000,"weight transfer power term; exponent p chosen so pow(init_weight,p) = init_weight*wtpow/1000 (0 disables term; 1000 = linear)"); \
-  OPT (paramPos,1000,0,5000,"falsified-weight multiplier for positive constraints (pos = paramPos/1000)"); \
   OPT (keep,0,0,1,"keep assignment during restart"); \
   OPT (maxtries,INT_MAX , 0,INT_MAX,"Maximum number of tries (default INT_MAX = unlimited)"); \
   OPT (minchunksize,(1<<8),2,(1<<20),"minium queue chunk size"); \
@@ -47,7 +46,6 @@ This code extends the solver yal-lin (Md Solimul Chowdhury, Cayden Codel, Marijn
   OPT (verbose,0,0,5,"set verbose level"); \
   OPT (witness,1,0,1,"print witness"); \
   OPT (card_compute,4,1,4,"cardinality constraint weight computation rule (1: linear c*d, 2: exponential c^d capped at d=7, 3: quadratic c*d^2, 4: cubic c*d^3)"); \
-  OPT (neighbors_plus,0,0,1,"look for neighbors+ before random sat"); \
   OPT (maxs_hard_eps,0,0,INT_MAX,"pure maxsat hard epsilon"); \
   OPT (maxs_soft_eps,0,0,INT_MAX,"pure maxsat soft epsilon"); \
   OPT (maxs_soft_stochastic_selection,0,0,INT_MAX,"Soft Constraints: pick from top K variables with weighted stochastic selection"); \

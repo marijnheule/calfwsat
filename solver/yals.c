@@ -397,8 +397,7 @@ static unsigned yals_card_decsatcnt (Yals * yals, int cidx, int lit, int len) {
 
   Hot-path specialization of the generic yals_ddfw_update_var_weight wrapper:
   the (soft, weights, pos, uvars) selection is loop-invariant per call and is
-  hoisted out. sat=1 is hard-coded (this is the sat-side updater), which makes
-  the paramPos scaling (gated on sat==0) statically dead.
+  hoisted out.
 */
 void yals_card_sat_weight_update (Yals *yals, int cidx, double w_diff, int avoid_lit) {
   if (fabs (w_diff) < 0.01) return; // no weight change
@@ -432,9 +431,7 @@ void yals_card_sat_weight_update (Yals *yals, int cidx, double w_diff, int avoid
   per-literal unsat weights. Skip avoid_lit.
 
   Hot-path specialization of yals_ddfw_update_var_weight for sat=0: the
-  (soft, weights, pos, uvars) selection is hoisted out, and the paramPos
-  scaling (only fires when lit>0 and paramPos!=1000) is gated by a
-  loop-invariant flag with a cheap per-iter sign check on the active path.
+  (soft, weights, pos, uvars) selection is hoisted out.
 */
 void yals_card_unsat_weight_update (Yals *yals, int cidx, double w_diff, int avoid_lit) {
   if (fabs (w_diff) < 0.01) return; // no weight change
@@ -447,23 +444,18 @@ void yals_card_unsat_weight_update (Yals *yals, int cidx, double w_diff, int avo
   int * pos = yals->ddfw.uvar_changed_pos;
   STACK_INT * uvars = &yals->ddfw.uvars_changed;
 
-  int param_pos_active = (yals->opts.paramPos.val != 1000);
-  double param_pos_factor = (double) yals->opts.paramPos.val / 1000.0;
-
   int *begin, *end;
   yals_card_unsat_iters (yals, cidx, &begin, &end);
   for (; begin != end; begin++) {
     int lit = *begin;
     if (lit == avoid_lit) continue;
-    double delta = (param_pos_active && lit > 0) ? w_diff * param_pos_factor
-                                                 : w_diff;
-    weights[get_pos (lit)] += delta;
+    weights[get_pos (lit)] += w_diff;
     int var = ABS (lit);
     if (pos[var] < 0) {
       pos[var] = 1;
       PUSH (*uvars, var);
     }
-    LOG ("Weight added for soft? %d unsat %lf for lit %d", soft, delta, lit);
+    LOG ("Weight added for soft? %d unsat %lf for lit %d", soft, w_diff, lit);
   }
 }
 
@@ -507,15 +499,11 @@ static void yals_card_sat_then_unsat_weight_update (
   if (fabs (w_unsat) >= 0.01) {
     double * unsat = soft ? yals->ddfw.unsat_weights_soft
                           : yals->ddfw.unsat_weights;
-    int param_pos_active = (yals->opts.paramPos.val != 1000);
-    double param_pos_factor = (double) yals->opts.paramPos.val / 1000.0;
     yals_card_unsat_iters (yals, cidx, &begin, &end);
     for (; begin != end; begin++) {
       int lit = *begin;
       if (lit == avoid_lit) continue;
-      double delta = (param_pos_active && lit > 0) ? w_unsat * param_pos_factor
-                                                   : w_unsat;
-      unsat[get_pos (lit)] += delta;
+      unsat[get_pos (lit)] += w_unsat;
       int var = ABS (lit);
       if (pos[var] < 0) { pos[var] = 1; PUSH (*uvars, var); }
     }
@@ -4506,18 +4494,13 @@ double linear_wt (Yals * yals, int source, int type_source)
   Could return -1 if no source for weight transfer was found.
 
   Functionality:
-    Look at neighbors, 
+    Look at neighbors,
       constraints with the same literal same polarity.
 
-    If neighborsplus=1 and no source found in neighbors,
-    Look at neighbors+,
-      constraints with same literal different polarity.
-
-    Note, if the constraint type is a cardinality constraint, 
-    some of the literals within the constraint may be true 
+    Note, if the constraint type is a cardinality constraint,
+    some of the literals within the constraint may be true
     even if the constraint is falsified. We must check for this
-    and ensure we are not viewing neighbors with those literals,
-    and that neighbors+ with those literals are overly satsified. 
+    and ensure we are not viewing neighbors with those literals.
 
   idea: Could return both the clause and cardinality constraint then coin flip which to trade from
 
@@ -4636,153 +4619,6 @@ int yals_ddfw_get_max_weight_sat_clause (Yals *yals, int cidx, int constraint_ty
     }
   }
 
-  best_w = 0.0; // reset best weight for pass of neighbors+
-
-  // if no source found,
-  // loop over neighbors+
-  //   constraints with same literal different polarity
-  if (yals->opts.neighbors_plus.val && source == -1 && (!yals->is_pure || (takes_hard && takes_soft))) {
-    // if pure, this implies we are taking from the other type of constaint (soft vs hard)
-    // can skip this loop if we have this disabled in the options
-
-    if (constraint_type == TYPECLAUSE) {
-      lits = yals_lits (yals, cidx);
-    } else if (constraint_type == TYPECARDINALITY) {
-      lits = yals_card_lits (yals, cidx);
-    } else {yals_abort (yals, "incorrect constraint type");}
-
-    // First loop through lits that are true.
-    // Since they are true within the cardinality constraint,
-    // we will not need to flip them.
-    while ((lit=*lits++)) {
-      if (!yals_val (yals, lit)) continue; 
-
-      // neighbors+ clauses
-      occs = yals_occs (yals, -lit);
-      for (p = occs; (occ = *p) >= 0; p++) 
-      {
-        nidx = occ >> LENSHIFT;
-        LOG ("CHECKING %d with weight %lf", nidx, yals->ddfw.ddfw_clause_weights [nidx]);
-
-        source_hard = yals->hard_clause_ids [nidx];
-        if ((source_hard && !takes_hard) || (!source_hard && !takes_soft)) continue;
-
-        if (yals_satcnt (yals, nidx)>= 1) {
-          if (relative && !source_hard) {
-            if ( (yals->ddfw.ddfw_clause_weights [nidx] >= PEEK (yals->maxs_clause_weights, nidx))  && yals->ddfw.ddfw_clause_weights [nidx] >= best_w) {
-              source = nidx;
-              best_w = yals->ddfw.ddfw_clause_weights [nidx];
-              *return_con_type = TYPECLAUSE;
-            }
-          } else {
-            if ( (yals->ddfw.ddfw_clause_weights [nidx] >= yals->opts.init_clause_weight.val) && yals->ddfw.ddfw_clause_weights [nidx] >= best_w) {
-              source = nidx;
-              best_w = yals->ddfw.ddfw_clause_weights [nidx];
-              *return_con_type = TYPECLAUSE;
-            }
-          }
-        }
-      }
-      // neighbors+ cardinality constraints
-      occs = yals_card_occs (yals, -lit);
-      for (p = occs; (occ = *p) >= 0; p++) {
-        nidx = occ >> LENSHIFT;
-        LOG ("CHECKING card %d with weight %lf", nidx, yals->ddfw.ddfw_clause_weights [nidx]);
-
-        source_hard = yals->hard_card_ids [nidx];
-        if ((source_hard && !takes_hard) || (!source_hard && !takes_soft)) continue;
-
-        if (yals_card_satcnt (yals, nidx)>= yals_card_bound (yals, nidx)) { // constraint satisfied
-          // check if cardinality constraint has geq it's initial weight
-          if (relative && !source_hard) {
-            if ( (yals->ddfw.ddfw_card_weights [nidx] >= PEEK (yals->maxs_card_weights, nidx))  && yals->ddfw.ddfw_card_weights [nidx] >= best_w) {
-                source = nidx;
-                best_w = yals->ddfw.ddfw_card_weights [nidx];
-                *return_con_type = TYPECARDINALITY;
-              }
-          } else {
-            if ((yals->ddfw.ddfw_card_weights [nidx] >= yals->opts.init_card_weight.val) && yals->ddfw.ddfw_card_weights [nidx] >= best_w) {
-              source = nidx;
-              best_w = yals->ddfw.ddfw_card_weights [nidx];
-              *return_con_type = TYPECARDINALITY;
-            }
-          }
-        }
-      }
-    }
-  }
-  
-
-  // Second loop through lits that are false.
-  // Since they are false within the cardinality constraint, 
-  // we will need to flip them, and therefore we look at 
-  // overly satsified neighbors.
-  // Idea: do this loop before the first one.
-  if (yals->opts.neighbors_plus.val && source == -1 && (!yals->is_pure || (!takes_hard && !takes_soft))) {
-
-    if (constraint_type == TYPECLAUSE) {
-      lits = yals_lits (yals, cidx);
-    } else if (constraint_type == TYPECARDINALITY) {
-      lits = yals_card_lits (yals, cidx);
-    } else {yals_abort (yals, "incorrect constraint type");}
-
-    while ((lit=*lits++)) {
-      if (!yals_val (yals, lit)) continue; 
-
-      // neighbors+ clauses
-      occs = yals_occs (yals, -lit);
-      for (p = occs; (occ = *p) >= 0; p++) 
-      {
-        nidx = occ >> LENSHIFT;
-        LOG ("CHECKING %d with weight %lf", nidx, yals->ddfw.ddfw_clause_weights [nidx]);
-
-        source_hard = yals->hard_clause_ids [nidx];
-        if ((source_hard && !takes_hard) || (!source_hard && !takes_soft)) continue;
-
-        if (yals_satcnt (yals, nidx)> 1) { // clause overly! satisifed
-          if (relative && !source_hard) {
-            if ( (yals->ddfw.ddfw_clause_weights [nidx] >= PEEK (yals->maxs_clause_weights, nidx))  && yals->ddfw.ddfw_clause_weights [nidx] >= best_w) {
-              source = nidx;
-              best_w = yals->ddfw.ddfw_clause_weights [nidx];
-              *return_con_type = TYPECLAUSE;
-            }
-          } else {
-            if ( (yals->ddfw.ddfw_clause_weights [nidx] >= yals->opts.init_clause_weight.val) && yals->ddfw.ddfw_clause_weights [nidx] >= best_w) {
-              source = nidx;
-              best_w = yals->ddfw.ddfw_clause_weights [nidx];
-              *return_con_type = TYPECLAUSE;
-            }
-          }
-        }
-      }
-      // neighbors+ cardinality constraints
-      occs = yals_card_occs (yals, -lit);
-      for (p = occs; (occ = *p) >= 0; p++) {
-        nidx = occ >> LENSHIFT;
-        LOG ("CHECKING card %d with weight %lf", nidx, yals->ddfw.ddfw_clause_weights [nidx]);
-
-        source_hard = yals->hard_card_ids [nidx];
-        if ((source_hard && !takes_hard) || (!source_hard && !takes_soft)) continue;
-
-        if (yals_card_satcnt (yals, nidx)> yals_card_bound (yals, nidx)) { // constraint overly! satisfied
-          // check if cardinality constraint has geq it's initial weight
-          if (relative && !source_hard) {
-            if ( (yals->ddfw.ddfw_card_weights [nidx] >= PEEK (yals->maxs_card_weights, nidx))  && yals->ddfw.ddfw_card_weights [nidx] >= best_w) {
-                source = nidx;
-                best_w = yals->ddfw.ddfw_card_weights [nidx];
-                *return_con_type = TYPECARDINALITY;
-              }
-          } else {
-            if ((yals->ddfw.ddfw_card_weights [nidx] >= yals->opts.init_card_weight.val) && yals->ddfw.ddfw_card_weights [nidx] >= best_w) {
-              source = nidx;
-              best_w = yals->ddfw.ddfw_card_weights [nidx];
-              *return_con_type = TYPECARDINALITY;
-            }
-          }
-        }
-      }
-    }
-  }
 
   // source for weight transfer
   // may be (-1), i.e., no source found
