@@ -45,11 +45,6 @@ static inline bool yals_heap_contains (heap *heap, unsigned idx) {
   return idx < heap->vars && !DISCONTAINED (heap->pos[idx]);
 }
 
-static inline unsigned yals_get_heap_pos (const heap *heap,
-                                            unsigned idx) {
-  return idx < heap->vars ? heap->pos[idx] : DISCONTAIN;
-}
-
 static inline double yals_get_heap_score (const heap *heap,
                                             unsigned idx) {
   return idx < heap->vars ? heap->score[idx] : 0.0;
@@ -59,30 +54,9 @@ static inline bool yals_empty_heap (heap *heap) {
   return EMPTY (heap->stack);
 }
 
-static inline size_t yals_size_heap (heap *heap) {
-  return SIZE (heap->stack);
-}
-
-static inline unsigned yals_max_heap (heap *heap) {
-  assert (!yals_empty_heap (heap));
-  return PEEK (heap->stack, 0);
-}
-
 void yals_rescale_heap (struct Yals *yals,heap *heap, double factor);
 
 void yals_enlarge_heap (struct Yals *yals,heap *, unsigned new_vars);
-
-static inline double yals_max_score_on_heap (heap *heap) {
-  if (!heap->tainted)
-    return 0;
-  assert (heap->vars);
-  const double *const score = heap->score;
-  const double *const end = score + heap->vars;
-  double res = score[0];
-  for (const double *p = score + 1; p != end; p++)
-    res = MAX (res, *p);
-  return res;
-}
 
 void yals_clear_heap (struct Yals *yals,heap *heap);
 

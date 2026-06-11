@@ -180,25 +180,6 @@ static int yals_need_to_defrag_queue (Yals * yals) {
   return 1;
 }
 
-static void yals_dequeue_queue (Yals * yals, int cidx) {
-  Lnk * l;
-  assert (yals->unsat.usequeue);
-  assert (yals->unsat.queue.count > 0);
-  yals->unsat.queue.count--;
-  l = yals->lnk[cidx];
- 
-  assert (l);
-  assert (l->cidx == cidx);
-  yals->lnk[cidx] = 0;
-  yals_dequeue_lnk (yals, l);
-  l->next = yals->unsat.queue.free;
-  yals->unsat.queue.free = l;
-  yals->unsat.queue.nfree++;
-  assert (yals->unsat.queue.nlnks ==
-          yals->unsat.queue.nfree + yals->unsat.queue.count);
-  if (yals_need_to_defrag_queue (yals)) { yals_defrag_queue (yals);}
-}
-
 static inline void yals_dequeue_stack (Yals * yals, int cidx, int constraint_type) {
   int * pos = 0;
   UNSAT_STACK *unsat = 0;
@@ -299,22 +280,6 @@ static Lnk * yals_new_lnk (Yals * yals) {
   assert (yals->unsat.queue.nfree);
   yals->unsat.queue.nfree--;
   return res;
-}
-
-static void yals_enqueue_queue (Yals * yals, int cidx) {
-  Lnk * res;
-  assert (yals->unsat.usequeue);
-  res = yals_new_lnk (yals);
-  assert (!yals->lnk[cidx]);
-  yals->lnk[cidx] = res;
-
-
-  res->cidx = cidx;
-  yals_enqueue_lnk (yals, res);
-  yals->unsat.queue.count++;
-  assert (yals->unsat.queue.count > 0);
-  assert (yals->unsat.queue.nlnks ==
-          yals->unsat.queue.nfree + yals->unsat.queue.count);
 }
 
 static inline void yals_enqueue_stack (Yals * yals, int cidx, int constraint_type) {

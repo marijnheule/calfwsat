@@ -44,7 +44,6 @@ typedef void (*YalsFree)(void*,void*,size_t);
 #define TYPECARDINALITY 1
 
 
-#define YALS_INT64_MAX (0x7fffffffffffffffll)
 #define YALS_DEFAULT_PREFIX "c "
 #define YALS_DOUBLE_MAX 1.79769e+308
 
@@ -333,7 +332,6 @@ typedef struct DDFW {
   double * tkm_wts;
   int      tkm_cap;
 
-  double * card_clause_calculated_weights; // cache of calculted weightes (not in use)
 
   // --litheap: per-literal max-weight neighbor heaps (mixed clause/card).
   // See the "--litheap" block in yals.c for the encoding.
@@ -946,20 +944,6 @@ static inline void yals_abort (Yals * yals, const char * fmt, ...) {
   fflush (stderr);
   yals_msgunlock (yals);
   abort ();
-}
-
-static inline void yals_exit (Yals * yals, int exit_code, const char * fmt, ...) {
-  va_list ap;
-  yals_msglock (yals);
-  fflush (yals->out);
-  fprintf (stderr, "%s*** libyals exit: ", yals->opts.prefix);
-  va_start (ap, fmt);
-  vfprintf (stderr, fmt, ap);
-  va_end (ap);
-  fputc ('\n', stderr);
-  fflush (stderr);
-  yals_msgunlock (yals);
-  exit (exit_code);
 }
 
 static inline void yals_warn (Yals * yals, const char * fmt, ...) {

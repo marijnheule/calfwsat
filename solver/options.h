@@ -37,7 +37,6 @@ This code extends the solver yal-lin (Md Solimul Chowdhury, Cayden Codel, Marijn
   OPT (wtmul,167,0,1000,"weight transfer multiplicative factor a (a = wtmul/1000)"); \
   OPT (wtpow,0,0,1000,"weight transfer power term; exponent p chosen so pow(init_weight,p) = init_weight*wtpow/1000 (0 disables term; 1000 = linear)"); \
   OPT (paramPos,1000,0,5000,"falsified-weight multiplier for positive constraints (pos = paramPos/1000)"); \
-  OPT (hitlim,-1,-1,INT_MAX,"minimum hit limit"); \
   OPT (keep,0,0,1,"keep assignment during restart"); \
   OPT (maxtries,INT_MAX , 0,INT_MAX,"Maximum number of tries (default INT_MAX = unlimited)"); \
   OPT (minchunksize,(1<<8),2,(1<<20),"minium queue chunk size"); \

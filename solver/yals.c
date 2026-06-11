@@ -75,7 +75,6 @@ enum ClausePicking {
 /*------------------------------------------------------------------------*/
 
 #define WEIGHT_MAX 9999999.0 // largest ddfw weight allowed for soft constraints
-#define HARD_WEIGHT_MAX 999999999999.0 // largest ddfw weight allowed for hard constraints (factor 100,000 bigger than soft)
 
 
 /*------------------------------------------------------------------------*/
@@ -6499,21 +6498,6 @@ void determine_uwvar (Yals *yals , int var)
 }
 
 // outdated, now use a heap
-void compute_uwvars_from_unsat_clause (Yals *yals, int cidx)
-{
-  int * lits = yals_lits (yals, cidx);
-  int lit;
-  while ((lit = *lits++))
-  {
-    if (yals->ddfw.helper_hash_vars [abs (lit)] == 0)
-    {
-      determine_uwvar (yals, abs (lit));
-      yals->ddfw.helper_hash_vars [abs (lit)] = 1;
-      PUSH (yals->ddfw.helper_hash_changed_idx1, abs(lit));
-    }
-  }
-}
-
 // outdated, now use a heap
 void yals_ddfw_compute_uwrvs (Yals * yals)
 {
