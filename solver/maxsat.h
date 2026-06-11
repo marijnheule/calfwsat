@@ -382,13 +382,13 @@ int yals_ass_maxs_inner_loop (Yals * yals) {
           return 1;
         inner_flips = 0;
         yals->maxs_hard_offset = 0;
-        yals_ddfw_update_score_function_weights (yals);
+        yals_update_score_function_weights (yals);
       }
       else if (inner_flips > inner_bound) {
         yals->maxs_hard_offset += 1;
-        yals_ddfw_update_score_function_weights (yals);
+        yals_update_score_function_weights (yals);
         inner_flips = 0;
-        yals_ddfw_transfer_weights (yals);
+        yals_transfer_weights (yals);
       }
 
       lit = yals_pick_literal_from_heap (yals, 0);
@@ -396,7 +396,7 @@ int yals_ass_maxs_inner_loop (Yals * yals) {
         yals_flip_ddfw (yals, lit);
         c++;
       } else {
-        yals_ddfw_transfer_weights (yals);
+        yals_transfer_weights (yals);
       }
       inner_flips++;
 

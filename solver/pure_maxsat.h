@@ -99,7 +99,7 @@ static void yals_flip_on_init (Yals * yals, int lit) {
   yals_update_minimum_cost (yals);
   yals->last_flip_unsat_count = yals_nunsat (yals);
 
-  yals_ddfw_update_changed_var_weights (yals);
+  yals_update_changed_var_weights (yals);
 }
 
 /*
@@ -359,7 +359,7 @@ int yals_pure_maxs_inner_loop (Yals * yals) {
         // may transfer weight to soft constraints
         if (yals->opts.maxs_transfer_soft.val) {
           yals->weight_transfer_soft = 1;
-          yals_ddfw_transfer_weights (yals);
+          yals_transfer_weights (yals);
           yals_check_global_satisfaction_invariant (yals);
           yals->weight_transfer_soft = 0;
         }
@@ -368,7 +368,7 @@ int yals_pure_maxs_inner_loop (Yals * yals) {
         inner_flips = 0;
       } else { // slow weight transfer only when no better cost solution found
           if (yals->opts.maxs_transfer_slow.val)
-              yals_ddfw_transfer_weights (yals);
+              yals_transfer_weights (yals);
       }
 
       
@@ -425,7 +425,7 @@ int yals_pure_maxs_inner_loop (Yals * yals) {
       yals_msg (yals, 2, "Phase 3 : weight transfer");
       // Phase 3: weight transfer
       if (!yals->opts.maxs_transfer_slow.val) // fast weight transfer
-        yals_ddfw_transfer_weights (yals);
+        yals_transfer_weights (yals);
       yals_check_global_satisfaction_invariant (yals);
       c++;
     } 
