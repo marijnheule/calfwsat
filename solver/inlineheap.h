@@ -212,7 +212,6 @@ void yals_resize_heap (Yals *yals,heap *heap, unsigned new_size) {
        (heap->tainted ? "tainted" : "untainted"), old_size, new_size);
 
   heap->pos = yals_realloc (yals, heap->pos, old_size*sizeof (unsigned), new_size*sizeof (unsigned));
-  // heap->pos = yals_malloc (yals, new_size*sizeof (unsigned));
   if (heap->tainted) {
     heap->score = yals_realloc (yals, heap->score, old_size*sizeof (double), new_size*sizeof (double));
   } else {
@@ -241,14 +240,12 @@ void yals_enlarge_heap (Yals *yals,heap *heap, unsigned new_vars) {
   assert (old_vars < new_vars);
   assert (new_vars <= heap->size);
   const size_t delta = new_vars - heap->vars;
-  // memset (heap->pos + old_vars, -1, delta * sizeof (unsigned));
   for (int i = old_vars; i < delta + old_vars; i++) {
     heap->pos[i] = DISCONTAIN;
     heap->score[i] = 0.0;
   }
   heap->vars = new_vars;
   // if (heap->tainted)
-  // memset (heap->score + old_vars, 0, delta * sizeof (double));
   LOG ("enlarged heap from %u to %u", old_vars, new_vars);
 }
 

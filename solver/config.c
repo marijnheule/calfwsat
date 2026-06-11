@@ -16,11 +16,8 @@ This code extends the solver yal-lin (Md Solimul Chowdhury, Cayden Codel, Marijn
 #define MSG(STR) printf ("%s%s\n", prefix, (STR))
 
 void yals_banner (const char * prefix) {
-  // MSG ("Version " YALS_VERSION " " YALS_ID);
-  // MSG ("Copyright (C) 2013-2016 by Armin Biere, JKU, Linz, Austria.");
   MSG ("Developed by Joseph Reeves (AWS-ARG-ATS-Science).");
   MSG ("Extends Yal-lin which in trun extends YalSAT from Armin Biere, JKU, Linz, Austria.");
-  // MSG ("Released " YALS_RELEASED);
   MSG ("Compiled " YALS_COMPILED);
   MSG (YALS_OS);
   MSG ("CC " YALS_CC);

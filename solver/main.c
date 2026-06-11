@@ -363,8 +363,6 @@ static void stats () {
   msg ("total flips %lld", yals_flips (yals));
   yals_print_length_weights (yals);
   msg ("total process time of %.2f seconds", getime ());
-  // printf ("\nc Columns: |flips| |unsat| |min_usnat| |alg_switch| |inner_restarts| |fres_fact| |forced_res| |restarts_time| |time| |max_memory|\n");
-  // yals_print_stats (yals);
   printf ("%f %.1f |\n", yals_process_time (), mem.max/(double)(1<<20) );
 #endif
   msg ("maximally allocated %.1f MB", mem.max/(double)(1<<20));
@@ -774,9 +772,7 @@ int main (int argc, char** argv) {
   printf ("c PalSAT Yet Another Local Search Solver\n");
   printf ("c Parallel Simple Portfolio Version\n");
 #else
-  // printf ("c YalSAT Yet Another Local Search Solver\n");
   printf ("c CaLFwSAT local search solver\n");
-  // printf ("c Sequential Standalone Version\n");
 #endif
   yals_banner ("c ");
 #ifdef PALSAT

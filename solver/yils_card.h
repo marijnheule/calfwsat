@@ -92,7 +92,6 @@ unsigned yals_card_satcnt (Yals * yals, int cidx);
 
 
 void yals_card_sort_sat (Yals *yals, int cidx);
-// int * yals_card_lit_pos (Yals *yals, int* lits, int lit);
 void yals_card_new_sat (Yals *yals, int cidx, int lit) ;
 void yals_card_new_unsat (Yals *yals, int cidx, int lit) ;
 
@@ -176,7 +175,6 @@ int yals_card_soft_unsat (Yals * yals) ;
 
 int yals_soft_unsat (Yals * yals) ;
 
-// void yals_ddfw_update_var_weight (Yals *yals, int lit, int soft, int sat, double weight_change);
 
 void yals_remove_a_var_from_uvars (Yals * yals , int v, int soft);
 void yals_add_a_var_to_uvars (Yals * yals , int v, int soft);

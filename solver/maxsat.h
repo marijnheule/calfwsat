@@ -151,7 +151,6 @@ void yals_satisfy_trivial_soft (Yals * yals) {
 
         // need if statement here because heap updated lazily (right before lit selection...)
         // if (yals_heap_contains (&yals->ddfw.uvars_heap_soft, ABS (lit)))
-        //   yals_pop_heap (yals, &yals->ddfw.uvars_heap_soft, ABS (lit));
         break;
       }
     }
@@ -193,11 +192,7 @@ void yals_save_new_minimum_cost (Yals * yals) {
   }
 
 
-  // if (yals->stats.best < nunsat) return;
   // if (yals->stats.best == nunsat) {
-  //   LOG ("minimum %d matches previous overall best assignment", nunsat);
-  //   yals->stats.hits++;
-  //   return;
   // }
   if (hard_unsat < yals->stats.maxs_best_hard_cnt) {
     LOG ("Best hard count %d", hard_unsat);
@@ -272,7 +267,6 @@ BODY:
   while (isdigit (ch = getc (file)))
     lit = 10*lit + (ch - '0');
   if (((lit) >> LD_BITS_PER_WORD) >= (yals->nvarwords)) goto BODY; // extension variables printed in assignment?
-  // yals_msg (yals, 1, "%d ",lit);
   if (sign == 1) SETBIT (yals->vals, yals->nvarwords, lit);
   else CLRBIT (yals->vals, yals->nvarwords, lit);
   goto BODY;
@@ -330,7 +324,6 @@ double yals_batt_soft_score (Yals * yals, int var) {
         yals->ddfw.unsat_weights_soft [get_pos (false_lit)]  
         - yals->ddfw.sat1_weights_soft [get_pos (true_lit)];
   LOG ("determine soft uwvar %d with soft gain %lf and hard loss %lf", var, soft_flip_gain, hard_flip_loss);
-  // yals_msg (yals, 2, "determine soft uwvar %d with soft gain %lf and hard loss %lf", var, soft_flip_gain, hard_flip_loss);
 
   if (hard_flip_loss == 0.0) return YALS_DOUBLE_MAX; // free flip
   return soft_flip_gain / (fabs (hard_flip_loss) + yals->opts.maxs_soft_eps.val);
@@ -455,7 +448,6 @@ int yals_batt_best_hard_score (Yals * yals) {
   yals_msg (yals, 2, "best hard score %lf best lit %d value %d ", best_score, best_var, yals_val (yals, best_var));
   // if (best_score > 0.0) 
   return yals_val (yals, best_var) ? best_var : -best_var;
-  // else return 0;
 }
 
 double yals_batt_score (Yals * yals, int var) {
@@ -469,10 +461,8 @@ double yals_batt_score (Yals * yals, int var) {
   LOG ("determine hard uwvar %d with hard gain %lf and soft loss %lf", var, hard_flip_gain, soft_flip_gain);
   
   return offset * hard_flip_gain + soft_flip_gain;
-  // return  hard_flip_gain + soft_flip_gain;
 
   // if (soft_flip_loss == 0.0) return YALS_DOUBLE_MAX; // free flip
-  // return hard_flip_gain / (fabs (soft_flip_loss) + yals->opts.maxs_hard_eps.val);
 }
 
 int yals_batt_reduce_score (Yals * yals, int offset) {
@@ -528,7 +518,6 @@ int yals_ass_maxs_inner_loop (Yals * yals) {
   {
     if (!yals_get_cost (yals))
       return 1;
-    // yals_maxs_restart_inner (yals);
     while ( c<yals->opts.cutoff.val || (yals->opts.cutoff.val <= 0)) // cutoff 0 is unlimited flips
     {
 
@@ -554,9 +543,7 @@ int yals_ass_maxs_inner_loop (Yals * yals) {
         yals_flip_ddfw (yals, lit);
         c++;
       } else {
-        // yals->weight_transfer_soft = 1;
         yals_ddfw_transfer_weights (yals);
-        // yals->weight_transfer_soft = 0;
       }
       inner_flips++;
 

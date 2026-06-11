@@ -434,12 +434,10 @@ if (yals->using_maxs_weights) {yals_maxs_check_global_satisfaction_invariant (ya
       int pos = yals->pos[cidx];
       if (sat) assert (pos < 0);
       else {
-// assert_valid_pos (pos);
 assert (PEEK (yals->unsat.stack, pos) == cidx);
       }
     }
   }
-  // LOG ("nunsat %d, clauses unsat %d", nunsat, yals_clauses_nunsat (yals));
   assert (nunsat == yals_clauses_nunsat (yals));
 #endif
   (void) yals;
@@ -517,12 +515,10 @@ void yals_maxs_check_global_satisfaction_invariant (Yals * yals) {
       int pos = yals->pos[cidx];
       if (sat) assert (pos < 0);
       else {
-        // assert_valid_pos (pos);
         assert (PEEK (yals->unsat.stack, pos) == cidx);
       }
     }
   }
-  // LOG ("nunsat %d, clauses unsat %d", nunsat, yals_clauses_nunsat (yals));
   assert (nunsat == yals_clauses_nunsat (yals));
   assert (nunsat_soft == COUNT (yals->unsat_soft.stack));
 #endif
@@ -546,7 +542,6 @@ void yals_maxs_check_global_satisfaction_invariant (Yals * yals) {
       int pos = yals->card_pos_soft[cidx];
       if (sat >= bound) assert (pos < 0);
       else {
-        // assert_valid_card_pos (pos);
         assert (PEEK (yals->card_unsat_soft.stack, pos) == cidx);
       }
     } else {

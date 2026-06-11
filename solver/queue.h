@@ -181,7 +181,6 @@ static int yals_need_to_defrag_queue (Yals * yals) {
 }
 
 static void yals_dequeue_queue (Yals * yals, int cidx) {
-  //printf("\n deq %d", cidx);
   Lnk * l;
   assert (yals->unsat.usequeue);
   assert (yals->unsat.queue.count > 0);
@@ -228,7 +227,6 @@ static inline void yals_dequeue_stack (Yals * yals, int cidx, int constraint_typ
   // // assert_valid_pos (cpos);
   assert (PEEK (unsat->stack, cpos) == cidx);
   didx = POP (unsat->stack);
-  // assert_valid_cidx (didx);
   if (didx != cidx) {
     assert (pos[didx] == COUNT (unsat->stack));
     POKE (unsat->stack, cpos, didx);
@@ -380,7 +378,6 @@ static inline void yals_reset_unsat_soft_stack (Yals * yals) {
   assert (!yals->unsat_soft.usequeue);
   while (!EMPTY (yals->unsat_soft.stack)) {
     int cidx = POP (yals->unsat_soft.stack);
-    // assert_valid_cidx (cidx);
     assert (yals->pos_soft[cidx] == COUNT (yals->unsat_soft.stack));
     yals->pos_soft[cidx] = -1;
   }
@@ -391,7 +388,6 @@ static inline void yals_reset_unsat_soft_stack (Yals * yals) {
   // cardinality stack
   while (!EMPTY (yals->card_unsat_soft.stack)) {
     int cidx = POP (yals->card_unsat_soft.stack);
-    // assert_valid_card_cidx (cidx);
     assert (yals->card_pos_soft[cidx] == COUNT (yals->card_unsat_soft.stack));
     yals->card_pos_soft[cidx] = -1;
   }

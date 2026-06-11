@@ -633,7 +633,6 @@ void yals_setmsglock (Yals *,
 /*------------------------------------------------------------------------*/
 
 // Shared assignment cache (used by palsat to share starting assignments
-// across worker threads). The cache holds up to `capacity` assignments;
 // at each restart a worker inserts its best-of-try assignment and then
 // picks a new starting assignment from the cache by weighted random
 // selection (better cost -> higher weight). A slot picked by a worker is
@@ -1180,15 +1179,9 @@ static inline int yals_card_bound (Yals * yals, int cidx) {
   Now we store the length in card_size for constant lookup.
 */
 static inline int yals_card_length (Yals * yals, int cidx) {
-  // int length = 0;
-  // int * p;
 
   // INC (lits); // incrementing lits access?
-  // assert_valid_cidx (cidx);
 
-  // p = yals->card_cdb.start + yals->card_lits[cidx] + 1;
-  // while (*p) length++;
-  // return length; 
 
   return PEEK (yals->card_size, cidx);
 }
@@ -1255,11 +1248,9 @@ static inline void yals_ddfw_update_var_weight (Yals *yals, int lit, int soft, i
   weights[get_pos (lit)] += weight_change;
 
   // if (soft && !weights[get_pos (lit)] && yals->ddfw.var_unsat_count_soft[abs(lit)]) {
-  //   exit (1);
   // } happens after
 
   if (pos[var] < 0) { // add to changed stack
-    // pos[var] = COUNT (uvars);
     pos[var] = 1;
     PUSH (*uvars, var);
     LOG ("Pushed %d", var);

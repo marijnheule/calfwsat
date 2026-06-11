@@ -324,7 +324,6 @@ void yals_preprocess (Yals * yals) {
           // remap weights
         }
         if (yals->using_maxs_weights) {
-            // LOG ("curr cnt %d %d",cls_cnt, COUNT (yals->maxs_card_weights));
             POKE (yals->maxs_card_weights, curr_cnt, (PEEK (yals->maxs_card_weights, cls_cnt)));
             curr_cnt++;
           }

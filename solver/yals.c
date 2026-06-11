@@ -102,7 +102,6 @@ static inline int yals_best (Yals * yals, int lit) {
 // number of satisfied literals in a clause
 unsigned yals_satcnt (Yals * yals, int cidx) {
   assert_valid_cidx (cidx);
-  //return yals->ddfw.sat_count_in_clause [cidx];
   if (yals->satcntbytes == 1) return yals->satcnt1[cidx];
   if (yals->satcntbytes == 2) return yals->satcnt2[cidx];
   return yals->satcnt4[cidx];
@@ -124,7 +123,6 @@ static void yals_setsatcnt (Yals * yals, int cidx, unsigned satcnt) {
 // number of satisfied literals in a cardinality constraints
 unsigned yals_card_satcnt (Yals * yals, int cidx) {
   assert_valid_card_cidx (cidx);
-  //return yals->ddfw.sat_count_in_clause [cidx]; 
   if (yals->card_satcntbytes == 1) return yals->card_satcnt1[cidx];
   if (yals->card_satcntbytes == 2) return yals->card_satcnt2[cidx];
   return yals->card_satcnt4[cidx];
@@ -245,7 +243,6 @@ static unsigned yals_incsatcnt (Yals * yals, int cidx, int lit, int len) {
   yals_setsatcnt (yals, cidx, res+1);
 
   yals->ddfw.sat_count_in_clause [cidx] = res+1;
-  //printf ("\n===> inc %d %d",res, PEEK(yals->clause_size, cidx));
 #ifndef NYALSTATS
   assert (res + 1 <= yals->maxlen);
   yals->stats.inc[res]++;
@@ -295,10 +292,7 @@ static unsigned yals_card_incsatcnt (Yals * yals, int cidx, int lit, int len) {
   oldnsat = res;
 
   yals->ddfw.card_sat_count_in_clause [cidx] = (int) res+1;
-  //printf ("\n===> inc %d %d",res, PEEK(yals->clause_size, cidx));
 // #ifndef NYALSTATS
-//   assert (res + 1 <= yals->card_maxlen);
-//   yals->stats.inc[res]++;
 // #endif
   if (yals->card_crit) {
     bound = yals_card_bound (yals, cidx);
@@ -375,11 +369,6 @@ static unsigned yals_card_decsatcnt (Yals * yals, int cidx, int lit, int len) {
 
   yals->ddfw.card_sat_count_in_clause [cidx] = (int) res - 1;
 // #ifndef NYALSTATS
-//   assert (res <= yals->card_maxlen);
-//   assert (res > 0);
-//   assert (!yals->stats.dec[0]);
-//   yals->stats.dec[res]++;
-//   assert (!yals->stats.dec[0]);
 // #endif
 
   if (yals->card_crit) {
@@ -547,22 +536,6 @@ static void yals_card_sat_then_unsat_weight_update (
   Allows us to easily modify how we want to handle maxsat weights
 
   TODO: never used this...
-*/
-double yals_clause_calculate_weight (Yals * yals, int cidx) {
-  // int nsat = yals_satcnt (yals, cidx);
-  double ddfw_weight = yals->ddfw.ddfw_clause_weights[cidx];
-  double w, clause_weight = 1.0;
-  if (yals->using_maxs_weights)
-    clause_weight = PEEK (yals->maxs_clause_weights, cidx);
-
-  assert (clause_weight > 0);
-  assert ( ddfw_weight > 0);
-
-  w = ddfw_weight;
-  w = w * clause_weight;
-  return w;
-}
- 
 /* 
   calculate the weight of the cardinality constraint
 
@@ -797,9 +770,6 @@ int yals_soft_unsat (Yals * yals) {
   return yals_clause_soft_unsat (yals) + yals_card_soft_unsat (yals);
 }
 
-// double yals_cost_unsat (Yals * yals) { // now grabbing from all types of clauses
-//   return yals_clause_weight_unsat (yals) + yals_card_weight_unsat (yals);
-// }
 
 int yals_nunsat (Yals * yals) { // now grabbing from all types of clauses
   return yals_clauses_nunsat (yals) + yals_card_nunsat (yals);
@@ -1605,7 +1575,6 @@ void yals_make_clauses_after_flipping_lit (Yals * yals, int lit) {
         }
 
         int other = yals->crit [cidx] ^ lit; // ignore the second lit that was just xor'd onto crit    
-        // sat1_weights [get_pos(other)] -= yals->ddfw.ddfw_clause_weights [cidx];
         yals_ddfw_update_var_weight (yals, other, soft,1, -yals->ddfw.ddfw_clause_weights [cidx] * maxs_weight);
       }
       continue;
@@ -1613,7 +1582,6 @@ void yals_make_clauses_after_flipping_lit (Yals * yals, int lit) {
     // else unsat clause now made
     yals_ddfw_update_lit_weights_on_make (yals, cidx, lit);
 
-    // yals_remove_a_var_from_uvars (yals, lit, soft);
 
     yals_dequeue (yals, cidx,TYPECLAUSE);
     LOGCIDX (cidx, "made");
@@ -1722,17 +1690,14 @@ void yals_make_clauses_after_flipping_lit (Yals * yals, int lit) {
       // remove unsat weights
       yals_card_unsat_weight_update (yals, cidx, -card_old_unsat_weight, lit);
       // remove unsat weight of lit
-      // unsat_weights[get_pos (lit)] -= card_old_unsat_weight;
       yals_ddfw_update_var_weight (yals, lit, soft,0, -card_old_unsat_weight);
 
       // change critical weights
       yals_card_sat_weight_update (yals, cidx, card_critical_weight_change, lit);
 
       // add critical weight of lit
-      // sat1_weights[get_pos (lit)] += card_new_critical_weight;
       yals_ddfw_update_var_weight (yals, lit, soft,1,card_new_critical_weight);
 
-      // yals_remove_a_var_from_uvars (yals, lit, soft);
 
       yals_dequeue (yals, cidx,TYPECARDINALITY);
     LOGCARDCIDX (cidx, "made");
@@ -1742,11 +1707,9 @@ void yals_make_clauses_after_flipping_lit (Yals * yals, int lit) {
 
     } else if (oldnsat < bound - 1) { // 4)
       // remove unsat weight of lit
-      // unsat_weights[get_pos (lit)] -= card_old_unsat_weight;
       yals_ddfw_update_var_weight (yals, lit, soft,0,-card_old_unsat_weight);
 
       // add critical weight of lit
-      // sat1_weights[get_pos (lit)] += card_new_critical_weight;
       yals_ddfw_update_var_weight (yals, lit, soft,1,card_new_critical_weight);
 
       // change critical weights of sat lits, then unsat weights of unsat lits
@@ -1754,9 +1717,7 @@ void yals_make_clauses_after_flipping_lit (Yals * yals, int lit) {
       yals_card_sat_then_unsat_weight_update (
         yals, cidx, card_critical_weight_change, card_unsat_weight_change, lit);
 
-      // yals_remove_a_var_from_uvars (yals, lit, soft);
     }
-    // yals->ddfw.card_clause_calculated_weights[cidx] = card_new_unsat_weight;
   }
   LOG ("flipping %d has made %d cardinality constraints", lit, made);
 #ifndef NYALSMEMS
@@ -1797,7 +1758,6 @@ void yals_break_clauses_after_flipping_lit (Yals * yals, int lit) {
         // relative mode (and the non-relative branch was assigning a local
         // that nothing read -- removed).
         soft = (yals->using_maxs_weights && !yals->hard_clause_ids[cidx]);
-        // sat1_weights [get_pos(yals->crit[cidx])] += yals->ddfw.ddfw_clause_weights [cidx];
         yals_ddfw_update_var_weight (yals, yals->crit[cidx], soft, 1, yals->ddfw.ddfw_clause_weights [cidx]);
        }
       continue;
@@ -1901,7 +1861,6 @@ void yals_break_clauses_after_flipping_lit (Yals * yals, int lit) {
       yals_card_unsat_weight_update (yals, cidx, card_new_unsat_weight, 0);
       
       // remove critical weight of lit
-      // sat1_weights[get_pos (-lit)] -= card_old_critical_weight;
       yals_ddfw_update_var_weight (yals,-lit, soft, 1, -card_old_critical_weight);
 
       // change critical weights
@@ -1917,11 +1876,9 @@ void yals_break_clauses_after_flipping_lit (Yals * yals, int lit) {
       assert (card_unsat_weight_change >= 0); // weight must get larger or stay the same
 
       // remove critical weight of lit
-      // sat1_weights[get_pos (-lit)] -= card_old_critical_weight;
       yals_ddfw_update_var_weight (yals,-lit, soft, 1, -card_old_critical_weight);
 
       // add unsat weight of lit
-      // unsat_weights[get_pos (-lit)] += card_new_unsat_weight;
       yals_ddfw_update_var_weight (yals,-lit, soft, 0, card_new_unsat_weight);
 
       // change critical weights of sat lits, then unsat weights of unsat lits
@@ -1932,7 +1889,6 @@ void yals_break_clauses_after_flipping_lit (Yals * yals, int lit) {
       // when flipped lit in constraint already broken, should be added to uvars (not enqueued though)
       yals_add_a_var_to_uvars (yals, lit, soft);
     }
-    // yals->ddfw.card_clause_calculated_weights[cidx] = card_new_unsat_weight;
   }
   LOG ("flipping %d has broken %d cardinality constraints", lit, broken);
 #ifndef NYALSMEMS
@@ -2024,18 +1980,6 @@ void yals_flip_ddfw (Yals * yals, int lit) {
     }
   }
 
-  // Debugging information
-  //printf ("\n P =====> %d %d",yals->stats.flips, lit);
-//   if (yals->stats.flips % 100000 == 0)
-//    {
-//     printf ("\n P ====> %d %d %d %d %d %d %.40f", 
-//        yals->stats.flips, lit, yals->ddfw.uwrvs_size, 
-//        yals->ddfw.local_minima, yals_nunsat (yals), yals->ddfw.uwrvs [yals->ddfw.uwrvs_size-1],  yals->ddfw.uwvars_gains [yals->ddfw.uwrvs_size-1]);
-// //   //printf ("\n flip_time/uwrv/candidate ====> %f/%f/%f",yals->ddfw.flip_time,yals->ddfw.uwrv_time, yals->ddfw.compute_uwvars_from_unsat_clauses_time);
-//   //printf ("\n WT/neighborhood/candidate ====> %f/%f/%f",yals->ddfw.wtransfer_time, yals->ddfw.neighborhood_comp_time, yals->ddfw.compute_uwvars_from_unsat_clauses_time);
-
-//   }
-  //
 
   yals_msg (yals, 3, "flipping %d\n",lit);
 
@@ -3110,7 +3054,6 @@ void yals_update_sat_and_unsat (Yals * yals) {
     LOG ("updated lit weights");
     // gets handled with yals_enqueue
     // if (!satcnt)
-    //   yals_ddfw_update_uvars (yals, cidx);
    
     yals->ddfw.sat_count_in_clause [cidx] = satcnt;
 
@@ -3135,7 +3078,6 @@ void yals_update_sat_and_unsat (Yals * yals) {
     crit = 0;
     for (p = lits; (lit = *p); p++) {
       if (!yals_val (yals, lit)) continue;
-      // crit ^= lit;
       satcnt++;
     }
 
@@ -3165,7 +3107,6 @@ void yals_update_sat_and_unsat (Yals * yals) {
 
     // gets handled with yals_enqueue
     // if (satcnt < bound) // falsified constraint
-    //   yals_card_ddfw_update_uvars (yals, cidx);
   }
 
   yals->ddfw.init_weight_done = 1;
@@ -3194,7 +3135,6 @@ static void yals_init_weight_to_score_table (Yals * yals) {
   score = start;
   for (i = 0; score; i++) {
     assert (i < 100000);
-    // LOG ("exp2(-%d) = %g", i, score);
     PUSH (yals->exp.table.two, score);
     eps = score;
     score *= .5;
@@ -3211,7 +3151,6 @@ static void yals_init_weight_to_score_table (Yals * yals) {
   eps = 0.0;
   for (i = 0; score; i++) {
     assert (i < 1000000);
-    // LOG ("pow(%f,-%d) = %g", cb, i, score);
     PUSH (yals->exp.table.cb, score);
     eps = score;
     score *= invcb;
@@ -3550,9 +3489,6 @@ void yals_card_connect (Yals * yals) {
   yals->card_maxlen = maxlen;
   yals->card_minlen = minlen;
 // #ifndef NYALSTATS
-//   yals->stats.nincdec = MAX (maxlen + 1, 3);
-//   NEWN (yals->stats.inc, yals->stats.nincdec);
-//   NEWN (yals->stats.dec, yals->stats.nincdec);
 // #endif
 
   if ((INT_MAX >> LENSHIFT) < nclauses)
@@ -3561,8 +3497,6 @@ void yals_card_connect (Yals * yals) {
       (INT_MAX >> LENSHIFT));
 
   yals->card_nclauses = nclauses;
-  // yals->nbin = nbin;
-  // yals->ntrn = ntrn;
   yals_msg (yals, 1, "connecting %d cardinality constraints", nclauses);
   NEWN (yals->card_lits, nclauses);
   NEWN (yals->hard_card_ids, nclauses);
@@ -3592,7 +3526,6 @@ void yals_card_connect (Yals * yals) {
     }
   }
 
-  // NEWN (yals->weights, MAXLEN + 1);
 
   NEWN (count, 2*nvars);
   count += nvars;
@@ -3646,27 +3579,6 @@ void yals_card_connect (Yals * yals) {
 
   yals->card_avglen = yals_avg (sumlen, yals->nclauses);
 
-  // if (minlen == maxlen) {
-  //   yals_msg (yals, 1,
-  //     "all %d clauses are of uniform length %d",
-  //     yals->nclauses, maxlen);
-  // } else if (maxlen >= 0) {
-  //   yals_msg (yals, 1,
-  //     "average clause length %.2f (min %d, max %d)",
-  //     yals->avglen, minlen, maxlen);
-  //   yals_msg (yals, 2,
-  //     "%d binary %.0f%%, %d ternary %.0f%% ",
-  //     nbin, yals_pct (nbin, yals->nclauses),
-  //     ntrn, yals_pct (ntrn, yals->nclauses));
-  //   yals_msg (yals, 2,
-  //     "%d quaterny %.0f%%, %d large clauses %.0f%%",
-  //     nquad, yals_pct (nquad, yals->nclauses),
-  //     nlarge, yals_pct (nlarge, yals->nclauses));
-  // }
-
-  // yals_msg (yals, 1,
-  //   "clause variable ratio %.3f = %d / %d",
-  //   yals_avg (nclauses, nused), nclauses, nused);
 
   for (idx = 1; idx < nvars; idx++)
     for (sign = 1; sign >= -1; sign -= 2) {
@@ -3690,7 +3602,6 @@ void yals_card_connect (Yals * yals) {
     while ((lit = *p++)) {
       occsptr = yals_card_refs (yals, lit);
       occs = *occsptr;
-      // assert_valid_occs (occs);
       assert (!yals->card_occs[occs]);
       yals->card_occs[occs] = (cidx << LENSHIFT) | len;
       *occsptr = occs + 1;
@@ -3703,7 +3614,6 @@ void yals_card_connect (Yals * yals) {
       lit = sign * idx;
       occsptr = yals_card_refs (yals, lit);
       occs = *occsptr;
-      // assert_valid_occs (occs);
       assert (yals->card_occs[occs] == -1);
       n = count[lit];
       assert (occs >= n);
@@ -3722,9 +3632,7 @@ void yals_card_connect (Yals * yals) {
 
   // yals_msg (yals, 1,
   //   "using %s for unsat clauses",
-  //   yals->unsat.usequeue ? "queue" : "stack");
 
-  // if (yals->card_unsat.usequeue) NEWN (yals->lnk, nclauses);
   // else {
     NEWN (yals->card_pos, yals->card_nclauses);
     for (cidx = 0; cidx < yals->card_nclauses; cidx++) yals->card_pos[cidx] = -1;
@@ -3734,7 +3642,6 @@ void yals_card_connect (Yals * yals) {
     }
   // }
 
-  // yals->nvarwords = (nvars + BITS_PER_WORD - 1) / BITS_PER_WORD;
 
   // yals_msg (yals, 1, "%d x %d-bit words per assignment (%d bytes = %d KB)",
   //   yals->nvarwords,
@@ -3742,21 +3649,9 @@ void yals_card_connect (Yals * yals) {
   //   yals->nvarwords * sizeof (Word),
   //   (yals->nvarwords * sizeof (Word) >> 10));
 
-  // NEWN (yals->set, yals->nvarwords);
-  // NEWN (yals->clear, yals->nvarwords);
-  // memset (yals->clear, 0xff, yals->nvarwords * sizeof (Word));
   // while (!EMPTY (yals->trail)) {
-  //   lit = POP (yals->trail);
-  //   idx = ABS (lit);
-  //   if (lit < 0) CLRBIT (yals->clear, yals->nvarwords, idx);
-  //   else SETBIT (yals->set, yals->nvarwords, idx);
   // }
-  // RELEASE (yals->trail);
 
-  // NEWN (yals->vals, yals->nvarwords);
-  // NEWN (yals->best, yals->nvarwords);
-  // NEWN (yals->tmp, yals->nvarwords);
-  // NEWN (yals->flips, nvars);
 
   if (maxlen < (1<<8)) {
     yals->card_satcntbytes = 1;
@@ -4150,7 +4045,6 @@ void yals_del (Yals * yals) {
 
   yals_strdel (yals, yals->opts.prefix);
   yals_dec_allocated (yals, sizeof *yals);
-  // yals_msg (yals, 1, "allocated %d",yals->stats.allocated.current);
   assert (getenv ("YALSLEAK") || !yals->stats.allocated.current);
   yals->mem.free (yals->mem.mgr, yals, sizeof *yals);
 }
@@ -4484,42 +4378,6 @@ static void yals_restart_inner (Yals * yals) {
 
 /*------------------------------------------------------------------------*/
 
-static int yals_done (Yals * yals) {
-  assert (!yals->mt);
-  if (!yals_nunsat (yals)) return 1;
-  if (yals->limits.flips >= 0 &&
-      yals->limits.flips <= yals->stats.flips) {
-    yals_msg (yals, 1,
-      "flips limit %lld after %lld flips reached",
-      yals->limits.flips, yals->stats.flips);
-    return -1;
-  }
-#ifndef NYALSMEMS
-  if (yals->limits.mems >= 0 &&
-      yals->limits.mems <= yals->stats.mems.all) {
-    yals_msg (yals, 1,
-      "mems limit %lld after %lld mems reached",
-      yals->limits.mems, yals->stats.mems.all);
-    return -1;
-  }
-#endif
-  if (yals->cbs.term.fun && yals->limits.term-- <= 0) {
-    yals->limits.term = yals->opts.termint.val;
-    if (yals->cbs.term.fun (yals->cbs.term.state)) {
-      yals_msg (yals, 1, "forced to terminate");
-      return -1;
-    }
-  }
-  if (yals->opts.hitlim.val >= 0 &&
-      yals->stats.hits  >= yals->opts.hitlim.val) {
-    yals_msg (yals, 1,
-      "minimum hits limit %lld reached after %lld hits",
-      yals->opts.hitlim.val, yals->stats.hits);
-    return -1;
-  }
-  return 0;
-}
-
 /*
 
   Transfered w constraint weight from source to sink.
@@ -4542,16 +4400,13 @@ void yals_ddfw_update_lit_weights_on_weight_transfer (Yals *yals, int sink, int 
     }
 
     if (yals_satcnt (yals, source) == 1) // also pulling this transferred weight off critical lit list
-      // sat1_weights [get_pos(yals->crit [source])] -= w * maxs_weight;
       yals_ddfw_update_var_weight (yals, yals->crit [source], soft, 1, -w * maxs_weight);
   } else if (constraint_type_source == TYPECARDINALITY) { // ASSUME Cardinality constraints are soft
     if (yals_card_satcnt (yals, source) <= yals_card_bound (yals, source)) {
       // critical cardinality constraint when falsified
       // get change in critical values
       double old_weight = yals->ddfw.ddfw_card_weights [source] + w;
-      // double new_weight = yals->ddfw.ddfw_card_weights [source];
 
-      // double old_unsat_weight = yals->ddfw.card_clause_calculated_weights[source];
       double old_unsat_weight = yals_card_calculate_weight (yals, yals_card_bound (yals, source), yals_card_satcnt (yals, source), old_weight, source);
       double new_unsat_weight = yals_card_get_calculated_weight (yals, source);
 
@@ -4566,7 +4421,6 @@ void yals_ddfw_update_lit_weights_on_weight_transfer (Yals *yals, int sink, int 
         yals_card_unsat_weight_update (yals, source, new_unsat_weight - old_unsat_weight, 0);
       }
 
-      // yals->ddfw.card_clause_calculated_weights[source] = new_unsat_weight;
     }
     
   }
@@ -4583,15 +4437,12 @@ void yals_ddfw_update_lit_weights_on_weight_transfer (Yals *yals, int sink, int 
     }
 
     while ((lit = *lits++))
-      // unsat_weights [get_pos(lit)] += w *  maxs_weight;
       yals_ddfw_update_var_weight (yals, lit, soft, 0, w *  maxs_weight);
   } else if (constraint_type_sink == TYPECARDINALITY) {
     // critical cardinality constraint when falsified
     // get change in critical values
     double old_weight = yals->ddfw.ddfw_card_weights [sink] - w; // difference, now gaining weight
-    // double new_weight = yals->ddfw.ddfw_card_weights [sink];
 
-    // double old_unsat_weight = yals->ddfw.card_clause_calculated_weights[sink];
     double old_unsat_weight = yals_card_calculate_weight (yals, yals_card_bound (yals, sink), yals_card_satcnt (yals, sink), old_weight, sink);
     double new_unsat_weight = yals_card_get_calculated_weight (yals, sink);
 
@@ -4606,19 +4457,8 @@ void yals_ddfw_update_lit_weights_on_weight_transfer (Yals *yals, int sink, int 
       yals_card_unsat_weight_update (yals, sink, new_unsat_weight - old_unsat_weight, 0);
     }
 
-    // yals->ddfw.card_clause_calculated_weights[sink] = new_unsat_weight;
     LOGCARDCIDX (sink, "from %lf to %lf weight",old_unsat_weight, new_unsat_weight);
   }
-}
-
-// if actually using this, store the length in an array
-double compute_degree_of_satisfaction (Yals *yals, int cidx)
-{
-  int len = 0, lit;
-  int * lits = yals_lits (yals, cidx);
-  while ((lit=*lits++)) len++; 
-  double ds = (double) yals_satcnt (yals, cidx) / (double) len; 
-  return ds;
 }
 
 double linear_wt (Yals * yals, int source, int type_source)
@@ -4716,9 +4556,7 @@ int yals_ddfw_get_max_weight_sat_clause (Yals *yals, int cidx, int constraint_ty
   //  we are only applying this to random transfer now
   //  everything can take from everything in this function
   // if (!yals->current_weight_transfer_soft && !yals->opts.maxs_hard_takes_soft.val)
-  //   takes_soft = 0;
   // if (yals->current_weight_transfer_soft && !yals->opts.maxs_soft_takes_hard.val)
-  //   takes_hard = 0;
 
 
   // get lits from the input constraint
@@ -4978,7 +4816,6 @@ int yals_ddfw_get_top_k_max_weight_sat_clause (
                : yals_card_lits (yals, cidx);
   int relative = (yals->opts.maxs_init_weight_relative.val
                   && yals->using_maxs_weights);
-  // Per-literal bests collected here. Bounded by the number of literals;
   // long constraints (especially cards) can be hundreds, so use heap.
   // Upper-bound by N; we never keep more than N candidates anyway, but
   // we also want a temporary capacity at least as large as the literal
@@ -5157,7 +4994,6 @@ int yals_ddfw_get_random_sat_clause (Yals * yals, int * constraint_type) {
       cnt++;
       if (cnt > cnt_cutoff) { // if looping a lot just abort
         yals_check_global_weight_invariant (yals);
-        // yals_abort (yals, "looping on random sat clause");
         yals->stats.get_random_sat_missed += 1;
         break;
       }
@@ -5653,14 +5489,6 @@ void yals_ddfw_transfer_weights_for_card (Yals *yals, int sink)
 void yals_ddfw_transfer_weights (Yals *yals)
 {
   double start = yals_time_phase (yals);
-  // Lnk * p;
-  // // no queue implementation allowed
-  // if (yals->unsat.usequeue)
-  // {
-  //   for (p = yals->unsat.queue.first; p; p = p->next)
-  //       yals_ddfw_transfer_weights_for_clause (yals, p->cidx);
-  // }
-  // else
 
     // hard clauses
     for (int c = 0; c < COUNT(yals->unsat.stack); c++) {
@@ -5701,7 +5529,6 @@ void yals_ddfw_transfer_weights (Yals *yals)
 }
 
 static void yals_outer_loop (Yals * yals) {
-  // for (;;) {
     yals_set_default_strategy (yals);
     yals_pick_assignment (yals, 1);
     yals_update_sat_and_unsat (yals);
@@ -5715,11 +5542,6 @@ static void yals_outer_loop (Yals * yals) {
 
     yals_inner_loop_max_tries (yals);
 
-    // if (yals->opts.maxtries.val && yals->opts.cutoff.val)
-    // {
-      //  if (yals_inner_loop_max_tries (yals))  // this always returns a non-zero value...
-      //   return;
-    // }
 
 }
 
@@ -6335,7 +6157,6 @@ void yals_init_ddfw (Yals *yals)
     cardinality constraint initializations
   */
   yals->ddfw.ddfw_card_weights = malloc (yals->card_nclauses* sizeof (double));
-  // yals->ddfw.card_clause_calculated_weights = malloc (yals->card_nclauses* sizeof (double));
   yals->ddfw.card_sat_count_in_clause = calloc (yals->card_nclauses, sizeof (int));
   yals->ddfw.card_sat_dirty = calloc (yals->card_nclauses, sizeof (int));
   yals->ddfw.card_helper_hash_clauses = calloc (yals->card_nclauses, sizeof (int));
@@ -6509,22 +6330,6 @@ void yals_ddfw_update_changed_var_weights (Yals * yals) {
 
   // update stats with nChanged (to compare vs size of uvars to loop over...)
   yals->stats.nheap_updated += nChanged;
-}
-
-// get random uvar off the heap
-int yals_get_random_uvar (Yals * yals, int soft) {
-  STACK_INT *uvars;
-  if (yals->using_maxs_weights && soft) {
-    uvars = &yals->ddfw.uvars_soft;
-  }
-  else {
-    uvars = &yals->ddfw.uvars;
-  }
-
-  int cnt = COUNT (*uvars);
-  int pos = yals_rand_mod (yals, cnt);
-
-  return PEEK (*uvars, pos);
 }
 
 /* 
@@ -6710,39 +6515,6 @@ void compute_uwvars_from_unsat_clause (Yals *yals, int cidx)
 }
 
 // outdated, now use a heap
-void compute_uwvars_from_unsat_clauses2 (Yals *yals)
-{
-  //double s = yals_time (yals);
-  RELEASE (yals->ddfw.helper_hash_changed_idx1);
-  Lnk * p;
-  if (yals->unsat.usequeue)
-  {
-    for (p = yals->unsat.queue.first; p; p = p->next)
-    {
-      compute_uwvars_from_unsat_clause (yals, p->cidx);
-      /** IDEA: If number of unsat clasues are large, eg, yals_nunsat (yals) > X
-      then check unsat clauses until we have Y uwrvs, eg, yals->ddfw.uwrvs_size>=5 **/
-      //if ((double) yals->ddfw.uwrvs_size >10 ) break;
-    }
-  }
-  else
-  {
-    for (int c = 0; c < COUNT(yals->unsat.stack); c++)
-    {
-      int cidx = PEEK (yals->unsat.stack, c);
-      compute_uwvars_from_unsat_clause (yals, cidx);
-      //if (yals_nunsat (yals) > 100 && yals->ddfw.uwrvs_size >= 1) break;
-    }
-  }
-  for (int i=0; i < COUNT(yals->ddfw.helper_hash_changed_idx1); i++)
-  {
-    int idx = PEEK (yals->ddfw.helper_hash_changed_idx1, i);
-    yals->ddfw.helper_hash_vars [idx] = 0;
-  }
-   //yals->ddfw.compute_uwvars_from_unsat_clauses_time += yals_time (yals) - s;
-}
-
-// outdated, now use a heap
 void yals_ddfw_compute_uwrvs (Yals * yals)
 {
   LOG ("Compute uvars");
@@ -6777,32 +6549,14 @@ void yals_ddfw_update_lit_weights_on_make (Yals * yals, int cidx, int lit) {
       if (!yals->opts.maxs_init_weight_relative.val)
         maxs_weight = PEEK (yals->maxs_clause_weights, cidx);
     }
-  // sat1_weights [get_pos(lit)] += yals->ddfw.ddfw_clause_weights [cidx] * maxs_weight;
   yals_ddfw_update_var_weight (yals, lit, soft, 1, yals->ddfw.ddfw_clause_weights [cidx] * maxs_weight);
   for (p = lits; (lt = *p); p++)
   {
-    // unsat_weights [get_pos(lt)] -= yals->ddfw.ddfw_clause_weights [cidx] * maxs_weight;
     yals_ddfw_update_var_weight (yals, lt, soft, 0, -yals->ddfw.ddfw_clause_weights [cidx] * maxs_weight);
     /** var_unsat_count is for quick decision **/
-    // yals->ddfw.var_unsat_count [abs (lt)]--;
   }
 }
 
-// never called
-// void yals_ddfw_card_update_lit_weights_on_make (Yals * yals, int cidx, int lit)
-// {
-//   //double s = yals_time (yals);
-//   yals->ddfw.sat1_weights [get_pos(lit)] += yals->ddfw.ddfw_card_weights [cidx];
-//   int* begin, *end;
-//   int lt;
-//   yals_card_unsat_iters (yals, cidx, &begin, &end);
-//   for (; begin != end; begin++) {
-//     lt = *begin;
-//     yals->ddfw.unsat_weights [get_pos(lt)] -= yals->ddfw.ddfw_card_weights [cidx];
-//     /** var_unsat_count is for quick decision **/
-//     // yals->ddfw.var_unsat_count [abs (lt)]--;
-//   }
-// }
 
 void yals_ddfw_update_lit_weights_on_break (Yals * yals, int cidx, int lit) {
   double maxs_weight = 1.0;
@@ -6817,22 +6571,9 @@ void yals_ddfw_update_lit_weights_on_break (Yals * yals, int cidx, int lit) {
   int* lits = yals_lits (yals, cidx), *p;
   int lt;
   for (p = lits; (lt = *p); p++){ // all lits now in unsat clause, contribute to unsat weight
-    // unsat_weights [get_pos(lt)] += yals->ddfw.ddfw_clause_weights [cidx] * maxs_weight;
     yals_ddfw_update_var_weight (yals, lt, soft, 0, yals->ddfw.ddfw_clause_weights [cidx] * maxs_weight);
     /** var_unsat_count is for quick decision **/
-    // yals->ddfw.var_unsat_count [abs (lt)]++;
   }
-}
-
-int compute_sat_count (Yals *yals, int cidx)
-{
-    int satcnt = 0, lit;
-    int* lits = yals_lits (yals, cidx), *p;
-    for (p = lits; (lit = *p); p++) {
-      if (!yals_val (yals, lit)) continue;
-      satcnt++;
-    }
-    return satcnt;
 }
 
 int yals_pick_non_increasing (Yals * yals)
@@ -6887,49 +6628,6 @@ void yals_check_lits_weights_sanity (Yals *yals)
     yals_check_lits_weights_sanity_var (yals, v);
 }
 
-// not used
-// void yals_ddfw_update_lit_weights_at_restart_var (Yals *yals, int v)
-// {
-//   int val = yals_val (yals, v);
-//   int tl = val? v : -v;
-//   int s1w = 0, uw=0, occ;
-//   const int * occs = yals_occs (yals, tl), *p;
-//   for (p=occs; (occ = *p) >= 0; p++)
-//   {
-//     int cidx = occ >>LENSHIFT;
-//     if (yals_satcnt (yals, cidx) == 1)
-//       s1w += yals->ddfw.ddfw_clause_weights [cidx];
-//     if (yals_satcnt (yals, cidx) == 0)
-//       uw += yals->ddfw.ddfw_clause_weights [cidx];
-//   }
-
-
-//   yals->ddfw.sat1_weights [get_pos(tl)] = s1w;
-//   yals->ddfw.unsat_weights [get_pos (tl)] = uw;
-
-//   s1w = 0;
-//   uw = 0;
-  
-//   occs = yals_occs (yals, -tl);
-   
-//   for (p=occs; (occ = *p) >= 0; p++)
-//   {
-//     int cidx = occ >>LENSHIFT;
-//     if (!yals_satcnt (yals, cidx))
-//       uw += yals->ddfw.ddfw_clause_weights [cidx];
-//     if (yals_satcnt (yals, cidx) == 1)
-//       s1w += yals->ddfw.ddfw_clause_weights [cidx];
-//   }
-//   yals->ddfw.sat1_weights [get_pos (-tl)] = s1w;
-//   yals->ddfw.unsat_weights [get_pos(-tl)] = uw;
-// }
-
-// not used
-// void yals_ddfw_update_lit_weights_at_restart (Yals *yals)
-// {
-//   for (int v=1; v< yals->nvars; v++)
-//     yals_ddfw_update_lit_weights_at_restart_var (yals, v);
-// }
 
 /*
   
@@ -6947,11 +6645,9 @@ void yals_ddfw_update_lit_weights_at_start (Yals * yals, int cidx, int satcnt, i
   }
   if (!satcnt) {
     for (p1 = lits; (lt = *p1); p1++)
-      //  unsat_weights [get_pos (lt)] += yals->ddfw.ddfw_clause_weights [cidx] * maxs_weight;
         yals_ddfw_update_var_weight (yals, lt, soft, 0, yals->ddfw.ddfw_clause_weights [cidx] * maxs_weight);
   }
   else if (satcnt == 1)
-    // sat1_weights [get_pos (crit)] += yals->ddfw.ddfw_clause_weights [cidx] * maxs_weight;
     yals_ddfw_update_var_weight (yals, crit, soft, 1, yals->ddfw.ddfw_clause_weights [cidx] * maxs_weight);
 }
 
@@ -6996,15 +6692,11 @@ int yals_flip_count (Yals *yals)
 
 void yals_print_stats (Yals * yals)
 {
-  // double avg_len_consecutive_lm = (double) (yals->ddfw.consecutive_lm_length) / (double) (yals->ddfw.count_conscutive_lm);
   //  (double) (yals->ddfw.count_conscutive_lm);
   // printf ("c stats | %d %d %d %d %d %d %d %d %f %d %d %d %d %d %d %d %f ", yals->stats.flips, yals->ddfw.local_minima,   yals->ddfw.wt_count
   //                 , yals->ddfw.missed_guaranteed_uwvars, yals->ddfw.sideways,
   //                 yals->ddfw.consecutive_lm_length, yals->ddfw.count_conscutive_lm,  avg_len_consecutive_lm, yals->ddfw.max_consecutive_lm_length, yals_nunsat (yals),     
   //                 yals_minimum (yals), yals->ddfw.alg_switch, yals->stats.restart.inner.count, 
-  //                 yals->fres_fact, yals->fres_count, yals->stats.time.restart);
-  // double r = (double) yals->ddfw.source_not_selected / (double) yals->ddfw.total_transfers;
-  //printf ("c stats |%ld ", yals->stats.flips);
 }
 
 /*------------------------------------------------------------------------*/
@@ -7285,7 +6977,6 @@ void yals_print_combined_probe_hist (Yals ** ys, int n) {
   // rather than collapsing [1-2] into one row that's actually larger
   // than several other rows.
   const int MAX_NB = 10;
-  // Sort `all` (insertion sort -- typically small unique-value count;
   // the median sort above used a copy, so `all` is still unsorted).
   for (int i = 1; i < total; i++) {
     int x = all[i], j = i - 1;
@@ -7519,24 +7210,15 @@ void yals_add_vars_to_uvars (Yals* yals, int cidx, int constraint_type) {
 // NEVER CALLED
 // int yals_var_in_unsat (Yals *yals, int v)
 // {
-//   int * pos_oocs = yals_occs (yals, v);
-//   const int *o;
-//   int occ;
 //   for (o = pos_oocs; (occ = *o) >= 0; o++)
 //   {
-//     int pcidx = occ >> LENSHIFT;
 //     if (!yals_satcnt (yals, pcidx))
-//       return 1;
 //   }
 
-//   int * neg_occs = yals_occs (yals, -v);
 //   for (o = neg_occs; (occ = *o) >= 0; o++)
 //   {
-//     int ncidx = occ >> LENSHIFT;
 //     if (!yals_satcnt (yals, ncidx))
-//       return 1;
 //   }
-//   return 0;
 // }
 
 void yals_delete_vars_from_uvars (Yals* yals, int cidx, int constraint_type) {
@@ -7643,7 +7325,6 @@ int yals_inner_loop_max_tries (Yals * yals)
           // hitting --cutoff) as soon as the rolling K-window mean of HD
           // drops below the threshold. Two gates:
           //   1. window must be full (hd_value_count >= K) so we have a
-          //      full K-flip sample, not a partial early measurement;
           //   2. at least K flips since the previous HD-trigger fire, so
           //      consecutive HD-restarts are spaced like cutoff restarts.
           {
@@ -7754,7 +7435,6 @@ void yals_card_add (Yals * yals, int lit, int is_bound) {
   } else {
     if (lit) { // adding a lit to the cardinality constraint
       // ignore trivial marking for cardinality constraints
-      // signed char mark;
       int idx;
       if (lit == INT_MIN)
         yals_abort (yals, "can not add 'INT_MIN' as literal");

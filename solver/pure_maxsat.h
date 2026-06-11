@@ -216,7 +216,6 @@ void yals_init_assignment_pure (Yals *yals) {
     cidx = PEEK (yals->card_unsat.stack, cpos);
     assert (yals->card_pos[cidx] == cpos);
 
-    // yals_msg (yals, 1, "cardIdx %d", cidx);
     lit = yals_best_lit_on_init (yals, cidx, TYPECARDINALITY);
     assert (lit/ABS(lit) == yals->hard_polarity);
     yals_flip_on_init (yals, lit);
@@ -327,7 +326,6 @@ int yals_pure_maxs_inner_loop (Yals * yals) {
 
     // if (!yals->opts.ddfwonly.val) // currently not allowed...
           // this is where you could toss in a faster descent
-    //     yals->ddfw.ddfw_active = 0;
 
     while ( c<yals->opts.cutoff.val || (yals->opts.cutoff.val <= 0)) // cutoff=0 is unlimited flips
     {
@@ -422,7 +420,6 @@ int yals_pure_maxs_inner_loop (Yals * yals) {
         }
         else {
           // push back on? (experimentally, seems to be better if we leave it off)
-          // yals_update_heap (yals, &yals->ddfw.uvars_heap, ABS (lit), (yals->ddfw.uvars_heap.score_fun) (yals, lit) );
           break;
         }
       }
