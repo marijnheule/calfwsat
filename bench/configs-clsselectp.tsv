@@ -3,12 +3,12 @@
 # that moves weight between the positive- and negative-literal constraint
 # classes). clsselectp = paramval/100  (yals.c:5308/5382).
 #
+# Wide-range probe to see if the parameter bites harder at larger values.
 # Keep all other defaults (cutoff=20000, maxtries=INT_MAX, cache OFF).
-# 200 seeds, 900s timeout, -t 8. Default clsselectp = 12 (baseline cls12).
+# 200 seeds, 900s timeout, -t 8. Solver default clsselectp = 12 (not in grid).
 # name	args
-cls08	--clsselectp=8
 cls10	--clsselectp=10
-cls12	--clsselectp=12
-cls14	--clsselectp=14
-cls16	--clsselectp=16
-cls18	--clsselectp=18
+cls20	--clsselectp=20
+cls30	--clsselectp=30
+cls40	--clsselectp=40
+cls50	--clsselectp=50
