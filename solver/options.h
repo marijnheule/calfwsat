@@ -27,7 +27,7 @@ This code extends the solver yal-lin (Md Solimul Chowdhury, Cayden Codel, Marijn
   OPT (cached,0,0,1,"use cached assignment during restart"); \
   OPT (cacheduni,0,0,1,"pick random cached assignment uniformly"); \
   OPT (cachemax,(1<<10),0,(1<<20),"max cache size of saved assignments"); \
-  OPT (cachemin,1,0,(1<<10),"minimum cache size of saved assignments"); \
+  OPT (cachemin,0,0,(1<<10),"minimum cache size of saved assignments (0 = disable the per-thread local assignment cache entirely)"); \
   OPT (clsselectp, 12 , 1, 100, "Clause selection probability for weight transfer."); \
   OPT (topk,8,0,64,"per-literal top-K sorted list of heaviest neighbors (K=0 falls back to full scan)"); \
   OPT (cutoff,300000,0,INT_MAX,"flips per try (0 = unlimited; controls inner-restart and shared-cache cycle frequency)"); \
