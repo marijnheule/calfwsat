@@ -30,7 +30,6 @@ This code extends the solver yal-lin (Md Solimul Chowdhury, Cayden Codel, Marijn
 /*------------------------------------------------------------------------*/
 
 #define STRATSTEMPLATE \
-  STRAT (cached,1); \
   STRAT (pol,1);
 
 #define STRAT(NAME,ENABLED) int NAME
@@ -62,7 +61,6 @@ typedef struct {
 
 typedef unsigned Word;
 
-typedef struct YalsSharedCache YalsSharedCache;
 typedef struct YalsProbePool YalsProbePool;
 
 #ifndef NYALSMEMS
@@ -116,9 +114,8 @@ typedef struct Stats {
   // flips a probe needed to reach the global best score.
   int64_t probe_start_flips;
   // 1 iff the current probe started from a freshly generated random
-  // assignment (not a cached/best/keep/all-polarity pick, and not overridden
-  // by the shared cache). Only random-started probes contribute to the
-  // global-best tracker.
+  // assignment (not a best/keep/all-polarity pick). Only random-started
+  // probes contribute to the global-best tracker.
   int probe_random;
   struct {
     struct { int64_t count; } outer;
@@ -126,10 +123,8 @@ typedef struct Stats {
     int64_t bypassed;  // # times --bypass extended a probe past cutoff
   } restart;
   struct { struct { int chunks, lnks; } max; int64_t unfair; } queue;
-  struct { int64_t inserted, replaced, skipped; } cache;
-  struct { int64_t search, neg, falsepos, truepos; } sig;
   struct { int64_t def, rnd; } strat;
-  struct { int64_t best, cached, keep, pos, neg, rnd; } pick;
+  struct { int64_t best, keep, pos, neg, rnd; } pick;
   struct { int64_t count, moved; } defrag;
   struct { size_t current, max; } allocated;
   struct { volatile double total, defrag, restart, entered; } time;
@@ -491,13 +486,12 @@ typedef struct Yals {
   STACK(signed char) mark;
   int trivial, mt, pick;
   Word * vals, * best, * tmp, * clear, * set, *curr; int nvarwords;
-  STACK(int) trail, phases, clause, mins;
+  STACK(int) trail, phases, clause;
   int satcntbytes; union { U1 * satcnt1; U2 * satcnt2; U4 * satcnt4; };
   int * pos; Lnk ** lnk;
   int * crit;
   int nclauses, nbin, ntrn, minlen, maxlen; double avglen;
   STACK(unsigned) breaks; STACK(double) scores; STACK(int) cands;
-  STACK(Word*) cache; int cachesizetarget; STACK(Word) sigs;
   STACK(int) minlits;
   Callbacks cbs;
   Limits limits;
@@ -555,9 +549,6 @@ typedef struct Yals {
 
   STACK (double) maxs_card_weights; // soft constraint costs
 
-  // Optional pointer to a process-wide cache of assignments shared across
-  // palsat workers. NULL when no shared cache is attached.
-  YalsSharedCache * shared_cache;
   YalsProbePool * probe_pool;
 
 } Yals;
@@ -671,65 +662,6 @@ void yals_setime (Yals *, double (*time)(void));
 
 void yals_setmsglock (Yals *,
        void (*lock)(void*), void (*unlock)(void*), void*);
-
-/*------------------------------------------------------------------------*/
-
-// Shared assignment cache (used by palsat to share starting assignments
-// at each restart a worker inserts its best-of-try assignment and then
-// picks a new starting assignment from the cache by weighted random
-// selection (better cost -> higher weight). A slot picked by a worker is
-// reserved until that worker reaches its next restart, so two workers
-// never start from the same cached assignment concurrently.
-
-// Defaults (set by yals_shared_cache_config_init):
-//   capacity=256, hamming_percent=5, pick=linear, warmup=5, explore=0,
-//   replace_full=worse-only, ham_replace=eq, insert=always.
-
-// Pick-weight schemes for selecting from the cache.
-#define YSC_PICK_LINEAR  0  // weight = max_cost - cost + 1     (default)
-#define YSC_PICK_RANK    1  // weight = (N - rank)              (best=highest)
-#define YSC_PICK_SOFTMAX 2  // weight = exp((max - cost) / T)   (temp=softmax_temp_x10/10)
-#define YSC_PICK_UNIFORM 3  // weight = 1                       (no bias)
-#define YSC_PICK_INV     4  // weight = 1 / (cost + 1)
-
-// Replacement policy when no Hamming-near slot AND cache is full.
-#define YSC_REPLACE_WORSE_ONLY  0  // replace worst unreserved slot with cost >= new (default)
-#define YSC_REPLACE_ALWAYS      1  // always replace worst unreserved slot (even if cache better)
-#define YSC_REPLACE_NEVER       2  // skip insertion
-
-// Replacement policy when a Hamming-near slot IS found.
-#define YSC_HAM_REPLACE_EQ      0  // replace if new cost <= existing (default)
-#define YSC_HAM_REPLACE_STRICT  1  // replace only if strictly better
-#define YSC_HAM_REPLACE_ALWAYS  2  // always replace
-
-// Insert gating.
-#define YSC_INSERT_ALWAYS    0  // insert at every restart (default)
-#define YSC_INSERT_IMPROVED  1  // insert only if cost <  start-of-try cost
-
-typedef struct YalsSharedCacheConfig {
-  int capacity;            // max number of slots (e.g. 1024)
-  int hamming_percent;     // near-dup threshold = percent * V / 100 bits
-  int pick_weight;         // YSC_PICK_*
-  int softmax_temp_x10;    // temperature * 10 (used only by softmax). 10 = T=1.0
-  int replace_full;        // YSC_REPLACE_*  (cache-full, no-ham-match path)
-  int ham_replace;         // YSC_HAM_REPLACE_*
-  int warmup;              // per-worker: skip shared pick for first N restarts
-  int explore_pct;         // 0-100: chance to ignore weights, pick uniformly
-  int insert_mode;         // YSC_INSERT_*  (always / improved-over-start)
-  int popularity_pct;      // 0-100: anti-clustering penalty for popular slots.
-                           //   effective_weight = base / (1 + (pct/100) * pick_count)
-                           //   0 = no penalty (default), 100 = strong penalty.
-} YalsSharedCacheConfig;
-
-// Initialize a config struct with the current defaults.
-void yals_shared_cache_config_init (YalsSharedCacheConfig *);
-
-YalsSharedCache * yals_shared_cache_new (int nworkers,
-                                         const YalsSharedCacheConfig *);
-void yals_shared_cache_delete (YalsSharedCache *);
-void yals_set_shared_cache (Yals *, YalsSharedCache *);
-void yals_shared_cache_stats (YalsSharedCache *);
-void yals_shared_cache_config_dump (const YalsSharedCacheConfig *, FILE *);
 
 /*------------------------------------------------------------------------*/
 
