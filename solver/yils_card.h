@@ -127,56 +127,14 @@ void yals_new_cardinality_constraint (Yals * yals);
 void yals_card_add (Yals * yals, int lit, int is_bound) ;
 
 
-// maxsat
-void yals_clause_add_weight (Yals * yals, double weight) ;
-void yals_card_add_weight (Yals * yals, double weight) ;
-
-void yals_set_max_weight (Yals * yals, double weight);
-void yals_using_maxs (Yals * yals, int is_using);
-
-void yals_init_assignment_pure (Yals *yals);
-void yals_init_assignment_deci (Yals *yals);
-
-void yals_maxs_check_global_weight_invariant (Yals * yals);
-void yals_maxs_check_global_satisfaction_invariant (Yals * yals);
-
-void yals_maxs_outer_loop (Yals * yals);
-int yals_pure_maxs_inner_loop (Yals * yals);
-int yals_ass_maxs_inner_loop (Yals * yals);
-
-double yals_pure_soft_score (Yals * yals, int var);
-double yals_pure_hard_score (Yals * yals, int var) ;
-
-int yals_best_hard_score (Yals * yals);
-int yals_best_soft_score (Yals * yals);
-
-double yals_get_cost (Yals * yals);
-
-int yals_soft_unsat (Yals * yals);
 int * yals_card_occs (Yals * yals, int lit);
 
 int yals_clauses_nunsat (Yals * yals);
 
 int yals_card_nunsat (Yals * yals);
 
-double yals_clause_weight_unsat (Yals * yals);
 
-double yals_card_weight_unsat (Yals * yals);
-
-int yals_clause_hard_unsat (Yals * yals) ;
-
-int yals_card_hard_unsat (Yals * yals) ;
-
-int yals_hard_unsat (Yals * yals) ;
-
-int yals_clause_soft_unsat (Yals * yals) ;
-
-int yals_card_soft_unsat (Yals * yals) ;
-
-int yals_soft_unsat (Yals * yals) ;
-
-
-void yals_remove_a_var_from_uvars (Yals * yals , int v, int soft);
-void yals_add_a_var_to_uvars (Yals * yals , int v, int soft);
+void yals_remove_a_var_from_uvars (Yals * yals , int v);
+void yals_add_a_var_to_uvars (Yals * yals , int v);
 
 #endif

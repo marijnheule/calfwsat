@@ -23,20 +23,14 @@ This code extends the solver yal-lin (Md Solimul Chowdhury, Cayden Codel, Marijn
   work.
 
   We have the following stacks:
-    yals->unsat for hard clauses (all constraints if not MaxSAT),
-    yals_card_unsat for hard cardinality constraints (all constraints if not MaxSAT),
-    yals->unsat_soft for soft clauses,
-    yals_card_unsat_soft for soft cardinality constraints,
+    yals->unsat for falsified clauses,
+    yals_card_unsat for falsified cardinality constraints,
 
-  The stack is necessary for the DDFW base algorithm. It allows us to 
+  The stack is necessary for the DDFW base algorithm. It allows us to
   loop over falsified constraints during the weight transfer.
 
   The stack is also used to implement a probSAT-like algorithm
-  for fast descent at the beginning of the execution. 
-
-  It is used when initialization a solution for Pure MaxSAT, and may
-  be useful for a general MaxSAT algorithm that takes steps similar
-  to probSAT.
+  for fast descent at the beginning of the execution.
 
 */
 
@@ -184,23 +178,11 @@ static inline void yals_dequeue_stack (Yals * yals, int cidx, int constraint_typ
   int * pos = 0;
   UNSAT_STACK *unsat = 0;
   if (constraint_type == TYPECLAUSE) {
-    if (yals->using_maxs_weights && !yals->f->hard_clause_ids[cidx]) {
-      unsat = &(yals->unsat_soft);
-      pos = yals->pos_soft;
-    }
-    else {
-      unsat = &(yals->unsat);
-      pos = yals->pos;
-    }
+    unsat = &(yals->unsat);
+    pos = yals->pos;
   } else if (constraint_type == TYPECARDINALITY) {
-    if (yals->using_maxs_weights && !yals->f->hard_card_ids[cidx]) {
-      unsat = &(yals->card_unsat_soft);
-      pos = yals->card_pos_soft;
-    }
-    else {
-      unsat = &(yals->card_unsat);
-      pos = yals->card_pos;
-    }
+    unsat = &(yals->card_unsat);
+    pos = yals->card_pos;
   } else {yals_abort (yals, "incorrect constraint type");}
 
   int cpos = pos[cidx], didx;
@@ -214,16 +196,6 @@ static inline void yals_dequeue_stack (Yals * yals, int cidx, int constraint_typ
     pos[didx] = cpos;
   }
   pos[cidx] = -1;
-  
-  if (yals->using_maxs_weights) { // remove weight from stack
-    if (constraint_type == TYPECLAUSE)
-      unsat->maxs_weight -= PEEK (yals->maxs_clause_weights, cidx);
-    else if (constraint_type == TYPECARDINALITY)
-      unsat->maxs_weight -= PEEK (yals->maxs_card_weights, cidx);
-    else yals_abort (yals, "incorrect constraint type");
-    
-    assert (unsat->maxs_weight >= 0);
-  }
 }
 
 static inline void yals_dequeue (Yals * yals, int cidx, int constraint_type) {
@@ -287,25 +259,13 @@ static inline void yals_enqueue_stack (Yals * yals, int cidx, int constraint_typ
   int * pos = 0;
   UNSAT_STACK *unsat = 0;
   if (constraint_type == TYPECLAUSE) {
-    if (yals->using_maxs_weights && !yals->f->hard_clause_ids[cidx]) {
-      unsat = &(yals->unsat_soft);
-      pos = yals->pos_soft;
-    }
-    else {
-      unsat = &(yals->unsat);
-      pos = yals->pos;
-    }
+    unsat = &(yals->unsat);
+    pos = yals->pos;
     if (yals->stats.maxstacksize < (size = SIZE (unsat->stack) + 1))
       yals->stats.maxstacksize = size;
   } else if (constraint_type == TYPECARDINALITY) {
-    if (yals->using_maxs_weights && !yals->f->hard_card_ids[cidx]) {
-      unsat = &(yals->card_unsat_soft);
-      pos = yals->card_pos_soft;
-    }
-    else {
-      unsat = &(yals->card_unsat);
-      pos = yals->card_pos;
-    }
+    unsat = &(yals->card_unsat);
+    pos = yals->card_pos;
     if (yals->stats.card_maxstacksize < (size = SIZE (unsat->stack) + 1))
       yals->stats.card_maxstacksize = size;
   } else {yals_abort (yals, "incorrect constraint type");}
@@ -314,13 +274,6 @@ static inline void yals_enqueue_stack (Yals * yals, int cidx, int constraint_typ
   assert (pos[cidx] < 0);
   pos[cidx] = COUNT (unsat->stack);
   PUSH (unsat->stack, cidx);
-  if (yals->using_maxs_weights) { // add weight to stack
-    if (constraint_type == TYPECLAUSE)
-      unsat->maxs_weight += PEEK (yals->maxs_clause_weights, cidx);
-    else if (constraint_type == TYPECARDINALITY)
-      unsat->maxs_weight += PEEK (yals->maxs_card_weights, cidx);
-    else yals_abort (yals, "incorrect constraint type");
-  }
 }
 
 static inline void yals_enqueue (Yals * yals, int cidx, int constraint_type) {
@@ -339,28 +292,6 @@ static inline void yals_enqueue (Yals * yals, int cidx, int constraint_type) {
   } else yals_abort (yals, "incorrect constraint type");
 }
 
-static inline void yals_reset_unsat_soft_stack (Yals * yals) {
-  assert (!yals->unsat_soft.usequeue);
-  while (!EMPTY (yals->unsat_soft.stack)) {
-    int cidx = POP (yals->unsat_soft.stack);
-    assert (yals->pos_soft[cidx] == COUNT (yals->unsat_soft.stack));
-    yals->pos_soft[cidx] = -1;
-  }
-  RELEASE (yals->unsat_soft.stack);
-  yals->unsat_soft.maxs_weight = 0.0;
-  yals->unsat_soft.hard_cnt = 0;
-
-  // cardinality stack
-  while (!EMPTY (yals->card_unsat_soft.stack)) {
-    int cidx = POP (yals->card_unsat_soft.stack);
-    assert (yals->card_pos_soft[cidx] == COUNT (yals->card_unsat_soft.stack));
-    yals->card_pos_soft[cidx] = -1;
-  }
-  RELEASE (yals->card_unsat_soft.stack);
-  yals->card_unsat_soft.maxs_weight = 0.0;
-  yals->card_unsat_soft.hard_cnt = 0;
-}
-
 static inline void yals_reset_unsat_stack (Yals * yals) {
   assert (!yals->unsat.usequeue);
   while (!EMPTY (yals->unsat.stack)) {
@@ -370,7 +301,6 @@ static inline void yals_reset_unsat_stack (Yals * yals) {
     yals->pos[cidx] = -1;
   }
   RELEASE (yals->unsat.stack);
-  yals->unsat.maxs_weight = 0.0;
   yals->unsat.hard_cnt = 0;
 
   // cardinality stack
@@ -381,10 +311,7 @@ static inline void yals_reset_unsat_stack (Yals * yals) {
     yals->card_pos[cidx] = -1;
   }
   RELEASE (yals->card_unsat.stack);
-  yals->card_unsat.maxs_weight = 0.0;
   yals->card_unsat.hard_cnt = 0;
-
-  if (yals->using_maxs_weights) yals_reset_unsat_soft_stack (yals);
 }
 
 

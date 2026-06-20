@@ -12,9 +12,7 @@ This code extends the solver yal-lin (Md Solimul Chowdhury, Cayden Codel, Marijn
   Functionality:
   - parse input options
   - parse input formula
-    - accepted Formats: CNF, KNF, WCNF, WKNF
-    - checks if problem is Pure WKNF, 
-    - checks if hard constraints are all cardinality constraints
+    - accepted formats: CNF, KNF (weighted WCNF/WKNF are rejected)
   - call solver (yals.c)
   - write solution to "witness.sol"
 
@@ -707,14 +705,13 @@ static void version () { printf ("%s\n", yals_version ()); }
 
 int main (int argc, char** argv) {
   int i, ch, sign, lit, res, m, n;
-  int cardinality, bound, got_weight;
-  double weight;
+  int cardinality, bound;
   int is_weighted = 0;
-  double max_weight;
+  double max_weight = 0;
 #ifdef PALSAT
   // When set, the formula is parsed into worker 0 only and shared (read-only)
   // with the other workers, instead of giving each worker its own copy. Decided
-  // once the header is parsed (see below). MaxSAT keeps per-worker formulas.
+  // once the header is parsed (see below).
   int share_formula = 0;
 #endif
 
@@ -897,51 +894,25 @@ HEADER:
           perr ("invalid header"); // p parsed in first fscanf
         }
       }
-    }  
-  }
-  if (is_weighted) {
-    msg ("parsed header for weighted max sat problem with ' %d %d %lf'", m, n, max_weight);
-    #ifdef PALSAT
-    {
-      int i;
-      for (i = 0; i < threads; i++) {
-        yals_set_max_weight (worker[i].yals, max_weight);
-        yals_using_maxs (worker[i].yals, 1);
-      }
     }
-    #else
-    yals_set_max_weight (yals, max_weight);
-    yals_using_maxs (yals, 1);
-    #endif
-  } else {
-    msg ("parsed header with ' %d %d'", m, n);
-    #ifdef PALSAT
-    {
-      int i;
-      for (i = 0; i < threads; i++)
-        yals_using_maxs (worker[i].yals, 0);
-    }
-    #else
-    yals_using_maxs (yals, 0);
-    #endif
   }
-  
+  if (is_weighted)
+    die ("MaxSAT/weighted input no longer supported; use plain CNF/KNF");
+  msg ("parsed header with ' %d %d'", m, n);
+
   V = m, C = n;
   msg ("clause variable ratio %.2f", average (C,V));
   lit = 0;
 
 #ifdef PALSAT
   // Share a single read-only formula across workers when running more than one
-  // worker on a non-MaxSAT instance. MaxSAT carries per-worker weight state, so
-  // it stays on the per-worker parse path.
-  share_formula = (threads > 1 && !is_weighted);
+  // worker.
+  share_formula = (threads > 1);
   if (share_formula)
     msg ("parsing formula once and sharing it across %d workers", threads);
 #endif
 
 cardinality = bound = 0; // track when a cardinality constraint is parsed
-weight = 0.0;
-got_weight = 0;
 
 BODY:
   ch = getc (file);
@@ -971,36 +942,14 @@ BODY:
   lit = ch - '0';
   while (isdigit (ch = getc (file)))
     lit = 10*lit + (ch - '0');
-  if (is_weighted && !got_weight) {
-    weight = (double) lit;
-    int dec_cnt = 1;
-    if (ch == '.') { // parse decimal
-      while (isdigit (ch = getc (file))) {
-        weight = weight + (ch - '0') / (pow (10, dec_cnt));
-        dec_cnt++;
-      }
-    }
-  }
   if (ch != EOF && ch != ' ' && ch != '\r' && ch != '\n')
     perr ("expected space or new-line");
-  if ( got_weight && lit > V) perr ("maximum variable index exceeded");
+  if (lit > V) perr ("maximum variable index exceeded");
   if (!n) perr ("too many clauses");
   lit *= sign;
   if (!lit) n--;
 #ifdef PALSAT
   // In shared mode parse into worker 0 only; otherwise into every worker.
-  if (is_weighted && !got_weight) {
-    int i, nw = share_formula ? 1 : threads;
-    for (i = 0; i < nw; i++) {
-      if (cardinality)
-        yals_card_add_weight (worker[i].yals, weight);
-      else
-        yals_clause_add_weight (worker[i].yals, weight);
-    }
-    got_weight = 1;
-    weight = 0.0;
-    goto BODY;
-  }
   if (cardinality && !bound) {
     int i, nw = share_formula ? 1 : threads;
     for (i = 0; i < nw; i++)
@@ -1019,18 +968,9 @@ BODY:
     }
   }
   if (!lit) { // finished parsing a constraint, reset flags
-    cardinality = bound = got_weight = 0;
+    cardinality = bound = 0;
   }
 #else
-  if (is_weighted && !got_weight) {
-    if (cardinality)
-      yals_card_add_weight (yals, weight);
-    else
-      yals_clause_add_weight (yals, weight);
-    got_weight = 1;
-    weight = 0.0;
-    goto BODY;
-  }
   if (cardinality && !bound) {
     yals_card_add (yals, lit, 1); // add bound for new cardinality constraint
     bound = 1;
@@ -1042,7 +982,7 @@ BODY:
     yals_add (yals, lit);
   }
   if (!lit) { // finished parsing a clause, reset cardinality and bound flags
-    cardinality = bound = got_weight = 0;
+    cardinality = bound = 0;
   }
 #endif
   goto BODY;

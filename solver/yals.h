@@ -97,17 +97,6 @@ typedef struct Stats {
 
   int64_t nheap_updated;
 
-  // max sat weights
-  double maxs_tmp_weight, maxs_best_cost, maxs_worst_cost, maxs_last;
-  int maxs_best_hard_cnt;
-  double maxs_card_best_weight,maxs_clause_best_weight;
-  int maxs_card_best_hard_cnt,maxs_clause_best_hard_cnt;
-
-  int maxs_best_soft_cnt;
-  int maxs_card_best_soft_cnt,maxs_clause_best_soft_cnt;
-  struct { volatile double initialization, weight_transfer, make_time, break_time, var_selection, soft_var_selection, hard_var_selection; } maxs_time;
-  // end max sat weights
-
   int64_t flips, bzflips, hits, unsum, get_random_sat_cnt, get_random_sat_missed;
   // Value of `flips` at the start of the current probe (the last time this
   // worker began from a freshly picked assignment). Used to report how many
@@ -286,15 +275,7 @@ typedef struct DDFW {
   unsigned source_not_selected;
   unsigned total_transfers;
 
-  heap uvars_heap; // heap for hard variables (all variables if not MaxSAT)
-  heap uvars_heap_soft; // heap for soft variables
-
-  // maxsat
-  STACK_INT uvars_soft; // soft variables in falsified cosntraints
-  int * uvar_pos_soft; 
-  int * var_unsat_count_soft; // number of falsified constraints a soft variable occurs in
-
-  double * unsat_weights_soft, * sat1_weights_soft;
+  heap uvars_heap; // heap for variables in falsified constraints
 
   int reset_weights_on_restart;
 
@@ -431,7 +412,7 @@ typedef struct DDFW {
 // structure for stack constaining falsified constraints,
 // also stores the weight of falsified constraints in the stack
 typedef struct UNSAT_STACK {
-  int usequeue; int hard_cnt; double maxs_weight; Queue queue; STACK_INT stack;
+  int usequeue; int hard_cnt; Queue queue; STACK_INT stack;
 } UNSAT_STACK;
 
 // Read-only formula data: built once during parsing and yals_connect /
@@ -444,7 +425,6 @@ typedef struct YalsFormula {
   int * lits;                     // clause cidx -> offset into cdb
   int * occs, noccs;              // occurrence lists + total size
   int * refs;                     // literal -> offset into occs
-  int * hard_clause_ids;          // 1 if clause is hard, 0 if soft (MaxSAT)
   unsigned char * clause_has_neg; // --heavy: 1 if clause has a negative literal
   STACK(int) clause_size;         // clause cidx -> length
   // cardinality index (the card_cdb literal array itself is NOT here: the
@@ -454,7 +434,6 @@ typedef struct YalsFormula {
   // order, so they remain shared and read-only.
   int * card_lits, * card_refs;
   int * card_occs, card_noccs;
-  int * hard_card_ids;
   unsigned char * card_has_neg;
   STACK(int) card_size;
   // Forced assignment derived during parsing + preprocessing (the trail after
@@ -473,7 +452,7 @@ typedef struct YalsFormula {
 typedef struct Yals {
   RNG rng;
   FILE * out;
-  UNSAT_STACK unsat; // falsified hard (all if not MaxSAT) constraints
+  UNSAT_STACK unsat; // falsified constraints
   YalsFormula * f; // shared read-only formula data (see YalsFormula above)
   int owns_formula; // 1 if this worker built and owns *f (frees it); 0 if it
                     // merely shares another worker's *f (read-only)
@@ -505,35 +484,12 @@ typedef struct Yals {
   int wid;
   int consecutive_non_improvement, last_flip_unsat_count;
 
-  /*
-    additional data for max sat
-  */
-  UNSAT_STACK unsat_soft; // falsified soft constraints
-
-  int using_maxs_weights, is_pure, hard_polarity; // 0/1 indicating type of problem
-  int cardinality_is_hard; // all hard constraints are cardinality constraints (for more efficient random sat selection)
-  STACK (double) maxs_clause_weights; // soft constraint costs
-  double parsed_weight;
-  double maxs_hard_weight; // weight of hard constraints
-  double maxs_acc_hard_weight;
-
-  int * pos_soft;
-  int * card_pos_soft; 
-
   STACK (Lit_Score) lit_scores;
-
-  int weight_transfer_soft; // allow transferring to soft consrtaints
-  int current_weight_transfer_soft;
-
-  int maxs_hard_offset; // offset for hard ddfw weight in MaxSAT inner loop
-
-  double propagated_soft_weight; // if soft constraints are falsified in unit propagation, store their costs
 
   /*
     additional data for cardinality constraint handling
   */
   UNSAT_STACK card_unsat; // falsified hard (all) constraints
-  UNSAT_STACK card_unsat_soft; // falsified soft constraints
 
   int card_crit;
 
@@ -546,8 +502,6 @@ typedef struct Yals {
   int card_minlen, card_maxlen;
   int card_satcntbytes; union { U1 * card_satcnt1; U2 * card_satcnt2; U4 * card_satcnt4; };
   // int ** card_crit; // critical literals for a cardinality constraint
-
-  STACK (double) maxs_card_weights; // soft constraint costs
 
   YalsProbePool * probe_pool;
 
@@ -678,7 +632,7 @@ void yals_make_clauses_after_flipping_lit (Yals * yals, int lit);
 void yals_break_clauses_after_flipping_lit (Yals * yals, int lit);
 void yals_update_sat_and_unsat (Yals * yals);
 
-int yals_pick_literal_from_heap (Yals * yals, int soft);
+int yals_pick_literal_from_heap (Yals * yals);
 
 void yals_update_score_function_weights (Yals * yals);
 
@@ -968,7 +922,7 @@ static inline double yals_time (Yals * yals) {
 
 // Per-phase profiling timer. Returns 0 unless verbose printing is enabled,
 // skipping the getrusage syscall in production (verbose=0) runs. The
-// stats.{maxs_time,time.restart} fields it populates are only consumed by
+// stats.time.restart field it populates is only consumed by
 // yals_print_stats (at verbose>=0, they'll just print as 0.00 seconds when
 // the syscall was skipped). At ~14-18% of CPU in profiles before this gate,
 // it was the largest non-algorithmic cost.
@@ -1174,31 +1128,21 @@ static inline void yals_card_unsat_iters (Yals *yals, int cidx, int **begin, int
 
 // wrapper for weight updates
 // needed in order to account for changes in the heap
-static inline void yals_update_var_weight (Yals *yals, int lit, int soft, int sat, double weight_change) {
+static inline void yals_update_var_weight (Yals *yals, int lit, int sat, double weight_change) {
   double *weights;
   STACK_INT *uvars;
   int * pos;
   int var = ABS(lit);
   uvars = &yals->ddfw.uvars_changed;
   pos = yals->ddfw.uvar_changed_pos;
-  if (soft) {
-    if (sat)
-      weights = yals->ddfw.sat1_weights_soft;
-    else 
-      weights = yals->ddfw.unsat_weights_soft;
-  } else {
-    if (sat)
-      weights = yals->ddfw.sat1_weights;
-    else 
-      weights = yals->ddfw.unsat_weights;
-  }
+  if (sat)
+    weights = yals->ddfw.sat1_weights;
+  else
+    weights = yals->ddfw.unsat_weights;
 
-  LOG ("weight update of %lf for lit %d with sat %d and soft %d", weight_change, lit, sat, soft);
+  LOG ("weight update of %lf for lit %d with sat %d", weight_change, lit, sat);
 
   weights[get_pos (lit)] += weight_change;
-
-  // if (soft && !weights[get_pos (lit)] && yals->ddfw.var_unsat_count_soft[abs(lit)]) {
-  // } happens after
 
   if (pos[var] < 0) { // add to changed stack
     pos[var] = 1;

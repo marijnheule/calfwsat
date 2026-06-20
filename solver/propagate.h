@@ -24,14 +24,7 @@ This code extends the solver yal-lin (Md Solimul Chowdhury, Cayden Codel, Marijn
 
   When removing satisifed literals from a cardinality constraint, decrement the bound.
 
-
-  MaxSAT:
-
-    Only propoagate hard constraints. A falsified hard constraint means the formula
-    is unsatisfiable.
-
-    Falsified soft constraints' costs are accumulated and added to solution cost
-    during execution.
+  A falsified constraint during propagation means the formula is unsatisfiable.
 
 */
 
@@ -41,8 +34,6 @@ void yals_preprocess (Yals * yals) {
   STACK(int) * watches, * s;
   signed char * vals;
   int len;
-
-  yals->propagated_soft_weight = 0;
 
   // cardinality constraint handling
   STACK(int) * card_watches, *s1;
@@ -59,16 +50,6 @@ void yals_preprocess (Yals * yals) {
   watches += nvars; // put pointer into middle of stack so you can directly index negative literals
   int cls_cnt = 0;
   for (c = yals->f->cdb.start; c < yals->f->cdb.top; c++) {
-    
-    // can only propagate on hard constraints
-    if (yals->using_maxs_weights) {
-      if (PEEK (yals->maxs_clause_weights, cls_cnt) != yals->maxs_hard_weight) {
-      while (*++c)
-      ;
-      cls_cnt++;
-      continue;
-      }
-    }
     
     occ = c - yals->f->cdb.start;
     assert (occ >= 0);
@@ -91,17 +72,6 @@ void yals_preprocess (Yals * yals) {
   c = yals->card_cdb.start;
   cls_cnt = 0;
   while (c < yals->card_cdb.top) {
-
-    // can only propagate on hard constraints
-    if (yals->using_maxs_weights) {
-      if (PEEK (yals->maxs_card_weights, cls_cnt) != yals->maxs_hard_weight) {
-      while (*c) // proceed until 0 (end of clause)
-        ++c;
-      ++c; // move on to next bound
-      cls_cnt++;
-      continue;
-      }
-    }
 
     occ = c - yals->card_cdb.start;
     bound = *c++;
@@ -254,22 +224,17 @@ void yals_preprocess (Yals * yals) {
       }
       if (!cls_size) {
 
-        // tabulating falsified soft constraint weight
-        yals->propagated_soft_weight += PEEK (yals->maxs_clause_weights, cls_cnt);
+        // a fully falsified hard clause is the empty clause: formula is UNSAT
+        yals->mt = 1;
         falsified++;
 
       } else {
 
-        assert (satisfied || cls_size); 
+        assert (satisfied || cls_size);
         cls_size = 0;
         assert (q >= yals->f->cdb.start + 1);
         assert (q[-1]); //assert (q[-2]); // may be units
         *q++ = 0;
-        // remap weights
-        if (yals->using_maxs_weights) {
-          POKE (yals->maxs_clause_weights, curr_cnt, (PEEK (yals->maxs_clause_weights, cls_cnt)));
-          curr_cnt++;
-        }
       }
     } else { // satisfied clause
       nsat++;
@@ -277,12 +242,6 @@ void yals_preprocess (Yals * yals) {
     }
     c = p;
     cls_cnt++;
-  }
-  if (yals->using_maxs_weights) { // match MaxSAT weights with remaining constraints
-    assert (cls_cnt == COUNT (yals->maxs_clause_weights));
-    LOG ("Old clause cnt %d new clause cnt %d", cls_cnt, curr_cnt);
-    yals->maxs_clause_weights.top = curr_cnt + yals->maxs_clause_weights.start;
-    FIT (yals->maxs_clause_weights);
   }
 
   yals->f->cdb.top = q;
@@ -309,49 +268,27 @@ void yals_preprocess (Yals * yals) {
     for (p = c; (lit = *p); p++)
       if (vals[lit] > 0) satisfied++;
     if (satisfied < bound) {
-      
-      if (yals->using_maxs_weights && bound-satisfied >= curr_len) { // falsified
-        yals->propagated_soft_weight += PEEK (yals->maxs_card_weights, cls_cnt);
-        falsified++;
-      } else {
-        *q++ = bound-satisfied; // new bound after removing sat liteals
-        for (p = c; (lit = *p); p++) {
-          if (vals[lit]) continue; // lit is assigned
-          assert (!vals[lit]);
-          *q++ = lit;
-          nstr++;
-          curr_len++;
-          // remap weights
-        }
-        if (yals->using_maxs_weights) {
-            POKE (yals->maxs_card_weights, curr_cnt, (PEEK (yals->maxs_card_weights, cls_cnt)));
-            curr_cnt++;
-          }
-        LOG ("bound %d satisfied %d nstr %d", bound, satisfied, curr_len);
 
-        if (!yals->using_maxs_weights)
-          assert (bound-satisfied < curr_len); // hard constraints cannot be falsified
-        else { // soft cardinality constraint is falsified
-          assert (bound-satisfied < curr_len || PEEK (yals->maxs_card_weights, curr_cnt-1) != yals->maxs_hard_weight );
-
-          
-        }
-        assert (q >= yals->card_cdb.start + 2);
-        assert (q[-1]); assert (q[-2]);
-        *q++ = 0;
+      *q++ = bound-satisfied; // new bound after removing sat liteals
+      for (p = c; (lit = *p); p++) {
+        if (vals[lit]) continue; // lit is assigned
+        assert (!vals[lit]);
+        *q++ = lit;
+        nstr++;
+        curr_len++;
       }
+      LOG ("bound %d satisfied %d nstr %d", bound, satisfied, curr_len);
+
+      assert (bound-satisfied < curr_len); // hard constraints cannot be falsified
+      assert (q >= yals->card_cdb.start + 2);
+      assert (q[-1]); assert (q[-2]);
+      *q++ = 0;
     } else {
       // want to tabulate this weight? (only if we care about weight of satisfied constraints)
       nsat++; // satisfied cardinality constraint
     }
     c = p;
     cls_cnt++;
-  }
-  if (yals->using_maxs_weights) {  // match MaxSAT weights with remaining constraints
-    assert (cls_cnt == COUNT (yals->maxs_card_weights));
-    LOG ("Old constraint cnt %d new clause cnt %d", cls_cnt, curr_cnt);
-    yals->maxs_card_weights.top = curr_cnt + yals->maxs_card_weights.start;
-    FIT (yals->maxs_card_weights);
   }
   yals->card_cdb.top = q;
   FIT (yals->card_cdb);

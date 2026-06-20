@@ -16,8 +16,6 @@ This code extends the solver yal-lin (Md Solimul Chowdhury, Cayden Codel, Marijn
 #include "invariants.h"
 #include "queue.h"
 #include "propagate.h"
-#include "maxsat.h"
-#include "pure_maxsat.h"
 
 /*------------------------------------------------------------------------*/
 
@@ -404,9 +402,7 @@ void yals_card_sat_weight_update (Yals *yals, int cidx, double w_diff, int avoid
   assert_valid_card_cidx (cidx);
   LOG ("%lf", fabs (w_diff));
 
-  int soft = (yals->using_maxs_weights && !yals->f->hard_card_ids[cidx]);
-  double * weights = soft ? yals->ddfw.sat1_weights_soft
-                          : yals->ddfw.sat1_weights;
+  double * weights = yals->ddfw.sat1_weights;
   int * pos = yals->ddfw.uvar_changed_pos;
   STACK_INT * uvars = &yals->ddfw.uvars_changed;
 
@@ -421,7 +417,7 @@ void yals_card_sat_weight_update (Yals *yals, int cidx, double w_diff, int avoid
       pos[var] = 1;
       PUSH (*uvars, var);
     }
-    LOG ("Weight added for soft? %d sat %lf for lit %d", soft, w_diff, lit);
+    LOG ("Weight added sat %lf for lit %d", w_diff, lit);
   }
 }
 
@@ -438,9 +434,7 @@ void yals_card_unsat_weight_update (Yals *yals, int cidx, double w_diff, int avo
   assert_valid_card_cidx (cidx);
   LOG ("%lf", fabs (w_diff));
 
-  int soft = (yals->using_maxs_weights && !yals->f->hard_card_ids[cidx]);
-  double * weights = soft ? yals->ddfw.unsat_weights_soft
-                          : yals->ddfw.unsat_weights;
+  double * weights = yals->ddfw.unsat_weights;
   int * pos = yals->ddfw.uvar_changed_pos;
   STACK_INT * uvars = &yals->ddfw.uvars_changed;
 
@@ -455,7 +449,7 @@ void yals_card_unsat_weight_update (Yals *yals, int cidx, double w_diff, int avo
       pos[var] = 1;
       PUSH (*uvars, var);
     }
-    LOG ("Weight added for soft? %d unsat %lf for lit %d", soft, w_diff, lit);
+    LOG ("Weight added unsat %lf for lit %d", w_diff, lit);
   }
 }
 
@@ -478,14 +472,12 @@ void yals_card_unsat_weight_update (Yals *yals, int cidx, double w_diff, int avo
 static void yals_card_sat_then_unsat_weight_update (
     Yals *yals, int cidx, double w_sat, double w_unsat, int avoid_lit) {
   assert_valid_card_cidx (cidx);
-  int soft = (yals->using_maxs_weights && !yals->f->hard_card_ids[cidx]);
   int * pos = yals->ddfw.uvar_changed_pos;
   STACK_INT * uvars = &yals->ddfw.uvars_changed;
   int *begin, *end;
 
   if (fabs (w_sat) >= 0.01) {
-    double * sat1 = soft ? yals->ddfw.sat1_weights_soft
-                         : yals->ddfw.sat1_weights;
+    double * sat1 = yals->ddfw.sat1_weights;
     yals_card_sat_iters (yals, cidx, &begin, &end);
     for (; begin != end; begin++) {
       int lit = *begin;
@@ -497,8 +489,7 @@ static void yals_card_sat_then_unsat_weight_update (
   }
 
   if (fabs (w_unsat) >= 0.01) {
-    double * unsat = soft ? yals->ddfw.unsat_weights_soft
-                          : yals->ddfw.unsat_weights;
+    double * unsat = yals->ddfw.unsat_weights;
     yals_card_unsat_iters (yals, cidx, &begin, &end);
     for (; begin != end; begin++) {
       int lit = *begin;
@@ -516,12 +507,6 @@ static void yals_card_sat_then_unsat_weight_update (
 // Weight calculations
 
 /*
-  Level of abstraction for calculating normal clause ddfw weight
-
-  Allows us to easily modify how we want to handle maxsat weights
-
-  TODO: never used this...
-/* 
   calculate the weight of the cardinality constraint
 
   c_weight is ddfw weight
@@ -533,23 +518,14 @@ static void yals_card_sat_then_unsat_weight_update (
   Ideas: different weight depending on bound - nsat
     - would need something to remember the old weight, either function or array
 */
-// Per-constraint MaxSAT cost multiplier: only nontrivial for MaxSAT runs in
-// non-relative mode on soft constraints; everywhere else it's a no-op 1.0.
-static inline double yals_card_maxs_mult (Yals * yals, int cidx) {
-  if (yals->using_maxs_weights && !yals->opts.maxs_init_weight_relative.val
-      && !yals->f->hard_card_ids[cidx])
-    return PEEK (yals->maxs_card_weights, cidx);
-  return 1.0;
-}
-
 // Core cardinality-constraint weight from explicit (bound, nsat, c). This is
 // the single source of truth shared by the external query wrappers below
 // (used by invariants/debug and the non-hot callsites) and by the make/break
 // hot path, which already holds bound/nsat/c in locals and so calls this
 // directly -- avoiding the redundant card_bound / card_sat_count_in_clause /
 // card_weights reloads the wrappers would do, plus the call overhead,
-// since this inlines. card_compute and using_maxs_weights are constant for a
-// whole run, so the switch/maxs_mult branches predict perfectly.
+// since this inlines. card_compute is constant for a whole run, so the
+// switch branch predicts perfectly.
 static inline double yals_card_w_at (Yals * yals, int cidx,
                                      int bound, int nsat, double c) {
   int d = bound - nsat;
@@ -580,7 +556,7 @@ static inline double yals_card_w_at (Yals * yals, int cidx,
       w = 0; // unreachable
   }
   if (w > WEIGHT_MAX) w = WEIGHT_MAX;
-  return w * yals_card_maxs_mult (yals, cidx);
+  return w;
 }
 
 // Core "unsat weight INCREASE when one fewer literal is satisfied" = w(d+1) -
@@ -611,7 +587,7 @@ static inline double yals_card_change_neg_at (Yals * yals, int cidx,
     }
   }
   assert (diff >= 0);
-  return diff * yals_card_maxs_mult (yals, cidx);
+  return diff;
 }
 
 double yals_card_calculate_weight (Yals * yals, int bound, int nsat, double c_weight, int cidx) {
@@ -655,7 +631,7 @@ double yals_card_get_calculated_weight_change_pos (Yals * yals, int cidx) {
     }
   }
   assert (diff >= 0);
-  return diff * yals_card_maxs_mult (yals, cidx);
+  return diff;
 }
 
 /*
@@ -716,45 +692,6 @@ int yals_card_nunsat (Yals * yals) {
   if (yals->unsat.usequeue) return yals->card_unsat.queue.count;
   else return COUNT (yals->card_unsat.stack);
 }
-
-double yals_clause_weight_unsat (Yals * yals) { 
-  return (yals->unsat_soft.maxs_weight);
-}
-
-double yals_card_weight_unsat (Yals * yals) { 
-  assert (!yals->unsat.usequeue); // only using the stack...
-
-  return (yals->card_unsat_soft.maxs_weight);
-}
-
-int yals_clause_hard_unsat (Yals * yals) { 
-  return yals_clauses_nunsat (yals);
-}
-
-int yals_card_hard_unsat (Yals * yals) { 
-  assert (!yals->unsat.usequeue); // only using the stack...
-
-  return yals_card_nunsat (yals);
-}
-
-int yals_hard_unsat (Yals * yals) {
-  return yals_clause_hard_unsat (yals) + yals_card_hard_unsat (yals);
-}
-
-int yals_clause_soft_unsat (Yals * yals) { 
-  return COUNT (yals->unsat_soft.stack);
-}
-
-int yals_card_soft_unsat (Yals * yals) { 
-  assert (!yals->unsat.usequeue); // only using the stack...
-
-  return COUNT (yals->card_unsat_soft.stack);
-}
-
-int yals_soft_unsat (Yals * yals) {
-  return yals_clause_soft_unsat (yals) + yals_card_soft_unsat (yals);
-}
-
 
 int yals_nunsat (Yals * yals) { // now grabbing from all types of clauses
   return yals_clauses_nunsat (yals) + yals_card_nunsat (yals);
@@ -1138,20 +1075,16 @@ static void yals_topk_rebuild_all (Yals * yals) {
 // Test eligibility of a single unified-id constraint (satisfied AND
 // weight >= initial threshold). Used by yals_topk_best and the verify
 // path. Sets *ret_con_type on success.
-static inline int yals_topk_eligible (Yals * yals, int u, int relative, int * ret_con_type) {
+static inline int yals_topk_eligible (Yals * yals, int u, int * ret_con_type) {
   if (u < yals->nclauses) {
-    double thr = (relative && !yals->f->hard_clause_ids[u])
-                 ? PEEK (yals->maxs_clause_weights, u)
-                 : (double) yals->opts.init_clause_weight.val;
+    double thr = (double) yals->opts.init_clause_weight.val;
     if (yals_satcnt (yals, u) > 0 &&
         (yals->ddfw.clause_weights[u] >= thr)) {
       *ret_con_type = TYPECLAUSE; return 1;
     }
   } else {
     int c = u - yals->nclauses;
-    double thr = (relative && !yals->f->hard_card_ids[c])
-                 ? PEEK (yals->maxs_card_weights, c)
-                 : (double) yals->opts.init_card_weight.val;
+    double thr = (double) yals->opts.init_card_weight.val;
     if (yals_card_satcnt (yals, c) >= yals_card_bound (yals, c) &&
         (yals->ddfw.card_weights[c] >= thr)) {
       *ret_con_type = TYPECARDINALITY; return 1;
@@ -1169,13 +1102,12 @@ static int yals_topk_scan_best (Yals * yals, int lit, int * ret_con_type) {
   int p = get_pos (lit);
   int lo = yals->ddfw.nbr_lstart[p], hi = yals->ddfw.nbr_lstart[p+1];
   int * con = yals->ddfw.nbr_con, * heap = yals->ddfw.nbr_heap;
-  int relative = (yals->opts.maxs_init_weight_relative.val && yals->using_maxs_weights);
   int best_cidx = -1, best_ct = 0;
   double best_w = 0.0; int best_uid = INT_MAX;
   for (int s = lo; s < hi; s++) {
     int u = con[heap[s]];
     int ct;
-    if (!yals_topk_eligible (yals, u, relative, &ct)) continue;
+    if (!yals_topk_eligible (yals, u, &ct)) continue;
     int cidx = (ct == TYPECLAUSE) ? u : u - yals->nclauses;
     double w = (ct == TYPECLAUSE) ? yals->ddfw.clause_weights[cidx]
                                   : yals->ddfw.card_weights[cidx];
@@ -1208,7 +1140,6 @@ static int yals_topk_best (Yals * yals, int lit, int * ret_con_type) {
   int K = yals->ddfw.topk_k;
   int * list = yals->ddfw.topk_list + p * K;
   int * con = yals->ddfw.nbr_con;
-  int relative = (yals->opts.maxs_init_weight_relative.val && yals->using_maxs_weights);
   // Match yals_nbr_best's contract: return per-type cidx, not unified id.
   // For cards we'd be returning nclauses+cidx otherwise, which the caller
   // indexes straight into card_weights[] -- out of bounds, silent
@@ -1219,7 +1150,7 @@ static int yals_topk_best (Yals * yals, int lit, int * ret_con_type) {
     walked++;
     int u = con[list[i]];
     int ct;
-    if (yals_topk_eligible (yals, u, relative, &ct)) {
+    if (yals_topk_eligible (yals, u, &ct)) {
       found_cidx = (ct == TYPECLAUSE) ? u : u - yals->nclauses;
       found_ct = ct; break;
     }
@@ -1481,37 +1412,14 @@ void yals_reset_ddfw (Yals * yals)
   }
 
   yals_clear_heap (yals, &yals->ddfw.uvars_heap);
-  if (yals->using_maxs_weights) {
-    yals_clear_heap (yals, &yals->ddfw.uvars_heap_soft);
-    CLEAR (yals->ddfw.uvars_soft);
-    for (int v=1; v<yals->nvars; v++)
-    {
-      yals->ddfw.var_unsat_count_soft [v] = 0;
-      yals->ddfw.uvar_pos_soft [v] = -1;
-    }
-
-    for (int i=1; i< yals->nvars; i++)
-    {
-      yals->ddfw.unsat_weights_soft [get_pos (i)] = 0;
-      yals->ddfw.unsat_weights_soft [get_pos (-i)] =0;
-      yals->ddfw.sat1_weights_soft [get_pos (i)] = 0;
-      yals->ddfw.sat1_weights_soft [get_pos (-i)] = 0;
-    }
-  }
 
   // for resetting constraint weights on restart
   if (yals->opts.reset_weights_on_restart.val) {
     for (int i=0; i< yals->nclauses; i++) {
-      if (yals->opts.maxs_init_weight_relative.val && yals->using_maxs_weights && !yals->f->hard_clause_ids[i])
-        yals->ddfw.clause_weights [i] = PEEK (yals->maxs_clause_weights, i);
-      else
-        yals->ddfw.clause_weights [i] = yals->opts.init_clause_weight.val;
+      yals->ddfw.clause_weights [i] = yals->opts.init_clause_weight.val;
     }
     for (int i=0; i< yals->card_nclauses; i++) {
-      if (yals->opts.maxs_init_weight_relative.val && yals->using_maxs_weights && !yals->f->hard_card_ids[i])
-        yals->ddfw.card_weights [i] = PEEK (yals->maxs_card_weights, i);
-      else
-        yals->ddfw.card_weights [i] = yals->opts.init_card_weight.val;
+      yals->ddfw.card_weights [i] = yals->opts.init_card_weight.val;
     }
     // --topk: weights changed in bulk; rebuild the structure.
     if (yals->opts.topk.val > 0) yals_topk_rebuild_all (yals);
@@ -1530,14 +1438,11 @@ static void yals_reset_unsat (Yals * yals) {
 /*------------------------------------------------------------------------*/
 
 void yals_make_clauses_after_flipping_lit (Yals * yals, int lit) {
-  double start = yals_time_phase (yals);
   const int * p, * occs;
   int cidx, len, occ;
   double card_unsat_weight_change, card_new_unsat_weight, card_old_critical_weight, \
   card_new_critical_weight, card_critical_weight_change, card_old_unsat_weight;
   int bound, oldnsat;
-  int soft = 0;
-  double maxs_weight = 1.0;
 #if !defined(NDEBUG) || !defined(NYALSTATS)
   int made = 0;
 #endif
@@ -1546,21 +1451,12 @@ void yals_make_clauses_after_flipping_lit (Yals * yals, int lit) {
   for (p = occs; (occ = *p) >= 0; p++) {
     len = occ & LENMASK;
     cidx = occ >> LENSHIFT;
-    maxs_weight = 1.0;
     if (yals_incsatcnt (yals, cidx, lit, len))
     {  // clause was already sat
       if (yals->ddfw.sat_count_in_clause [cidx] == 2) // 1 to 2
       {  // updating sat weights when moving from 1 to 2, becasue it is no longer critical
-
-        soft = 0;
-        if (yals->using_maxs_weights && !yals->f->hard_clause_ids[cidx]) {
-          soft = 1;
-          if (!yals->opts.maxs_init_weight_relative.val)
-            maxs_weight = PEEK (yals->maxs_clause_weights, cidx);
-        }
-
-        int other = yals->crit [cidx] ^ lit; // ignore the second lit that was just xor'd onto crit    
-        yals_update_var_weight (yals, other, soft,1, -yals->ddfw.clause_weights [cidx] * maxs_weight);
+        int other = yals->crit [cidx] ^ lit; // ignore the second lit that was just xor'd onto crit
+        yals_update_var_weight (yals, other, 1, -yals->ddfw.clause_weights [cidx]);
       }
       continue;
     }
@@ -1664,10 +1560,6 @@ void yals_make_clauses_after_flipping_lit (Yals * yals, int lit) {
 
     assert (card_unsat_weight_change <= 0); // weight must get smaller or stay the same
 
-    soft = 0;
-    if (yals->using_maxs_weights && !yals->f->hard_card_ids[cidx])
-      soft = 1;
-
     if (oldnsat == bound) { // 2)
       // remove critical weights
       yals_card_sat_weight_update (yals, cidx, -card_old_critical_weight, lit);
@@ -1675,13 +1567,13 @@ void yals_make_clauses_after_flipping_lit (Yals * yals, int lit) {
       // remove unsat weights
       yals_card_unsat_weight_update (yals, cidx, -card_old_unsat_weight, lit);
       // remove unsat weight of lit
-      yals_update_var_weight (yals, lit, soft,0, -card_old_unsat_weight);
+      yals_update_var_weight (yals, lit, 0, -card_old_unsat_weight);
 
       // change critical weights
       yals_card_sat_weight_update (yals, cidx, card_critical_weight_change, lit);
 
       // add critical weight of lit
-      yals_update_var_weight (yals, lit, soft,1,card_new_critical_weight);
+      yals_update_var_weight (yals, lit, 1,card_new_critical_weight);
 
 
       yals_dequeue (yals, cidx,TYPECARDINALITY);
@@ -1692,10 +1584,10 @@ void yals_make_clauses_after_flipping_lit (Yals * yals, int lit) {
 
     } else if (oldnsat < bound - 1) { // 4)
       // remove unsat weight of lit
-      yals_update_var_weight (yals, lit, soft,0,-card_old_unsat_weight);
+      yals_update_var_weight (yals, lit, 0,-card_old_unsat_weight);
 
       // add critical weight of lit
-      yals_update_var_weight (yals, lit, soft,1,card_new_critical_weight);
+      yals_update_var_weight (yals, lit, 1,card_new_critical_weight);
 
       // change critical weights of sat lits, then unsat weights of unsat lits
       // (fused; same avoid_lit, sat partition first -- preserves push order)
@@ -1715,18 +1607,14 @@ void yals_make_clauses_after_flipping_lit (Yals * yals, int lit) {
 #ifndef NYALSTATS
   yals->stats.made += made;
 #endif
-
-  yals->stats.maxs_time.make_time += yals_time_phase (yals) - start;
 }
 
 void yals_break_clauses_after_flipping_lit (Yals * yals, int lit) {
-  double start = yals_time_phase (yals);
   const int * p, * occs;
   int occ, cidx, len;
   double card_unsat_weight_change, card_new_unsat_weight, card_old_critical_weight, \
   card_new_critical_weight, card_critical_weight_change, card_old_unsat_weight;
   int bound, oldnsat;
-  int soft = 0;
 #if !defined(NDEBUG) || !defined(NYALSTATS)
   int broken = 0;
 #endif
@@ -1737,13 +1625,8 @@ void yals_break_clauses_after_flipping_lit (Yals * yals, int lit) {
     if (yals_decsatcnt (yals, cidx, -lit, len))
     { // clause still sat
        if (yals->ddfw.sat_count_in_clause [cidx] == 1) { // 2 to 1
-        // Route through the soft path if this is a MaxSAT soft clause; we
-        // don't multiply by maxs_weight here because the value being added
-        // is the dynamic clause_weight, which is already scaled in
-        // relative mode (and the non-relative branch was assigning a local
-        // that nothing read -- removed).
-        soft = (yals->using_maxs_weights && !yals->f->hard_clause_ids[cidx]);
-        yals_update_var_weight (yals, yals->crit[cidx], soft, 1, yals->ddfw.clause_weights [cidx]);
+        // The value being added is the dynamic clause_weight.
+        yals_update_var_weight (yals, yals->crit[cidx], 1, yals->ddfw.clause_weights [cidx]);
        }
       continue;
     }
@@ -1834,19 +1717,15 @@ void yals_break_clauses_after_flipping_lit (Yals * yals, int lit) {
 
     card_critical_weight_change = card_new_critical_weight - card_old_critical_weight;
 
-    soft = 0;
-    if (yals->using_maxs_weights && !yals->f->hard_card_ids[cidx])
-      soft = 1;
-
     if (oldnsat == bound+1) { // 2)
       // add critical weights
       yals_card_sat_weight_update (yals, cidx, card_new_critical_weight, -lit);
     } else if (oldnsat == bound) { // 3)
       // remove unsat weights
       yals_card_unsat_weight_update (yals, cidx, card_new_unsat_weight, 0);
-      
+
       // remove critical weight of lit
-      yals_update_var_weight (yals,-lit, soft, 1, -card_old_critical_weight);
+      yals_update_var_weight (yals,-lit, 1, -card_old_critical_weight);
 
       // change critical weights
       yals_card_sat_weight_update (yals, cidx, card_critical_weight_change, -lit);
@@ -1861,10 +1740,10 @@ void yals_break_clauses_after_flipping_lit (Yals * yals, int lit) {
       assert (card_unsat_weight_change >= 0); // weight must get larger or stay the same
 
       // remove critical weight of lit
-      yals_update_var_weight (yals,-lit, soft, 1, -card_old_critical_weight);
+      yals_update_var_weight (yals,-lit, 1, -card_old_critical_weight);
 
       // add unsat weight of lit
-      yals_update_var_weight (yals,-lit, soft, 0, card_new_unsat_weight);
+      yals_update_var_weight (yals,-lit, 0, card_new_unsat_weight);
 
       // change critical weights of sat lits, then unsat weights of unsat lits
       // (fused; same avoid_lit, sat partition first -- preserves push order)
@@ -1872,7 +1751,7 @@ void yals_break_clauses_after_flipping_lit (Yals * yals, int lit) {
         yals, cidx, card_critical_weight_change, card_unsat_weight_change, -lit);
 
       // when flipped lit in constraint already broken, should be added to uvars (not enqueued though)
-      yals_add_a_var_to_uvars (yals, lit, soft);
+      yals_add_a_var_to_uvars (yals, lit);
     }
   }
   LOG ("flipping %d has broken %d cardinality constraints", lit, broken);
@@ -1886,8 +1765,6 @@ void yals_break_clauses_after_flipping_lit (Yals * yals, int lit) {
 #ifndef NYALSTATS
   yals->stats.broken += broken;
 #endif
-
-  yals->stats.maxs_time.break_time += yals_time_phase (yals) - start;
 }
 
 static void yals_update_minimum (Yals * yals) {
@@ -1983,25 +1860,11 @@ void yals_flip_ddfw (Yals * yals, int lit) {
     yals->ddfw.uvar_pos [var] = -1;
   }
 
-  // remove from uvar soft stack
-  if (yals->using_maxs_weights) {
-    if (yals->ddfw.uvar_pos_soft [var] > -1) {
-      yals->ddfw.var_unsat_count_soft [var] = 0;
-      int remove_pos = yals->ddfw.uvar_pos_soft [var];
-      int top_element = TOP (yals->ddfw.uvars_soft);
-      POKE (yals->ddfw.uvars_soft, remove_pos, top_element);
-      yals->ddfw.uvar_pos_soft [top_element] = remove_pos;
-      POP (yals->ddfw.uvars_soft);
-      yals->ddfw.uvar_pos_soft [var] = -1;
-    }
-  }
-
   LOG ("update constraints after flip %d", lit);
 
   yals_make_clauses_after_flipping_lit (yals, -lit);
   yals_break_clauses_after_flipping_lit (yals, -lit);
-  if (!yals->using_maxs_weights) // otherwise cost saved separately
-    yals_update_minimum (yals);
+  yals_update_minimum (yals);
   yals->last_flip_unsat_count = yals_nunsat (yals);
 }
 
@@ -2586,19 +2449,12 @@ static void yals_connect (Yals * yals) {
   if (yals->owns_formula) {
   yals_msg (yals, 1, "connecting %d clauses", nclauses);
   NEWN (yals->f->lits, nclauses);
-  NEWN (yals->f->hard_clause_ids, nclauses);
 
   lits = 0;
   for (cidx = 0; cidx < nclauses; cidx++) {
     yals->f->lits[cidx] = lits;
     while (PEEK (yals->f->cdb, lits)) lits++;
     lits++;
-    if (yals->using_maxs_weights) {
-    if (PEEK (yals->maxs_clause_weights, cidx) == yals->maxs_hard_weight)
-      yals->f->hard_clause_ids[cidx] = 1;
-    else
-      yals->f->hard_clause_ids[cidx] = 0;
-    }
   }
   assert (lits == COUNT (yals->f->cdb));
 
@@ -2747,10 +2603,6 @@ static void yals_connect (Yals * yals) {
   else {
     NEWN (yals->pos, nclauses);
     for (cidx = 0; cidx < nclauses; cidx++) yals->pos[cidx] = -1;
-    if (yals->using_maxs_weights) {
-      NEWN (yals->pos_soft, nclauses);
-      for (cidx = 0; cidx < nclauses; cidx++) yals->pos_soft[cidx] = -1;
-    }
   }
 
   yals->nvarwords = (nvars + BITS_PER_WORD - 1) / BITS_PER_WORD;
@@ -2871,7 +2723,6 @@ void yals_card_connect (Yals * yals) {
   if (yals->owns_formula) {
   yals_msg (yals, 1, "connecting %d cardinality constraints", nclauses);
   NEWN (yals->f->card_lits, nclauses);
-  NEWN (yals->f->hard_card_ids, nclauses);
 
   // have cidx point to bound of each clause
   lits = 0;
@@ -2879,12 +2730,6 @@ void yals_card_connect (Yals * yals) {
     yals->f->card_lits[cidx] = lits;
     while (PEEK (yals->card_cdb, lits)) lits++;
     lits++;
-    if (yals->using_maxs_weights) {
-    if (PEEK (yals->maxs_card_weights, cidx) == yals->maxs_hard_weight)
-      yals->f->hard_card_ids[cidx] = 1;
-    else
-      yals->f->hard_card_ids[cidx] = 0;
-    }
   }
   assert (lits == COUNT (yals->card_cdb));
 
@@ -3012,10 +2857,6 @@ void yals_card_connect (Yals * yals) {
   // else {
     NEWN (yals->card_pos, yals->card_nclauses);
     for (cidx = 0; cidx < yals->card_nclauses; cidx++) yals->card_pos[cidx] = -1;
-    if (yals->using_maxs_weights) {
-      NEWN (yals->card_pos_soft, nclauses);
-      for (cidx = 0; cidx < yals->card_nclauses; cidx++) yals->card_pos_soft[cidx] = -1;
-    }
   // }
 
 
@@ -3231,21 +3072,6 @@ Yals * yals_new_with_mem_mgr (void * mgr,
 
   yals->stats.nheap_updated = 0;
 
-  yals->stats.maxs_best_hard_cnt = INT_MAX;
-  yals->stats.maxs_best_soft_cnt = INT_MAX;
-  yals->stats.maxs_best_cost = YALS_DOUBLE_MAX;
-  yals->stats.maxs_tmp_weight = YALS_DOUBLE_MAX;
-  yals->stats.maxs_worst_cost = -1;
-  yals->stats.maxs_last = YALS_DOUBLE_MAX;
-
-  yals->stats.maxs_time.weight_transfer = 0;
-  yals->stats.maxs_time.break_time = 0;
-  yals->stats.maxs_time.make_time = 0;
-  yals->stats.maxs_time.initialization = 0;
-  yals->stats.maxs_time.var_selection = 0;
-  yals->stats.maxs_time.soft_var_selection = 0;
-  yals->stats.maxs_time.hard_var_selection = 0;
-
   yals_inc_allocated (yals, sizeof *yals);
   yals_srand (yals, 0);
   yals_initopts (yals);
@@ -3344,23 +3170,9 @@ void yals_del (Yals * yals) {
 
   RELEASE (yals->lit_scores);
 
-  //maxs
-  RELEASE (yals->maxs_clause_weights);
-  RELEASE (yals->maxs_card_weights);
-  if (yals->owns_formula) DELN (yals->f->hard_clause_ids, yals->nclauses);
-  if (yals->owns_formula) DELN (yals->f->hard_card_ids, yals->card_nclauses);
   if (yals->owns_formula) DELN (yals->f->clause_has_neg, yals->nclauses);
   if (yals->owns_formula) DELN (yals->f->card_has_neg, yals->card_nclauses);
   // more to be deledted that is untracked
-
-  if (yals->using_maxs_weights) {
-    DELN (yals->pos_soft, yals->nclauses);
-    DELN (yals->card_pos_soft, yals->card_nclauses);
-    RELEASE (yals->ddfw.uvars_heap_soft.stack);
-
-    DELN (yals->ddfw.uvars_heap_soft.pos, yals->nvars);
-    DELN (yals->ddfw.uvars_heap_soft.score, yals->nvars);
-  }
 
   // weight-transfer state
   RELEASE (yals->ddfw.satisfied_clauses);
@@ -3368,7 +3180,6 @@ void yals_del (Yals * yals) {
   RELEASE (yals->ddfw.helper_hash_changed_idx1);
   RELEASE (yals->ddfw.sat_clauses);
   RELEASE (yals->ddfw.uvars);
-  RELEASE (yals->ddfw.uvars_soft);
   RELEASE (yals->ddfw.card_helper_hash_changed_idx);
   RELEASE (yals->ddfw.uvars_changed);
   RELEASE (yals->ddfw.probe_bests);
@@ -3400,8 +3211,6 @@ void yals_del (Yals * yals) {
   free (yals->ddfw.uvar_pos);
   free (yals->ddfw.uvar_changed_pos);
   free (yals->ddfw.var_unsat_count );
-  free (yals->ddfw.uvar_pos_soft);
-  free (yals->ddfw.var_unsat_count_soft);
   free (yals->ddfw.card_sat_count_in_clause);
   free (yals->ddfw.card_sat_dirty);
   free (yals->ddfw.xfer_sources);
@@ -3417,8 +3226,6 @@ void yals_del (Yals * yals) {
   free (yals->ddfw.tkm_wts);
   free (yals->ddfw.card_helper_hash_clauses);
   free (yals->ddfw.card_weights );
-  free (yals->ddfw.unsat_weights_soft );
-  free (yals->ddfw.sat1_weights_soft);
 
 
   // Free the shared formula struct itself only from its owner. Non-owners had
@@ -3540,17 +3347,9 @@ static void yals_new_clause (Yals * yals) {
     yals->mt = 1;
   }
   if (len == 1) {
-    // soft units are not assigned
-    if (yals->using_maxs_weights) {
-      if (yals->parsed_weight != yals->maxs_hard_weight)
-        LOG("found soft unit %d",PEEK (yals->clause, 0));
-      else 
-        PUSH (yals->trail, PEEK (yals->clause, 0));
-    } else {
-      lit = PEEK (yals->clause, 0);
-      LOG ("found unit clause %d in original formula", lit);
-      PUSH (yals->trail, lit);
-      }
+    lit = PEEK (yals->clause, 0);
+    LOG ("found unit clause %d in original formula", lit);
+    PUSH (yals->trail, lit);
   }
   for (p = yals->clause.start; p < yals->clause.top; p++) {
     lit = *p;
@@ -3558,16 +3357,6 @@ static void yals_new_clause (Yals * yals) {
   }
   PUSH (yals->f->cdb, 0);
   LOGLITS (yals->f->cdb.top - len - 1, "new length %d", len);
-  if (yals->using_maxs_weights) {
-      PUSH (yals->maxs_clause_weights, yals->parsed_weight);
-      if (yals->parsed_weight != yals->maxs_hard_weight)
-        yals->maxs_acc_hard_weight += yals->parsed_weight;
-    }
-}
-
-void yals_clause_add_weight (Yals * yals, double weight) {
-  assert (weight >= 0);
-  yals->parsed_weight = weight;
 }
 
 static signed char yals_sign (int lit) { return (lit < 0) ? -1 : 1; }
@@ -3589,20 +3378,6 @@ void yals_add (Yals * yals, int lit) {
     else if (!mark) {
       PUSH (yals->clause, lit);
       POKE (yals->mark, idx, yals_sign (lit));
-    }
-
-    // check if formula is pure on each lit parsed
-    if (yals->using_maxs_weights) {
-      int polarity = ABS (lit) / lit;
-      if (yals->maxs_hard_weight == yals->parsed_weight) {
-        if (yals->hard_polarity == 0) {
-          yals->hard_polarity = polarity;
-        } else if (yals->hard_polarity != polarity) 
-          yals->is_pure = 0;
-      } else {
-        if (yals->hard_polarity == polarity) 
-          yals->is_pure = 0;
-      }
     }
 
   } else {
@@ -3749,30 +3524,10 @@ static void yals_restart_inner (Yals * yals) {
       yals_probe_pool_record_heat (yals->probe_pool, yals);
   }
   yals->stats.restart.inner.count++;
-  if (yals->opts.verbose.val >= 2) {
-      if (yals->using_maxs_weights)
-        yals_maxs_report (yals, "restart %lld", yals->stats.restart.inner.count);
-      else
+  if (yals->opts.verbose.val >= 2)
     yals_report (yals, "restart %lld", yals->stats.restart.inner.count);
-      }
 
-  if (yals->using_maxs_weights) {
-    if (yals->opts.improving.val
-        && yals->stats.maxs_best_cost < yals->stats.maxs_last) {
-      yals->stats.pick.keep++;
-      yals_msg (yals, 2,
-        "keeping strategy and assignment thus essentially skipping restart");
-    } else {
-      yals_pick_strategy (yals);
-      save_current_assignment (yals);
-      yals_pick_assignment (yals, 0);
-      yals_update_sat_and_unsat (yals);
-      yals->stats.tmp = INT_MAX;
-      yals->stats.maxs_tmp_weight = YALS_DOUBLE_MAX;
-      yals->stats.probe_start_flips = yals->stats.flips;
-      yals_save_new_minimum (yals);
-    }
-  } else {
+  {
     if (yals->opts.improving.val
         && yals->stats.best < yals->stats.last) {
       yals->stats.pick.keep++;
@@ -3789,7 +3544,6 @@ static void yals_restart_inner (Yals * yals) {
     }
   }
   yals->stats.last = yals->stats.best;
-  yals->stats.maxs_last = yals->stats.maxs_best_cost;
   yals->stats.time.restart += yals_time_phase (yals) - start;
 }
 
@@ -3805,20 +3559,12 @@ static void yals_restart_inner (Yals * yals) {
 */
 void yals_update_lit_weights_on_weight_transfer (Yals *yals, int sink, int source, int constraint_type_source, int constraint_type_sink, double w)
 {
-  double maxs_weight = 1.0;
-  int soft = 0;
-  // if source is critical, 
+  // if source is critical,
   //   pulling weight from critical literals
   if (constraint_type_source == TYPECLAUSE) {
-    if (yals->using_maxs_weights && !yals->f->hard_clause_ids[source]) {
-      soft = 1;
-      if (!yals->opts.maxs_init_weight_relative.val)
-        maxs_weight = PEEK (yals->maxs_clause_weights, source);
-    }
-
     if (yals_satcnt (yals, source) == 1) // also pulling this transferred weight off critical lit list
-      yals_update_var_weight (yals, yals->crit [source], soft, 1, -w * maxs_weight);
-  } else if (constraint_type_source == TYPECARDINALITY) { // ASSUME Cardinality constraints are soft
+      yals_update_var_weight (yals, yals->crit [source], 1, -w);
+  } else if (constraint_type_source == TYPECARDINALITY) {
     if (yals_card_satcnt (yals, source) <= yals_card_bound (yals, source)) {
       // critical cardinality constraint when falsified
       // get change in critical values
@@ -3843,18 +3589,11 @@ void yals_update_lit_weights_on_weight_transfer (Yals *yals, int sink, int sourc
   }
 
   
-  maxs_weight = 1.0;
   // adding weight to unsat literals from sink
   if (constraint_type_sink == TYPECLAUSE) {
     int * lits = yals_lits (yals, sink), lit;
-    if (yals->using_maxs_weights && !yals->f->hard_clause_ids[sink]) {
-      soft = 1;
-      if (!yals->opts.maxs_init_weight_relative.val)
-        maxs_weight = PEEK (yals->maxs_clause_weights, sink);
-    }
-
     while ((lit = *lits++))
-      yals_update_var_weight (yals, lit, soft, 0, w *  maxs_weight);
+      yals_update_var_weight (yals, lit, 0, w);
   } else if (constraint_type_sink == TYPECARDINALITY) {
     // critical cardinality constraint when falsified
     // get change in critical values
@@ -3882,18 +3621,13 @@ double linear_wt (Yals * yals, int source, int type_source)
 {
   double source_weight = 0.0;
   double init_w = 0.0;
-  int relative = (yals->opts.maxs_init_weight_relative.val && yals->using_maxs_weights);
 
   if (type_source == TYPECLAUSE) {
     source_weight = yals->ddfw.clause_weights [source];
-    init_w = (relative && !yals->f->hard_clause_ids[source])
-             ? PEEK (yals->maxs_clause_weights, source)
-             : (double) yals->opts.init_clause_weight.val;
+    init_w = (double) yals->opts.init_clause_weight.val;
   } else if (type_source == TYPECARDINALITY) {
     source_weight = yals->ddfw.card_weights [source];
-    init_w = (relative && !yals->f->hard_card_ids[source])
-             ? PEEK (yals->maxs_card_weights, source)
-             : (double) yals->opts.init_card_weight.val;
+    init_w = (double) yals->opts.init_card_weight.val;
   }
 
   // weight transfer: w = source_weight^p + a*source_weight + c
@@ -3921,9 +3655,7 @@ double linear_wt (Yals * yals, int source, int type_source)
 /*
   Given a constraint (either clause or cardinality),
   find neighboring sat clause/constraint with largest weight.
-  Weight must be larger than initial weight. 
-  If relative, initial weight for soft constraints is
-  MaxSAT weight.
+  Weight must be larger than initial weight.
 
   Could return -1 if no source for weight transfer was found.
 
@@ -3949,26 +3681,12 @@ int yals_get_max_weight_sat_clause (Yals *yals, int cidx, int constraint_type, i
   int * occs, *p;
   int source = -1;
   LOG ("get max sat for %d", cidx);
-  int takes_hard, takes_soft;
-  int source_hard = 0;
-
-  takes_hard = takes_soft = 1;
 
   best_w = 0.0;
   // Tie-break: among equal-weight eligible neighbors prefer the smallest
   // unified id (clause u, or nclauses+card). Shared by the scan and the heap
   // so both pick the same source -> identical search path with/without litheap.
   int best_uid = INT_MAX;
-
-  // soft constraints are using their MaxSAT weights as constraint weights
-  int relative = (yals->opts.maxs_init_weight_relative.val && yals->using_maxs_weights);
-
-  // check if source can be hard or soft
-  //  we are only applying this to random transfer now
-  //  everything can take from everything in this function
-  // if (!yals->current_weight_transfer_soft && !yals->opts.maxs_hard_takes_soft.val)
-  // if (yals->current_weight_transfer_soft && !yals->opts.maxs_soft_takes_hard.val)
-
 
   // get lits from the input constraint
   if (constraint_type == TYPECLAUSE) {
@@ -4014,13 +3732,9 @@ int yals_get_max_weight_sat_clause (Yals *yals, int cidx, int constraint_type, i
       nidx = occ >> LENSHIFT;
       LOG ("CHECKING %d with weight %lf", nidx, yals->ddfw.clause_weights [nidx]);
 
-      source_hard = yals->f->hard_clause_ids [nidx];
-      if ((source_hard && !takes_hard) || (!source_hard && !takes_soft)) continue;
-
       if (yals_satcnt (yals, nidx)>0) { // clause is satisfied
         // check if clause has geq it's initial weight, then (weight, id) tie-break
-        double thr = (relative && !source_hard) ? PEEK (yals->maxs_clause_weights, nidx)
-                                                 : (double) yals->opts.init_clause_weight.val;
+        double thr = (double) yals->opts.init_clause_weight.val;
         if (yals->ddfw.clause_weights [nidx] >= thr) {
           double cw = yals->ddfw.clause_weights [nidx];
           if (cw > best_w || (cw == best_w && nidx < best_uid)) {
@@ -4035,13 +3749,9 @@ int yals_get_max_weight_sat_clause (Yals *yals, int cidx, int constraint_type, i
       nidx = occ >> LENSHIFT;
       LOG ("CHECKING card %d with weight %lf", nidx, yals->ddfw.clause_weights [nidx]);
 
-      source_hard = yals->f->hard_card_ids [nidx];
-      if ((source_hard && !takes_hard) || (!source_hard && !takes_soft)) continue;
-
       if (yals_card_satcnt (yals, nidx)>= yals_card_bound (yals, nidx)) { // constraint satisfied
         // check if cardinality constraint has geq it's initial weight, then (weight, id) tie-break
-        double thr = (relative && !source_hard) ? PEEK (yals->maxs_card_weights, nidx)
-                                                 : (double) yals->opts.init_card_weight.val;
+        double thr = (double) yals->opts.init_card_weight.val;
         if (yals->ddfw.card_weights [nidx] >= thr) {
           double cw = yals->ddfw.card_weights [nidx];
           int cuid = yals->nclauses + nidx;
@@ -4078,8 +3788,6 @@ int yals_get_top_k_max_weight_sat_clause (
   int * lits = (constraint_type == TYPECLAUSE)
                ? yals_lits (yals, cidx)
                : yals_card_lits (yals, cidx);
-  int relative = (yals->opts.maxs_init_weight_relative.val
-                  && yals->using_maxs_weights);
   // long constraints (especially cards) can be hundreds, so use heap.
   // Upper-bound by N; we never keep more than N candidates anyway, but
   // we also want a temporary capacity at least as large as the literal
@@ -4115,11 +3823,8 @@ int yals_get_top_k_max_weight_sat_clause (
       int * occs = yals_occs (yals, lit), occ, * p;
       for (p = occs; (occ = *p) >= 0; p++) {
         int nidx = occ >> LENSHIFT;
-        int source_hard = yals->f->hard_clause_ids[nidx];
         if (yals_satcnt (yals, nidx) > 0) {
-          double thr = (relative && !source_hard)
-                       ? PEEK (yals->maxs_clause_weights, nidx)
-                       : (double) yals->opts.init_clause_weight.val;
+          double thr = (double) yals->opts.init_clause_weight.val;
           if (yals->ddfw.clause_weights[nidx] >= thr) {
             double cw = yals->ddfw.clause_weights[nidx];
             if (cw > best_w || (cw == best_w && nidx < best_uid)) {
@@ -4133,12 +3838,9 @@ int yals_get_top_k_max_weight_sat_clause (
       occs = yals_card_occs (yals, lit);
       for (p = occs; (occ = *p) >= 0; p++) {
         int nidx = occ >> LENSHIFT;
-        int source_hard = yals->f->hard_card_ids[nidx];
         if (yals_card_satcnt (yals, nidx)
             >= yals_card_bound (yals, nidx)) {
-          double thr = (relative && !source_hard)
-                       ? PEEK (yals->maxs_card_weights, nidx)
-                       : (double) yals->opts.init_card_weight.val;
+          double thr = (double) yals->opts.init_card_weight.val;
           if (yals->ddfw.card_weights[nidx] >= thr) {
             double cw = yals->ddfw.card_weights[nidx];
             int cuid = yals->nclauses + nidx;
@@ -4209,29 +3911,16 @@ int yals_get_random_sat_clause (Yals * yals, int * constraint_type) {
     int best_idx_cls = -1;
     double best_wt_cls = 0;
 
-    int takes_hard, takes_soft;
-    int source_hard = 0;
-
-    takes_hard = takes_soft = 1;
-
-    // check if source can be hard or soft
-    if (yals->using_maxs_weights && !yals->current_weight_transfer_soft && !yals->opts.maxs_hard_takes_soft.val)
-      takes_soft = 0;
-    if (yals->using_maxs_weights && yals->current_weight_transfer_soft && !yals->opts.maxs_soft_takes_hard.val)
-      takes_hard = 0;
-    
     LOG ("Get random SAT clause");
 
-    // --oldestsource: walk the LRU list head->tail, return the first satisfied,
-    // hard/soft-compatible source that passes the --min-weight weight floor.
+    // --oldestsource: walk the LRU list head->tail, return the first satisfied
+    // source that passes the --min-weight weight floor.
     // Replaces the random rejection-sampling loop below.
     if (yals->opts.oldestsource.val) {
       int * next = yals->ddfw.oldsrc_next;
       for (int u = yals->ddfw.oldsrc_head; u >= 0; u = next[u]) {
         if (u < yals->nclauses) {
           int clause = u;
-          source_hard = yals->f->hard_clause_ids[clause];
-          if ((source_hard && !takes_hard) || (!source_hard && !takes_soft)) continue;
           if (yals_satcnt (yals, clause) <= 0) continue;
           // --min_weight: block source if its DDFW weight <= M (a source at
           // M has zero transfer headroom and would be pointless to pick).
@@ -4240,8 +3929,6 @@ int yals_get_random_sat_clause (Yals * yals, int * constraint_type) {
           *constraint_type = TYPECLAUSE; return clause;
         } else {
           int card = u - yals->nclauses;
-          source_hard = yals->f->hard_card_ids[card];
-          if ((source_hard && !takes_hard) || (!source_hard && !takes_soft)) continue;
           if (yals_card_satcnt (yals, card) < yals_card_bound (yals, card)) continue;
           // --min_weight: block source if its DDFW weight <= M.
           if (yals->ddfw.card_weights[card] <= yals->opts.min_weight.val)
@@ -4262,20 +3949,11 @@ int yals_get_random_sat_clause (Yals * yals, int * constraint_type) {
 
       // weighted selection of constraint based on number of a particular consrtaint type
 
-      if (yals->using_maxs_weights && yals->is_pure && yals->cardinality_is_hard && !yals->current_weight_transfer_soft && !yals->opts.maxs_hard_takes_soft.val) {
-        // middle mile optimization (cardinality constraints are all hard)
-        selection = yals_rand_mod (yals, INT_MAX) % (yals->card_nclauses);
-        selection += yals->nclauses;
-      } else {
-        selection = yals_rand_mod (yals, INT_MAX) % (yals->nclauses + yals->card_nclauses);
-      }
+      selection = yals_rand_mod (yals, INT_MAX) % (yals->nclauses + yals->card_nclauses);
 
       if (selection < yals->nclauses) { // clause
         int clause = yals_rand_mod (yals, INT_MAX) % yals->nclauses;
         LOG ("Try %d with %d and %lf", clause, yals_satcnt (yals, clause) ,yals->ddfw.clause_weights [clause] );
-        
-        source_hard = yals->f->hard_clause_ids [clause];
-        if ((source_hard && !takes_hard) || (!source_hard && !takes_soft)) continue;
 
         if (yals_satcnt (yals, clause) > 0) {
           if (get_something) {
@@ -4295,9 +3973,6 @@ int yals_get_random_sat_clause (Yals * yals, int * constraint_type) {
       } else { // cardinality constraint
         int card = yals_rand_mod (yals, INT_MAX) % yals->card_nclauses;
         LOG ("Try constraint %d with %d and %d and %lf", card, yals_card_satcnt (yals, card),yals_card_bound (yals, card) ,yals->ddfw.card_weights [card] );
-        
-        source_hard = yals->f->hard_card_ids [card];
-        if ((source_hard && !takes_hard) || (!source_hard && !takes_soft)) continue;
 
         if (yals_card_satcnt (yals, card) >= yals_card_bound (yals, card)) {
           if (get_something) {
@@ -4352,15 +4027,6 @@ int yals_get_random_sat_top_k (Yals * yals, int K,
   if (R < 1) R = 1;
   int target = R * K;
 
-  // Hard/soft compatibility (matches yals_get_random_sat_clause).
-  int takes_hard = 1, takes_soft = 1;
-  if (yals->using_maxs_weights && !yals->current_weight_transfer_soft
-      && !yals->opts.maxs_hard_takes_soft.val)
-    takes_soft = 0;
-  if (yals->using_maxs_weights && yals->current_weight_transfer_soft
-      && !yals->opts.maxs_soft_takes_hard.val)
-    takes_hard = 0;
-
   // Strict pool: above-floor sources. Preallocated per-thread scratch
   // (sized randtour*randk at init); K here is always randk.
   assert (target <= yals->ddfw.rtk_target && K <= yals->ddfw.rtk_k);
@@ -4382,7 +4048,7 @@ int yals_get_random_sat_top_k (Yals * yals, int K,
 
   while (collected < target && cnt < cnt_cutoff) {
     cnt++;
-    int cidx, ctype, source_hard;
+    int cidx, ctype;
     double weight;
 
     if (yals->opts.wsamplepow.val > 0) {
@@ -4392,48 +4058,27 @@ int yals_get_random_sat_top_k (Yals * yals, int K,
       if (u < 0) break;                          // no positive weight anywhere
       if (u < yals->nclauses) {
         cidx = u; ctype = TYPECLAUSE;
-        source_hard = yals->f->hard_clause_ids[cidx];
-        if ((source_hard && !takes_hard) || (!source_hard && !takes_soft))
-          continue;
         if (yals_satcnt (yals, cidx) <= 0) continue;
         weight = yals->ddfw.clause_weights[cidx];
       } else {
         cidx = u - yals->nclauses; ctype = TYPECARDINALITY;
-        source_hard = yals->f->hard_card_ids[cidx];
-        if ((source_hard && !takes_hard) || (!source_hard && !takes_soft))
-          continue;
         if (yals_card_satcnt (yals, cidx) < yals_card_bound (yals, cidx))
           continue;
         weight = yals->ddfw.card_weights[cidx];
       }
     } else {
     int selection;
-    if (yals->using_maxs_weights && yals->is_pure
-        && yals->cardinality_is_hard
-        && !yals->current_weight_transfer_soft
-        && !yals->opts.maxs_hard_takes_soft.val) {
-      // middle-mile optimization: cards only
-      selection = yals_rand_mod (yals, INT_MAX) % yals->card_nclauses;
-      selection += yals->nclauses;
-    } else {
-      selection = yals_rand_mod (yals, INT_MAX)
-                  % (yals->nclauses + yals->card_nclauses);
-    }
+    selection = yals_rand_mod (yals, INT_MAX)
+                % (yals->nclauses + yals->card_nclauses);
 
     if (selection < yals->nclauses) {
       cidx = yals_rand_mod (yals, INT_MAX) % yals->nclauses;
       ctype = TYPECLAUSE;
-      source_hard = yals->f->hard_clause_ids[cidx];
-      if ((source_hard && !takes_hard) || (!source_hard && !takes_soft))
-        continue;
       if (yals_satcnt (yals, cidx) <= 0) continue;
       weight = yals->ddfw.clause_weights[cidx];
     } else {
       cidx = yals_rand_mod (yals, INT_MAX) % yals->card_nclauses;
       ctype = TYPECARDINALITY;
-      source_hard = yals->f->hard_card_ids[cidx];
-      if ((source_hard && !takes_hard) || (!source_hard && !takes_soft))
-        continue;
       if (yals_card_satcnt (yals, cidx) < yals_card_bound (yals, cidx))
         continue;
       weight = yals->ddfw.card_weights[cidx];
@@ -4508,20 +4153,14 @@ double yals_get_weight (Yals *yals, int source, int sink, int constraint_type_so
   int wtini_hit = 0;
 
   // --wtini: if the source still has exactly its initial weight, transfer
-  // initial_weight * wtini / 1000 instead of the linear-rule amount. For
-  // MaxSAT-relative soft constraints "initial weight" is the MaxSAT weight.
+  // initial_weight * wtini / 1000 instead of the linear-rule amount.
   if (yals->opts.wtini.val) {
-    int relative = (yals->opts.maxs_init_weight_relative.val && yals->using_maxs_weights);
     double init_w = 0.0, cur_w = 0.0;
     if (constraint_type_source == TYPECLAUSE) {
-      init_w = (relative && !yals->f->hard_clause_ids[source])
-               ? PEEK (yals->maxs_clause_weights, source)
-               : (double) yals->opts.init_clause_weight.val;
+      init_w = (double) yals->opts.init_clause_weight.val;
       cur_w = yals->ddfw.clause_weights [source];
     } else if (constraint_type_source == TYPECARDINALITY) {
-      init_w = (relative && !yals->f->hard_card_ids[source])
-               ? PEEK (yals->maxs_card_weights, source)
-               : (double) yals->opts.init_card_weight.val;
+      init_w = (double) yals->opts.init_card_weight.val;
       cur_w = yals->ddfw.card_weights [source];
     }
     if (cur_w == init_w) {
@@ -4750,12 +4389,10 @@ void yals_transfer_weights_for_card (Yals *yals, int sink)
 // Loop over all falsified constraints and transfer weight to them
 void yals_transfer_weights (Yals *yals)
 {
-  double start = yals_time_phase (yals);
-
     // hard clauses
     for (int c = 0; c < COUNT(yals->unsat.stack); c++) {
       int cidx = PEEK (yals->unsat.stack, c);
-      yals_transfer_weights_for_clause (yals, cidx);   
+      yals_transfer_weights_for_clause (yals, cidx);
     }
 
     // hard constraints
@@ -4764,30 +4401,10 @@ void yals_transfer_weights (Yals *yals)
       yals_transfer_weights_for_card (yals, cidx);
     }
 
-
-    if (yals->using_maxs_weights && yals->weight_transfer_soft) {
-      yals->current_weight_transfer_soft = 1;
-      // soft clauses
-      for (int c = 0; c < COUNT(yals->unsat_soft.stack); c++) {
-        int cidx = PEEK (yals->unsat_soft.stack, c);
-        yals_transfer_weights_for_clause (yals, cidx);   
-      }
-
-      // soft constraints
-      for (int c = 0; c < COUNT(yals->card_unsat_soft.stack); c++) {
-        int cidx = PEEK (yals->card_unsat_soft.stack, c);
-        yals_transfer_weights_for_card (yals, cidx);  // TODO this function
-      }
-      yals->current_weight_transfer_soft = 0;
-
-    }
-
   if (!yals->ddfw.guaranteed_uwrvs)
     yals->ddfw.missed_guaranteed_uwvars++;
   yals->ddfw.wt_count++;
   yals->ddfw.guaranteed_uwrvs = 0;
-
-  yals->stats.maxs_time.weight_transfer += yals_time_phase (yals) - start;
 }
 
 static void yals_outer_loop (Yals * yals) {
@@ -4811,7 +4428,6 @@ static void yals_outer_loop (Yals * yals) {
 
 // checking clauses
 // debugging todo: check cardinality constraints
-// debugging todo: count for maxsat
 // currently using external tool (check-sat) for checking
 static void yals_check_assignment (Yals * yals) {
   const int * c = yals->f->cdb.start;
@@ -4885,11 +4501,6 @@ int yals_sat (Yals * yals) {
     return 20;
   }
 
-  if (yals->opts.maxs_pure.val) {
-    yals->is_pure = 1;
-    yals->hard_polarity = yals->opts.maxs_pure_polarity.val;
-  }
-
   if (yals->opts.prep.val && !EMPTY (yals->trail)) {
     yals_preprocess (yals);
     if (yals->mt) {
@@ -4942,24 +4553,13 @@ int yals_sat (Yals * yals) {
 #endif
   }
 
-  if (yals->using_maxs_weights) {
-    yals_maxs_outer_loop (yals);
-  }
-  else {
+  {
     yals->ddfw.uvars_heap.score_fun = basic_score;
     yals->opts.init_card_weight.val = yals->opts.sat_init_card_weight.val;
     yals_outer_loop (yals);
   }
-  
-  if (yals->using_maxs_weights) {
-    assert (!yals->mt);
-    if (!yals->stats.maxs_best_cost) {
-      yals_print_strategy (yals, "winning strategy:", 1);
-      yals_check_assignment (yals);
-      res = 10;
-    } else assert (!res);
-  }
-  else {
+
+  {
     assert (!yals->mt);
     if (!yals->stats.best) {
       yals_print_strategy (yals, "winning strategy:", 1);
@@ -5056,18 +4656,6 @@ void yals_stats (Yals * yals) {
   Stats * s = &yals->stats;
   double t = s->time.total;
   int64_t sum;
-
-  if (yals->using_maxs_weights) {
-    yals_msg (yals, 0, "Cost best %lf (tmp %lf), clauses %lf, constraints %lf",
-    yals->stats.maxs_best_cost, yals->stats.maxs_tmp_weight,yals->stats.maxs_clause_best_weight, yals->stats.maxs_card_best_weight);
-
-    yals_msg (yals, 0, "hard constraints best %d, clauses %d, constraints %d",
-    yals->stats.maxs_best_hard_cnt, yals->stats.maxs_clause_best_hard_cnt, yals->stats.maxs_card_best_hard_cnt);
-
-    yals_msg (yals, 0, "soft constraints best %d, clauses %d, constraints %d",
-    yals->stats.maxs_best_soft_cnt, yals->stats.maxs_clause_best_soft_cnt, yals->stats.maxs_card_best_soft_cnt);
-
-  }
 
   yals_msg (yals, 0,
     "minimum clauses %d minimum constraints %d",
@@ -5240,28 +4828,6 @@ void yals_stats (Yals * yals) {
   yals_msg (yals, 0,
     "minimum %d hit %lld times, maximum %d",
     s->best, (long long) s->hits, s->worst);
-
-  yals_msg (yals, 0,
-    "initialization time %lf percentage of total %lf",
-    s->maxs_time.initialization, yals_pct(s->maxs_time.initialization,s->time.total));
-  yals_msg (yals, 0,
-    "make time %lf percentage of total %lf",
-    s->maxs_time.make_time, yals_pct(s->maxs_time.make_time,s->time.total));
-  yals_msg (yals, 0,
-    "break time %lf percentage of total %lf",
-    s->maxs_time.break_time, yals_pct(s->maxs_time.break_time,s->time.total));
-  yals_msg (yals, 0,
-    "weigh transfer time %lf percentage of total %lf",
-    s->maxs_time.weight_transfer, yals_pct(s->maxs_time.weight_transfer,s->time.total));
-  yals_msg (yals, 0,
-    "variable selection time %lf percentage of total %lf",
-    s->maxs_time.var_selection, yals_pct(s->maxs_time.var_selection,s->time.total));
-  yals_msg (yals, 0,
-    "soft variable selection time %lf percentage of total %lf",
-    s->maxs_time.soft_var_selection, yals_pct(s->maxs_time.soft_var_selection,s->time.total));
-  yals_msg (yals, 0,
-    "hard variable selection time %lf percentage of total %lf",
-    s->maxs_time.hard_var_selection, yals_pct(s->maxs_time.hard_var_selection,s->time.total));
 }
 
 /** ---------------- Start of weight-transfer algorithm ------------------------ **/
@@ -5355,30 +4921,8 @@ void yals_init_ddfw (Yals *yals)
   memset (&yals->ddfw.uvars_heap, 0 , sizeof (yals->ddfw.uvars_heap));
   yals_resize_heap (yals, &yals->ddfw.uvars_heap, yals->nvars);
 
-  if (yals->using_maxs_weights) {
-    memset (&yals->ddfw.uvars_heap_soft, 0 , sizeof (yals->ddfw.uvars_heap_soft));
-    yals_resize_heap (yals, &yals->ddfw.uvars_heap_soft, yals->nvars);
-    yals->ddfw.uvar_pos_soft = malloc (yals->nvars* sizeof (int));
-    yals->ddfw.var_unsat_count_soft = calloc (yals->nvars, sizeof (int));
-    yals->ddfw.unsat_weights_soft = calloc (2* yals->nvars, sizeof (double));
-    yals->ddfw.sat1_weights_soft = calloc (2* yals->nvars, sizeof (double));
-     for (int i=1; i< yals->nvars; i++) {
-      yals->ddfw.uvar_pos_soft [i] = -1;
-    }
-  }
-
   for (int i=0; i< yals->nclauses; i++) {
-
-    if (yals->opts.maxs_init_weight_relative.val && yals->using_maxs_weights) {
-      
-      if (yals->f->hard_clause_ids [i])
-        yals->ddfw.clause_weights [i] = PEEK (yals->maxs_clause_weights, i);
-      else 
-        yals->ddfw.clause_weights [i] = yals->opts.init_clause_weight.val;
-    }
-    else
-      yals->ddfw.clause_weights [i] = yals->opts.init_clause_weight.val;
-
+    yals->ddfw.clause_weights [i] = yals->opts.init_clause_weight.val;
   }
 
   for (int i=1; i< yals->nvars; i++) {
@@ -5440,22 +4984,8 @@ void yals_init_ddfw (Yals *yals)
     yals->ddfw.tkm_wts  = malloc ((size_t) yals->ddfw.tkm_cap * sizeof (double));
   }
   for (int i = 0; i < yals->card_nclauses; i++) {
-     if (yals->opts.maxs_init_weight_relative.val && yals->using_maxs_weights) {
-      
-      if (yals->f->hard_card_ids [i])
-        yals->ddfw.card_weights [i] = PEEK (yals->maxs_card_weights, i);
-      else 
-        yals->ddfw.card_weights [i] = yals->opts.init_card_weight.val;
-    }
-    else
-      yals->ddfw.card_weights [i] = yals->opts.init_card_weight.val;
+    yals->ddfw.card_weights [i] = yals->opts.init_card_weight.val;
   }
-
-  /*
-    MaxSAT initialization
-  */
-  yals->weight_transfer_soft = 0;
-  yals->current_weight_transfer_soft = 0;
 
   // --topk: build the per-literal top-K bounded list now that all weights
   // are set. (Implicitly builds the shared nbr_* edge graph it uses.)
@@ -5520,7 +5050,7 @@ void yals_update_score_function_weights (Yals * yals) {
 
 */
 void yals_update_changed_var_weights (Yals * yals) {
-  int var, *pos, polarity;
+  int var, *pos;
   int nChanged = COUNT (yals->ddfw.uvars_changed);
   double score;
 
@@ -5528,41 +5058,7 @@ void yals_update_changed_var_weights (Yals * yals) {
     var = ABS(*pos);
 
     yals->ddfw.uvar_changed_pos[var] = -1;
-    if (yals->is_pure) {
-      // polarity (a yals_val read plus a sign divide) is only consulted on
-      // the is_pure path, so compute it here instead of unconditionally.
-      polarity = yals_polarity (yals, var);
-      // hard constraints
-      if (polarity != yals->hard_polarity) {
-        if (!yals->ddfw.var_unsat_count[var]) { // remove from heap
-          if (yals_heap_contains (&yals->ddfw.uvars_heap, var))
-            yals_pop_heap (yals, &yals->ddfw.uvars_heap, var);
-        } else {
-          score = (yals->ddfw.uvars_heap.score_fun) (yals, var);
-          yals_update_heap (yals, &yals->ddfw.uvars_heap, var, score);
-        }
-      }
-      else {
-        // soft constraints
-        if (!yals->ddfw.var_unsat_count_soft[var]) { // remove from heap
-          if (yals_heap_contains (&yals->ddfw.uvars_heap_soft, var))
-            yals_pop_heap (yals, &yals->ddfw.uvars_heap_soft, var);
-        } else {
-          score = (yals->ddfw.uvars_heap_soft.score_fun) (yals, var);
-          yals_update_heap (yals, &yals->ddfw.uvars_heap_soft, var, score);
-        }
-      }
-    } else if (yals->using_maxs_weights) {
-      // hard
-      score = (yals->ddfw.uvars_heap.score_fun) (yals, var); // heap has a scoring function
-      if (!yals->ddfw.var_unsat_count[var] && !yals->ddfw.var_unsat_count_soft[var]) { // remove from heap
-        if (yals_heap_contains (&yals->ddfw.uvars_heap, var))
-          yals_pop_heap (yals, &yals->ddfw.uvars_heap, var);
-        continue;
-      }
-      yals_update_heap (yals, &yals->ddfw.uvars_heap, var, score);
-    }
-    else { // normal sat problem
+    { // normal sat problem
       if (!yals->ddfw.var_unsat_count[var]) { // remove from heap
         if (yals_heap_contains (&yals->ddfw.uvars_heap, var))
           yals_pop_heap (yals, &yals->ddfw.uvars_heap, var);
@@ -5580,7 +5076,43 @@ void yals_update_changed_var_weights (Yals * yals) {
   yals->stats.nheap_updated += nChanged;
 }
 
-/* 
+// weighted selection of variable from lit_scores
+int yals_pick_from_list_scores (Yals * yals) {
+
+  int counter = 0, res;
+  double sum,lim,score = 0;
+  int choice_of = COUNT (yals->lit_scores);
+
+  assert (choice_of > 0);
+
+  sum = 0;
+  for (int i = 0; i < choice_of; i++) {
+    sum += PEEK (yals->lit_scores, i).score;
+    assert (PEEK (yals->lit_scores, i).score >= 0);
+  }
+
+  lim = (yals_rand (yals) / (1.0 + (double) UINT_MAX))*sum;
+
+  res = PEEK (yals->lit_scores, 0).lit;
+  score = PEEK (yals->lit_scores, 0).score;
+
+  if (sum > 0.0) {
+
+    while (counter+1 < choice_of && score <= lim) {
+      lim -= score;
+      counter++;
+      res = PEEK (yals->lit_scores, counter).lit;
+      score = PEEK (yals->lit_scores, counter).score;
+    }
+
+  }
+
+  yals->ddfw.best_weight = score;
+
+  return res;
+}
+
+/*
 
   Grab a literal from the heap to flip.
 
@@ -5590,17 +5122,11 @@ void yals_update_changed_var_weights (Yals * yals) {
   Return 0 if no literals on the heap.
 
 */
-int yals_pick_literal_from_heap (Yals * yals, int soft) {
+int yals_pick_literal_from_heap (Yals * yals) {
   int lit = 0, selectCnt;
   heap *heap;
-  if (soft) {
-    heap = &yals->ddfw.uvars_heap_soft;
-    selectCnt = yals->opts.maxs_soft_stochastic_selection.val;
-  }
-  else {
-    heap = &yals->ddfw.uvars_heap;
-    selectCnt = yals->opts.hard_stochastic_selection.val;
-  }
+  heap = &yals->ddfw.uvars_heap;
+  selectCnt = yals->opts.hard_stochastic_selection.val;
 
   yals_update_changed_var_weights (yals);
 
@@ -5695,7 +5221,7 @@ int yals_pick_literal_from_heap (Yals * yals, int soft) {
 
   // score less than or equal to 0 is not flipped (not weight reducing)
   // todo: handle sideways flips
-  if (lit && !yals->using_maxs_weights && yals->ddfw.uvars_heap.score_fun (yals,lit) <= 0)
+  if (lit && yals->ddfw.uvars_heap.score_fun (yals,lit) <= 0)
     lit = 0;
 
   if (lit) // as it occurs in current assignment
@@ -5775,36 +5301,22 @@ void yals_init_build (Yals *yals) {
 void yals_update_lit_weights_on_make (Yals * yals, int cidx, int lit) {
   int* lits = yals_lits (yals, cidx), *p;
   int lt;
-  int soft = 0;
-  double maxs_weight = 1.0;
-  if (yals->using_maxs_weights && !yals->f->hard_clause_ids[cidx]) {
-      soft = 1;
-      if (!yals->opts.maxs_init_weight_relative.val)
-        maxs_weight = PEEK (yals->maxs_clause_weights, cidx);
-    }
-  yals_update_var_weight (yals, lit, soft, 1, yals->ddfw.clause_weights [cidx] * maxs_weight);
+  yals_update_var_weight (yals, lit, 1, yals->ddfw.clause_weights [cidx]);
   for (p = lits; (lt = *p); p++)
   {
-    yals_update_var_weight (yals, lt, soft, 0, -yals->ddfw.clause_weights [cidx] * maxs_weight);
+    yals_update_var_weight (yals, lt, 0, -yals->ddfw.clause_weights [cidx]);
     /** var_unsat_count is for quick decision **/
   }
 }
 
 
 void yals_update_lit_weights_on_break (Yals * yals, int cidx, int lit) {
-  double maxs_weight = 1.0;
-  int soft = 0;
-  if (yals->using_maxs_weights && !yals->f->hard_clause_ids[cidx]) {
-      soft = 1;
-      if (!yals->opts.maxs_init_weight_relative.val)
-        maxs_weight = PEEK (yals->maxs_clause_weights, cidx);
-    }
-  // sat1_weights [get_pos(-lit)] -= yals->ddfw.clause_weights [cidx] * maxs_weight; // lit no longer critical
-  yals_update_var_weight (yals, -lit, soft, 1, -yals->ddfw.clause_weights [cidx] * maxs_weight);
+  // sat1_weights [get_pos(-lit)] -= yals->ddfw.clause_weights [cidx]; // lit no longer critical
+  yals_update_var_weight (yals, -lit, 1, -yals->ddfw.clause_weights [cidx]);
   int* lits = yals_lits (yals, cidx), *p;
   int lt;
   for (p = lits; (lt = *p); p++){ // all lits now in unsat clause, contribute to unsat weight
-    yals_update_var_weight (yals, lt, soft, 0, yals->ddfw.clause_weights [cidx] * maxs_weight);
+    yals_update_var_weight (yals, lt, 0, yals->ddfw.clause_weights [cidx]);
     /** var_unsat_count is for quick decision **/
   }
 }
@@ -5869,19 +5381,13 @@ void yals_check_lits_weights_sanity (Yals *yals)
 */
 void yals_update_lit_weights_at_start (Yals * yals, int cidx, int satcnt, int crit) {
   int* lits = yals_lits (yals, cidx), *p1;
-  int lt, soft = 0;
-  double maxs_weight = 1.0;
-  if (yals->using_maxs_weights && !yals->f->hard_clause_ids[cidx]) {
-      soft = 1;
-      if (!yals->opts.maxs_init_weight_relative.val)
-        maxs_weight = PEEK (yals->maxs_clause_weights, cidx);
-  }
+  int lt;
   if (!satcnt) {
     for (p1 = lits; (lt = *p1); p1++)
-        yals_update_var_weight (yals, lt, soft, 0, yals->ddfw.clause_weights [cidx] * maxs_weight);
+        yals_update_var_weight (yals, lt, 0, yals->ddfw.clause_weights [cidx]);
   }
   else if (satcnt == 1)
-    yals_update_var_weight (yals, crit, soft, 1, yals->ddfw.clause_weights [cidx] * maxs_weight);
+    yals_update_var_weight (yals, crit, 1, yals->ddfw.clause_weights [cidx]);
 }
 
 /*
@@ -6365,22 +5871,15 @@ void yals_print_length_weights (Yals * yals)
   negative.
 
 */
-void yals_add_a_var_to_uvars (Yals * yals , int lit, int soft)
+void yals_add_a_var_to_uvars (Yals * yals , int lit)
 {
   int * var_unsat_count, * uvar_pos;
   STACK_INT *uvars;
   int var = ABS (lit);
-  if (yals->using_maxs_weights && soft) {
-    var_unsat_count = yals->ddfw.var_unsat_count_soft;
-    uvar_pos = yals->ddfw.uvar_pos_soft;
-    uvars = &yals->ddfw.uvars_soft;
-  }
-  else {
-    var_unsat_count = yals->ddfw.var_unsat_count;
-    uvar_pos = yals->ddfw.uvar_pos;
-    uvars = &yals->ddfw.uvars;
-  }
-  
+  var_unsat_count = yals->ddfw.var_unsat_count;
+  uvar_pos = yals->ddfw.uvar_pos;
+  uvars = &yals->ddfw.uvars;
+
   var_unsat_count [var]++;
   if (uvar_pos [var] == -1)
   {
@@ -6389,21 +5888,14 @@ void yals_add_a_var_to_uvars (Yals * yals , int lit, int soft)
   }
 }
 
-void yals_remove_a_var_from_uvars (Yals * yals , int lit, int soft)
+void yals_remove_a_var_from_uvars (Yals * yals , int lit)
 {
   int * var_unsat_count, * uvar_pos;
   STACK_INT *uvars;
   int var = ABS (lit);
-  if (yals->using_maxs_weights && soft) {
-    var_unsat_count = yals->ddfw.var_unsat_count_soft;
-    uvar_pos = yals->ddfw.uvar_pos_soft;
-    uvars = &yals->ddfw.uvars_soft;
-  }
-  else {
-    var_unsat_count = yals->ddfw.var_unsat_count;
-    uvar_pos = yals->ddfw.uvar_pos;
-    uvars = &yals->ddfw.uvars;
-  }
+  var_unsat_count = yals->ddfw.var_unsat_count;
+  uvar_pos = yals->ddfw.uvar_pos;
+  uvars = &yals->ddfw.uvars;
 
   var_unsat_count [var]--;
   LOG ("var unsat count %d %d", var, var_unsat_count [var] );
@@ -6422,20 +5914,15 @@ void yals_remove_a_var_from_uvars (Yals * yals , int lit, int soft)
 void yals_add_vars_to_uvars (Yals* yals, int cidx, int constraint_type) {
   int * lits = NULL;
   int lit;
-  int soft = 0;
   if (constraint_type == TYPECLAUSE) {
     lits = yals_lits (yals, cidx);
-    if (yals->using_maxs_weights && !yals->f->hard_clause_ids[cidx]) 
-      soft = 1;
   } else if (constraint_type == TYPECARDINALITY) {
     lits = yals_card_lits (yals, cidx);
-    if (yals->using_maxs_weights && !yals->f->hard_card_ids[cidx]) 
-      soft = 1;
   }
-  
+
   while ((lit=*lits++)) {
     if (!yals_val (yals, lit))
-      yals_add_a_var_to_uvars (yals, abs(lit), soft);
+      yals_add_a_var_to_uvars (yals, abs(lit));
   }
 }
 
@@ -6458,21 +5945,16 @@ void yals_delete_vars_from_uvars (Yals* yals, int cidx, int constraint_type) {
   int * lits = NULL;
   int lit;
 
-  int soft = 0;
   if (constraint_type == TYPECLAUSE) {
     lits = yals_lits (yals, cidx);
-    if (yals->using_maxs_weights && !yals->f->hard_clause_ids[cidx]) 
-      soft = 1;
   } else if (constraint_type == TYPECARDINALITY) {
     lits = yals_card_lits (yals, cidx);
-    if (yals->using_maxs_weights && !yals->f->hard_card_ids[cidx]) 
-      soft = 1;
   }
 
   while ((lit=*lits++))
   {
     if (!yals_val (yals, lit)) {
-      yals_remove_a_var_from_uvars (yals, lit, soft);
+      yals_remove_a_var_from_uvars (yals, lit);
     }
   }
 }
@@ -6541,9 +6023,7 @@ int yals_inner_loop_max_tries (Yals * yals)
            return -1;
          }
        }
-          double start = yals_time_phase (yals);
-          lit = yals_pick_literal_from_heap (yals, 0);
-          yals->stats.maxs_time.var_selection += yals_time_phase (yals) - start;
+          lit = yals_pick_literal_from_heap (yals);
           // may add sideways flips here
           if (lit) {
             LOG ("picking from heap");
@@ -6612,13 +6092,11 @@ void yals_new_cardinality_constraint (Yals * yals) {
   }
   if (len == bound) {
     LOG ("found unit cardinality constraint");
-    // soft units are not assigned
-    if (!yals->using_maxs_weights || yals->parsed_weight != yals->maxs_hard_weight)
-      for (p = yals->clause.start; p < yals->clause.top; p++) {
-        lit = *p;
-        LOG ("found unit clause %d in original formula", lit);
-        PUSH (yals->trail, lit);
-      }    
+    for (p = yals->clause.start; p < yals->clause.top; p++) {
+      lit = *p;
+      LOG ("found unit clause %d in original formula", lit);
+      PUSH (yals->trail, lit);
+    }
   }
   PUSH (yals->card_cdb, bound);
   for (p = yals->clause.start; p < yals->clause.top; p++) {
@@ -6627,36 +6105,6 @@ void yals_new_cardinality_constraint (Yals * yals) {
   }
   PUSH (yals->card_cdb, 0);
   LOGLITS (yals->card_cdb.top - len - 2, "new length %d", len+1);
-  if (yals->using_maxs_weights) {
-    PUSH (yals->maxs_card_weights, yals->parsed_weight);
-    if (yals->parsed_weight != yals->maxs_hard_weight)
-      yals->maxs_acc_hard_weight += yals->parsed_weight;
-  }
-}
-
-void yals_set_max_weight (Yals * yals, double weight) {
-  assert (weight >= 0);
-  yals->maxs_hard_weight = weight;
-  yals->maxs_acc_hard_weight = 0;
-}
-
-void yals_using_maxs (Yals * yals, int is_using) {
-  yals->using_maxs_weights = is_using;
-  if (is_using) {
-    yals->is_pure = 1;
-    yals->cardinality_is_hard = 1;
-  }
-  else {
-    yals->is_pure = 0;
-    yals->cardinality_is_hard = 0;
-  }
-  yals->hard_polarity = 0;
-  yals->weight_transfer_soft = 0;
-}
-
-void yals_card_add_weight (Yals * yals, double weight) {
-  assert (weight >= 0);
-  yals->parsed_weight = weight;
 }
 
 void yals_card_add (Yals * yals, int lit, int is_bound) {
@@ -6675,22 +6123,6 @@ void yals_card_add (Yals * yals, int lit, int is_bound) {
       if (idx >= yals->nvars) yals->nvars = idx + 1;
       PUSH (yals->clause, lit);
 
-      // check if formula is pure on each lit parsed
-      if (yals->using_maxs_weights) {
-        int polarity = ABS (lit) / lit;
-        if (yals->maxs_hard_weight == yals->parsed_weight) {
-          if (yals->hard_polarity == 0) {
-            yals->hard_polarity = polarity;
-          } else if (yals->hard_polarity != polarity) 
-            yals->is_pure = 0;
-        } else {
-          yals->cardinality_is_hard = 0;
-          if (yals->hard_polarity == polarity) 
-            yals->is_pure = 0;
-        }
-      }
-
-
     } else { // finished adding cardinality constraint
       yals_new_cardinality_constraint (yals);
       CLEAR (yals->clause);
@@ -6698,78 +6130,3 @@ void yals_card_add (Yals * yals, int lit, int is_bound) {
   }
 }
 
-/*
-MaxSat helper functions
-*/
-
-// weighted selection of variable from lit_scores
-int yals_pick_from_list_scores (Yals * yals) {
-  
-  int counter = 0, res;
-  double sum,lim,score = 0;
-  int choice_of = COUNT (yals->lit_scores);
-
-  assert (choice_of > 0);
-
-  sum = 0;
-  for (int i = 0; i < choice_of; i++) {
-    sum += PEEK (yals->lit_scores, i).score;
-    assert (PEEK (yals->lit_scores, i).score >= 0);
-  }
-
-  lim = (yals_rand (yals) / (1.0 + (double) UINT_MAX))*sum;
-
-  res = PEEK (yals->lit_scores, 0).lit;
-  score = PEEK (yals->lit_scores, 0).score;
-
-  if (sum > 0.0) {
-
-    while (counter+1 < choice_of && score <= lim) {
-      lim -= score;
-      counter++;
-      res = PEEK (yals->lit_scores, counter).lit;
-      score = PEEK (yals->lit_scores, counter).score;
-    }
-
-  }
-
-  yals->ddfw.best_weight = score;
-
-  return res;
-}
-
-
-
-
-/*
-  Control for maxsat outer loop
-*/
-void yals_maxs_outer_loop (Yals * yals) {
-  
-  assert (yals->using_maxs_weights);
-
-  if (!yals->opts.maxtries.val) yals->opts.maxtries.val = 1;
-  if (!yals->opts.cutoff.val && yals->limits.flips) yals->opts.cutoff.val = yals->limits.flips;
-
-  yals->maxs_hard_offset = 0;
-
-  if (yals->is_pure) {
-    yals_msg (yals, 1, "Entering Pure MaxSAT inner loop");
-    yals->ddfw.uvars_heap.score_fun = yals_pure_hard_score;
-    yals->ddfw.uvars_heap_soft.score_fun = yals_pure_soft_score;
-    if (yals->opts.init_solution.val)
-      yals_init_assignment_parse (yals);
-    else
-      yals_init_assignment_pure (yals);
-    yals_pure_maxs_inner_loop (yals);
-  } else if (yals->opts.init_solution.val) {
-    yals_msg (yals, 1, "Entering MaxSAT inner loop");
-    yals_msg (yals, 1, "WARNING: MaxSAT algorithm incomplete, NO guarantees");
-    yals->ddfw.uvars_heap.score_fun = yals_batt_score;
-    if (yals->opts.init_solution.val)
-      yals_init_assignment_parse (yals);
-    else
-      yals_init_assignment_random (yals);
-    yals_ass_maxs_inner_loop (yals);
-  }
-}

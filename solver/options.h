@@ -42,17 +42,10 @@ This code extends the solver yal-lin (Md Solimul Chowdhury, Cayden Codel, Marijn
   OPT (verbose,0,0,5,"set verbose level"); \
   OPT (witness,1,0,1,"print witness"); \
   OPT (card_compute,4,1,4,"cardinality constraint weight computation rule (1: linear c*d, 2: exponential c^d capped at d=7, 3: quadratic c*d^2, 4: cubic c*d^3)"); \
-  OPT (maxs_hard_eps,0,0,INT_MAX,"pure maxsat hard epsilon"); \
-  OPT (maxs_soft_eps,0,0,INT_MAX,"pure maxsat soft epsilon"); \
-  OPT (maxs_soft_stochastic_selection,0,0,INT_MAX,"Soft Constraints: pick from top K variables with weighted stochastic selection"); \
   OPT (hard_stochastic_selection,1,0,INT_MAX,"All/Hard Constraints: pick from top K variables with weighted stochastic selection"); \
-  OPT (init_solution,0,0,1,"start from initial solution provided at <init.sol> [currently only in (Pure) MaxSAT]"); \
   OPT (init_clause_weight,100,1,INT_MAX,"initial clause weight"); \
   OPT (init_card_weight,100,1,INT_MAX,"initial cardinality constraint weight"); \
   OPT (sat_init_card_weight,100,1,INT_MAX,"initial cardinality constraint weight for SAT"); \
-  OPT (maxs_transfer_soft,0,0,1,"transfer weight for soft constraints"); \
-  OPT (maxs_soft_takes_hard,0,0,1,"soft constraints can take from hard in random transfer"); \
-  OPT (maxs_hard_takes_soft,0,0,1,"hard constraints can take from soft in random transfer"); \
   OPT (wtini,0,0,1000,"if source still has exactly its initial weight, transfer initial_weight*wtini/1000 (instead of the linear rule)"); \
   OPT (min_weight,10,0,INT_MAX,"weight floor: no clause/card weight can drop below M. A source must have weight > M to be picked (otherwise it has no transfer headroom), and any transfer is capped at (source_weight - M) so the source ends up at exactly M in the worst case. M=0 = no floor (free transfer up to source_weight)."); \
   OPT (maxk,1,1,INT_MAX,"weight transfer top-K sources: for each falsified literal in the sink, find its best neighbor; aggregate up to N of those into the top k = min(N, #valid-per-literal-bests) and transfer from each, with each transfer amount divided by k. Same clause can appear multiple times if it's the per-literal best for multiple literals. N=1 (default) = current single-source behavior."); \
@@ -69,19 +62,9 @@ This code extends the solver yal-lin (Md Solimul Chowdhury, Cayden Codel, Marijn
   OPT (oldestsource,0,0,1,"random-source selection: instead of random, pick the satisfied source that has been least-recently used as a source (LRU)"); \
   OPT (sourcecap,500,0,1000,"cap per-transfer amount at source_weight*sourcecap/1000 (1000 = cap at source weight, the loosest binding; 0 = no transfer)"); \
   OPT (flip_gain_eps_e4,1000,0,INT_MAX,"if >0, snap |flip_gain| < val/10000 to 0 in basic score"); \
-  OPT (maxs_transfer_slow,0,0,1,"transfer weights if no improvement on inner loop (slow), instead of every inner loop (fast)"); \
   OPT (select_exp,1,1,INT_MAX,"exponent for weighting variable values in stochastic selection"); \
   OPT (random_select,-1,-1,INT_MAX,"chance of selecting a literal from the stack at random during variable selection, N / 100000"); \
-  OPT (maxs_outer_restart,0,0,INT_MAX,"flips before outer restart"); \
-  OPT (maxs_inner_bound,1000,0,INT_MAX,"flips before inner bound increases"); \
-  OPT (maxs_hit_bound,1,0,INT_MAX,"hits before inner restart (not technically a hit, just a non-improvement)"); \
-  OPT (maxs_inner_mult,25,0,INT_MAX,"multiplier for hit bound and inner bound after hit bound is reached"); \
-  OPT (maxs_flip_step,1,1,INT_MAX,"inner flips increment on each failed inner loop"); \
-  OPT (maxs_pure,0,0,1,"set to pure (if adding partition units)"); \
-  OPT (maxs_pure_polarity,0,-1,1,"set hard polarity (if adding partition units)"); \
   OPT (reset_weights_on_restart,0,0,1,"reset weights to initial values on inner restart"); \
-  OPT (maxs_init_weight_relative,1,0,1,"weights for soft constraints start as MaxSAT weights"); \
-  OPT (maxs_keep_assignment,-1,-1,INT_MAX,"chance of keeping the current assignment after an inner restart, N / 100000"); \
   OPTSTEMPLATENDEBUG
 
 #ifndef NDEBUG
