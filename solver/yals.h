@@ -425,7 +425,6 @@ typedef struct YalsFormula {
   int * lits;                     // clause cidx -> offset into cdb
   int * occs, noccs;              // occurrence lists + total size
   int * refs;                     // literal -> offset into occs
-  unsigned char * clause_has_neg; // --heavy: 1 if clause has a negative literal
   STACK(int) clause_size;         // clause cidx -> length
   // cardinality index (the card_cdb literal array itself is NOT here: the
   // solver reorders literals within each constraint in place during search,
@@ -434,7 +433,6 @@ typedef struct YalsFormula {
   // order, so they remain shared and read-only.
   int * card_lits, * card_refs;
   int * card_occs, card_noccs;
-  unsigned char * card_has_neg;
   STACK(int) card_size;
   // Forced assignment derived during parsing + preprocessing (the trail after
   // unit propagation). Read-only after the formula is built; every worker seeds

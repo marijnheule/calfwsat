@@ -697,50 +697,13 @@ int yals_nunsat (Yals * yals) { // now grabbing from all types of clauses
   return yals_clauses_nunsat (yals) + yals_card_nunsat (yals);
 }
 
-// --heavy: weighted count of falsified constraints. Each falsified clause/card
-// that contains at least one negative literal counts as H; all-positive
-// falsified ones count as 1. H=1 reduces to plain nunsat. Iterates the unsat
-// stacks (O(nunsat), not O(nclauses)). Used for stats.best / stats.tmp
-// tracking, NOT for SAT detection (which still uses nunsat == 0).
-int yals_nunsat_heavy (Yals * yals) {
-  int H = yals->opts.heavy.val;
-  if (H == 1) return yals_nunsat (yals);
-  int64_t sum = 0;
-  // Clauses
-  if (yals->unsat.usequeue) {
-    // Queue-mode walk: traverse the linked structure.
-    Lnk * l;
-    for (l = yals->unsat.queue.first; l; l = l->next) {
-      int cidx = l->cidx;
-      sum += yals->f->clause_has_neg[cidx] ? H : 1;
-    }
-  } else {
-    int n = COUNT (yals->unsat.stack);
-    for (int i = 0; i < n; i++) {
-      int cidx = PEEK (yals->unsat.stack, i);
-      sum += yals->f->clause_has_neg[cidx] ? H : 1;
-    }
-  }
-  // Cards (stack-only path)
-  int nc = COUNT (yals->card_unsat.stack);
-  for (int i = 0; i < nc; i++) {
-    int cidx = PEEK (yals->card_unsat.stack, i);
-    sum += yals->f->card_has_neg[cidx] ? H : 1;
-  }
-  // Clip to INT_MAX for safety in 32-bit stats fields.
-  if (sum > INT_MAX) sum = INT_MAX;
-  return (int) sum;
-}
-
 static void yals_probe_pool_offer_best (Yals * yals, int score,
                                         int64_t probe_flips);
 
 // save new minimum cost assignment
 // update statistics
 void yals_save_new_minimum (Yals * yals) {
-  // --heavy: tracking metric for stats.best / stats.tmp is the weighted
-  // unsat count. SAT detection elsewhere still uses plain yals_nunsat().
-  int nunsat = yals_nunsat_heavy (yals);
+  int nunsat = yals_nunsat (yals);
   yals_msg (yals, 4, "nunsat %d", nunsat);
   size_t bytes = yals->nvarwords * sizeof (Word);
   if (yals->stats.worst < nunsat) yals->stats.worst = nunsat;
@@ -2443,9 +2406,9 @@ static void yals_connect (Yals * yals) {
   yals->nclauses = nclauses;
   yals->nbin = nbin;
   yals->ntrn = ntrn;
-  // Build the shared clause index (lits / occs / refs / clause_has_neg). In
-  // shared mode only the owner runs this; non-owners inherit it. Per-thread
-  // scalars (nclauses/nbin/ntrn above, avglen below) are computed by everyone.
+  // Build the shared clause index (lits / occs / refs). In shared mode only
+  // the owner runs this; non-owners inherit it. Per-thread scalars
+  // (nclauses/nbin/ntrn above, avglen below) are computed by everyone.
   if (yals->owns_formula) {
   yals_msg (yals, 1, "connecting %d clauses", nclauses);
   NEWN (yals->f->lits, nclauses);
@@ -2457,17 +2420,6 @@ static void yals_connect (Yals * yals) {
     lits++;
   }
   assert (lits == COUNT (yals->f->cdb));
-
-  // --heavy: precompute whether each clause contains any negative literal.
-  // Static property of the formula; computed once, read once per save.
-  NEWN (yals->f->clause_has_neg, nclauses);
-  for (cidx = 0; cidx < nclauses; cidx++) {
-    int * p = yals_lits (yals, cidx), lit;
-    yals->f->clause_has_neg[cidx] = 0;
-    while ((lit = *p++)) {
-      if (lit < 0) { yals->f->clause_has_neg[cidx] = 1; break; }
-    }
-  }
 
   NEWN (count, 2*nvars);
   count += nvars;
@@ -2732,17 +2684,6 @@ void yals_card_connect (Yals * yals) {
     lits++;
   }
   assert (lits == COUNT (yals->card_cdb));
-
-  // --heavy: precompute whether each card constraint contains any negative literal.
-  NEWN (yals->f->card_has_neg, nclauses);
-  for (cidx = 0; cidx < nclauses; cidx++) {
-    int * p = yals_card_lits (yals, cidx), lit;
-    yals->f->card_has_neg[cidx] = 0;
-    while ((lit = *p++)) {
-      if (lit < 0) { yals->f->card_has_neg[cidx] = 1; break; }
-    }
-  }
-
 
   NEWN (count, 2*nvars);
   count += nvars;
@@ -3170,8 +3111,6 @@ void yals_del (Yals * yals) {
 
   RELEASE (yals->lit_scores);
 
-  if (yals->owns_formula) DELN (yals->f->clause_has_neg, yals->nclauses);
-  if (yals->owns_formula) DELN (yals->f->card_has_neg, yals->card_nclauses);
   // more to be deledted that is untracked
 
   // weight-transfer state
