@@ -1,0 +1,16 @@
+# keep x reset_weights_on_restart 2x2 sweep.
+#
+# keep (options.h default 0): at an inner restart, leave the current
+#   assignment in place instead of re-picking (best/polarity/random).
+# reset_weights_on_restart (default 0): on inner restart, snap all clause/card
+#   weights back to their initial values instead of carrying the evolved
+#   DDFW weights across the restart.
+#
+# The two are orthogonal. keep0_rst0 is the stock default (and is listed
+# explicitly so the baseline shares the same harness path as the others).
+# 200 seeds, 900s timeout, -t 8. All other options at solver defaults.
+# name	args
+keep0_rst0	--keep=0 --reset_weights_on_restart=0
+keep1_rst0	--keep=1 --reset_weights_on_restart=0
+keep0_rst1	--keep=0 --reset_weights_on_restart=1
+keep1_rst1	--keep=1 --reset_weights_on_restart=1
