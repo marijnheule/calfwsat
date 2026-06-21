@@ -4494,7 +4494,6 @@ int yals_sat (Yals * yals) {
 
   {
     yals->ddfw.uvars_heap.score_fun = basic_score;
-    yals->opts.init_card_weight.val = yals->opts.sat_init_card_weight.val;
     yals_outer_loop (yals);
   }
 

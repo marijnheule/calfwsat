@@ -44,7 +44,6 @@ This code extends the solver yal-lin (Md Solimul Chowdhury, Cayden Codel, Marijn
   OPT (card_compute,4,1,4,"cardinality constraint weight computation rule (1: linear c*d, 2: exponential c^d capped at d=7, 3: quadratic c*d^2, 4: cubic c*d^3)"); \
   OPT (init_clause_weight,100,1,INT_MAX,"initial clause weight"); \
   OPT (init_card_weight,100,1,INT_MAX,"initial cardinality constraint weight"); \
-  OPT (sat_init_card_weight,100,1,INT_MAX,"initial cardinality constraint weight for SAT"); \
   OPT (wtini,0,0,1000,"if source still has exactly its initial weight, transfer initial_weight*wtini/1000 (instead of the linear rule)"); \
   OPT (min_weight,10,0,INT_MAX,"weight floor: no clause/card weight can drop below M. A source must have weight > M to be picked (otherwise it has no transfer headroom), and any transfer is capped at (source_weight - M) so the source ends up at exactly M in the worst case. M=0 = no floor (free transfer up to source_weight)."); \
   OPT (maxk,1,1,INT_MAX,"weight transfer top-K sources: for each falsified literal in the sink, find its best neighbor; aggregate up to N of those into the top k = min(N, #valid-per-literal-bests) and transfer from each, with each transfer amount divided by k. Same clause can appear multiple times if it's the per-literal best for multiple literals. N=1 (default) = current single-source behavior."); \
