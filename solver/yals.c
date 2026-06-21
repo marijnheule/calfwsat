@@ -1377,7 +1377,7 @@ void yals_reset_ddfw (Yals * yals)
   yals_clear_heap (yals, &yals->ddfw.uvars_heap);
 
   // for resetting constraint weights on restart
-  if (yals->opts.reset_weights_on_restart.val) {
+  if (yals->opts.reset_weights.val) {
     for (int i=0; i< yals->nclauses; i++) {
       yals->ddfw.clause_weights [i] = yals->opts.init_clause_weight.val;
     }
