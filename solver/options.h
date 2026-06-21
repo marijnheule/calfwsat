@@ -42,8 +42,8 @@ This code extends the solver yal-lin (Md Solimul Chowdhury, Cayden Codel, Marijn
   OPT (verbose,0,0,5,"set verbose level"); \
   OPT (witness,1,0,1,"print witness"); \
   OPT (card_compute,4,1,4,"card weight rule: 1=linear 2=exp 3=quadratic 4=cubic"); \
-  OPT (init_clause_weight,100,1,INT_MAX,"initial clause weight"); \
-  OPT (init_card_weight,100,1,INT_MAX,"initial cardinality constraint weight"); \
+  OPT (init_clause,100,1,INT_MAX,"initial clause weight"); \
+  OPT (init_card,100,1,INT_MAX,"initial cardinality constraint weight"); \
   OPT (wtini,0,0,1000,"transfer for at-initial-weight sources (init_weight*wtini/1000)"); \
   OPT (min_weight,10,0,INT_MAX,"weight floor M for clauses/cards (0 = no floor)"); \
   OPT (maxk,1,1,INT_MAX,"weight-transfer top-K sink sources (1 = single)"); \
@@ -59,7 +59,6 @@ This code extends the solver yal-lin (Md Solimul Chowdhury, Cayden Codel, Marijn
   OPT (oldestsource,0,0,1,"pick least-recently-used satisfied source (not random)"); \
   OPT (sourcecap,500,0,1000,"cap per-transfer at source_weight*sourcecap/1000"); \
   OPT (flip_gain_eps_e4,1000,0,INT_MAX,"snap |flip_gain| < val/10000 to 0 (0 = off)"); \
-  OPT (random_select,-1,-1,INT_MAX,"random literal-pick chance N/100000 (-1 = off)"); \
   OPT (reset_weights,1,0,1,"reset weights to initial values on inner restart"); \
   OPTSTEMPLATENDEBUG
 

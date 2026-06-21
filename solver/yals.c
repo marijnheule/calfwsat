@@ -1040,14 +1040,14 @@ static void yals_topk_rebuild_all (Yals * yals) {
 // path. Sets *ret_con_type on success.
 static inline int yals_topk_eligible (Yals * yals, int u, int * ret_con_type) {
   if (u < yals->nclauses) {
-    double thr = (double) yals->opts.init_clause_weight.val;
+    double thr = (double) yals->opts.init_clause.val;
     if (yals_satcnt (yals, u) > 0 &&
         (yals->ddfw.clause_weights[u] >= thr)) {
       *ret_con_type = TYPECLAUSE; return 1;
     }
   } else {
     int c = u - yals->nclauses;
-    double thr = (double) yals->opts.init_card_weight.val;
+    double thr = (double) yals->opts.init_card.val;
     if (yals_card_satcnt (yals, c) >= yals_card_bound (yals, c) &&
         (yals->ddfw.card_weights[c] >= thr)) {
       *ret_con_type = TYPECARDINALITY; return 1;
@@ -1379,10 +1379,10 @@ void yals_reset_ddfw (Yals * yals)
   // for resetting constraint weights on restart
   if (yals->opts.reset_weights.val) {
     for (int i=0; i< yals->nclauses; i++) {
-      yals->ddfw.clause_weights [i] = yals->opts.init_clause_weight.val;
+      yals->ddfw.clause_weights [i] = yals->opts.init_clause.val;
     }
     for (int i=0; i< yals->card_nclauses; i++) {
-      yals->ddfw.card_weights [i] = yals->opts.init_card_weight.val;
+      yals->ddfw.card_weights [i] = yals->opts.init_card.val;
     }
     // --topk: weights changed in bulk; rebuild the structure.
     if (yals->opts.topk.val > 0) yals_topk_rebuild_all (yals);
@@ -3563,10 +3563,10 @@ double linear_wt (Yals * yals, int source, int type_source)
 
   if (type_source == TYPECLAUSE) {
     source_weight = yals->ddfw.clause_weights [source];
-    init_w = (double) yals->opts.init_clause_weight.val;
+    init_w = (double) yals->opts.init_clause.val;
   } else if (type_source == TYPECARDINALITY) {
     source_weight = yals->ddfw.card_weights [source];
-    init_w = (double) yals->opts.init_card_weight.val;
+    init_w = (double) yals->opts.init_card.val;
   }
 
   // weight transfer: w = source_weight^p + a*source_weight + c
@@ -3673,7 +3673,7 @@ int yals_get_max_weight_sat_clause (Yals *yals, int cidx, int constraint_type, i
 
       if (yals_satcnt (yals, nidx)>0) { // clause is satisfied
         // check if clause has geq it's initial weight, then (weight, id) tie-break
-        double thr = (double) yals->opts.init_clause_weight.val;
+        double thr = (double) yals->opts.init_clause.val;
         if (yals->ddfw.clause_weights [nidx] >= thr) {
           double cw = yals->ddfw.clause_weights [nidx];
           if (cw > best_w || (cw == best_w && nidx < best_uid)) {
@@ -3690,7 +3690,7 @@ int yals_get_max_weight_sat_clause (Yals *yals, int cidx, int constraint_type, i
 
       if (yals_card_satcnt (yals, nidx)>= yals_card_bound (yals, nidx)) { // constraint satisfied
         // check if cardinality constraint has geq it's initial weight, then (weight, id) tie-break
-        double thr = (double) yals->opts.init_card_weight.val;
+        double thr = (double) yals->opts.init_card.val;
         if (yals->ddfw.card_weights [nidx] >= thr) {
           double cw = yals->ddfw.card_weights [nidx];
           int cuid = yals->nclauses + nidx;
@@ -3763,7 +3763,7 @@ int yals_get_top_k_max_weight_sat_clause (
       for (p = occs; (occ = *p) >= 0; p++) {
         int nidx = occ >> LENSHIFT;
         if (yals_satcnt (yals, nidx) > 0) {
-          double thr = (double) yals->opts.init_clause_weight.val;
+          double thr = (double) yals->opts.init_clause.val;
           if (yals->ddfw.clause_weights[nidx] >= thr) {
             double cw = yals->ddfw.clause_weights[nidx];
             if (cw > best_w || (cw == best_w && nidx < best_uid)) {
@@ -3779,7 +3779,7 @@ int yals_get_top_k_max_weight_sat_clause (
         int nidx = occ >> LENSHIFT;
         if (yals_card_satcnt (yals, nidx)
             >= yals_card_bound (yals, nidx)) {
-          double thr = (double) yals->opts.init_card_weight.val;
+          double thr = (double) yals->opts.init_card.val;
           if (yals->ddfw.card_weights[nidx] >= thr) {
             double cw = yals->ddfw.card_weights[nidx];
             int cuid = yals->nclauses + nidx;
@@ -4096,10 +4096,10 @@ double yals_get_weight (Yals *yals, int source, int sink, int constraint_type_so
   if (yals->opts.wtini.val) {
     double init_w = 0.0, cur_w = 0.0;
     if (constraint_type_source == TYPECLAUSE) {
-      init_w = (double) yals->opts.init_clause_weight.val;
+      init_w = (double) yals->opts.init_clause.val;
       cur_w = yals->ddfw.clause_weights [source];
     } else if (constraint_type_source == TYPECARDINALITY) {
-      init_w = (double) yals->opts.init_card_weight.val;
+      init_w = (double) yals->opts.init_card.val;
       cur_w = yals->ddfw.card_weights [source];
     }
     if (cur_w == init_w) {
@@ -4860,7 +4860,7 @@ void yals_init_ddfw (Yals *yals)
   yals_resize_heap (yals, &yals->ddfw.uvars_heap, yals->nvars);
 
   for (int i=0; i< yals->nclauses; i++) {
-    yals->ddfw.clause_weights [i] = yals->opts.init_clause_weight.val;
+    yals->ddfw.clause_weights [i] = yals->opts.init_clause.val;
   }
 
   for (int i=1; i< yals->nvars; i++) {
@@ -4922,7 +4922,7 @@ void yals_init_ddfw (Yals *yals)
     yals->ddfw.tkm_wts  = malloc ((size_t) yals->ddfw.tkm_cap * sizeof (double));
   }
   for (int i = 0; i < yals->card_nclauses; i++) {
-    yals->ddfw.card_weights [i] = yals->opts.init_card_weight.val;
+    yals->ddfw.card_weights [i] = yals->opts.init_card.val;
   }
 
   // --topk: build the per-literal top-K bounded list now that all weights
@@ -5031,63 +5031,47 @@ int yals_pick_literal_from_heap (Yals * yals) {
   yals_update_changed_var_weights (yals);
 
   if (COUNT (heap->stack)) {
-
-    if ((int) yals_rand_mod (yals, 100000) <=  yals->opts.random_select.val) {
-      // random literal
-      int cnt = COUNT (heap->stack);
-      int pos = yals_rand_mod (yals, cnt);
-      lit = PEEK (heap->stack, pos);
-
-      yals_pop_heap (yals, heap, abs (lit));
-
-      yals->ddfw.best_var = lit;
-      yals->ddfw.best_weight = yals_get_heap_score (heap, lit);
-    } else {
-
-      {
-        // --tabu: if N most-recently-flipped vars should be skipped, pop the
-        // heap, check each candidate, stash tabu ones in lit_scores, and use
-        // the first non-tabu. If everything popped is tabu, fall back to the
-        // first stashed (least bad). Stashed vars are pushed back at the end.
-        int tabu = yals->opts.tabu.val;
-        if (tabu > 0) {
-          CLEAR (yals->lit_scores);
-          int max_tries = COUNT (heap->stack);
-          if (max_tries > tabu + 1) max_tries = tabu + 1;
-          for (int i = 0; i < max_tries; i++) {
-            int v = yals_pop_max_heap (yals, heap);
-            if (!v) break;
-            int64_t prev = yals->ddfw.tabu_last_flipped[abs (v)];
-            if (prev > 0 && yals->stats.flips - prev < tabu) {
-              Lit_Score t; t.lit = v; t.score = yals_get_heap_score (heap, v);
-              PUSH (yals->lit_scores, t);
-              continue;
-            }
-            lit = v;
-            break;
-          }
-          // If nothing non-tabu was found, take the first (best) stashed.
-          if (!lit && COUNT (yals->lit_scores) > 0) {
-            Lit_Score t = PEEK (yals->lit_scores, 0);
-            lit = t.lit;
-            // Mark this entry as "taken" so we don't push it back.
-            t.lit = 0; yals->lit_scores.start[0] = t;
-          }
-          // Push the rest back into the heap.
-          int sCnt = COUNT (yals->lit_scores);
-          for (int i = 0; i < sCnt; i++) {
-            Lit_Score t = PEEK (yals->lit_scores, i);
-            if (t.lit == 0) continue;
-            yals_update_heap (yals, heap, t.lit, t.score);
-          }
-          CLEAR (yals->lit_scores);
-        } else {
-          lit = yals_pop_max_heap (yals, heap);
+    // --tabu: if N most-recently-flipped vars should be skipped, pop the
+    // heap, check each candidate, stash tabu ones in lit_scores, and use
+    // the first non-tabu. If everything popped is tabu, fall back to the
+    // first stashed (least bad). Stashed vars are pushed back at the end.
+    int tabu = yals->opts.tabu.val;
+    if (tabu > 0) {
+      CLEAR (yals->lit_scores);
+      int max_tries = COUNT (heap->stack);
+      if (max_tries > tabu + 1) max_tries = tabu + 1;
+      for (int i = 0; i < max_tries; i++) {
+        int v = yals_pop_max_heap (yals, heap);
+        if (!v) break;
+        int64_t prev = yals->ddfw.tabu_last_flipped[abs (v)];
+        if (prev > 0 && yals->stats.flips - prev < tabu) {
+          Lit_Score t; t.lit = v; t.score = yals_get_heap_score (heap, v);
+          PUSH (yals->lit_scores, t);
+          continue;
         }
-        yals->ddfw.best_var = lit;
-        yals->ddfw.best_weight = yals_get_heap_score (heap, lit);
+        lit = v;
+        break;
       }
+      // If nothing non-tabu was found, take the first (best) stashed.
+      if (!lit && COUNT (yals->lit_scores) > 0) {
+        Lit_Score t = PEEK (yals->lit_scores, 0);
+        lit = t.lit;
+        // Mark this entry as "taken" so we don't push it back.
+        t.lit = 0; yals->lit_scores.start[0] = t;
+      }
+      // Push the rest back into the heap.
+      int sCnt = COUNT (yals->lit_scores);
+      for (int i = 0; i < sCnt; i++) {
+        Lit_Score t = PEEK (yals->lit_scores, i);
+        if (t.lit == 0) continue;
+        yals_update_heap (yals, heap, t.lit, t.score);
+      }
+      CLEAR (yals->lit_scores);
+    } else {
+      lit = yals_pop_max_heap (yals, heap);
     }
+    yals->ddfw.best_var = lit;
+    yals->ddfw.best_weight = yals_get_heap_score (heap, lit);
   }
 
   yals_check_global_best_weight_invariant (yals);
