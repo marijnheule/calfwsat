@@ -51,8 +51,7 @@ This code extends the solver yal-lin (Md Solimul Chowdhury, Cayden Codel, Marijn
   OPT (randtour,1,1,INT_MAX,"random-source tournament multiplier for --randk"); \
   OPT (wsamplepow,2,0,8,"random-source sampling exponent on weight (0 = uniform)"); \
   OPT (tabu,0,0,INT_MAX,"tabu length: skip N most-recent flips (0 = disabled)"); \
-  OPT (age_window,10000,1,INT_MAX,"window size for avg_age/avg_hd stats"); \
-  OPT (hd_restart,0,0,INT_MAX,"inner restart when avg_hd below this (0 = disabled)"); \
+  OPT (age_window,10000,1,INT_MAX,"window size for avg_age stats"); \
   OPT (bypass,1,0,1,"probabilistically bypass inner restart at cutoff"); \
   OPT (heat,1,0,1,"track per-variable true-in-best counts; print at end"); \
   OPT (improving,1,0,1,"at restart keep assignment if best improved (0 = always re-pick)"); \

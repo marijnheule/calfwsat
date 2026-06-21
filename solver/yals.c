@@ -1765,44 +1765,6 @@ void yals_flip_ddfw (Yals * yals, int lit) {
       yals->ddfw.age_window_head = (h + 1) % K;
     }
     yals->ddfw.tabu_last_flipped[v] = yals->stats.flips;
-
-    // Sliding-window Hamming-distance update. Same K as age window.
-    // Only maintained when --hd_restart > 0 (the only consumer); skipped
-    // on the hot path otherwise.
-    if (yals->opts.hd_restart.val > 0) {
-      int K2 = yals->ddfw.age_window_size;
-      int h2 = yals->ddfw.hd_ring_head;
-      unsigned char p_new = (unsigned char)(yals->ddfw.hd_parity[v] ^ 1);
-      yals->ddfw.hd_parity[v] = p_new;
-      if (p_new) yals->ddfw.hd_window++; else yals->ddfw.hd_window--;
-      if (yals->ddfw.hd_ring_count < K2) {
-        yals->ddfw.hd_ring[h2] = v;
-        yals->ddfw.hd_ring_count++;
-      } else {
-        int v_old = yals->ddfw.hd_ring[h2];
-        unsigned char p_old = (unsigned char)(yals->ddfw.hd_parity[v_old] ^ 1);
-        yals->ddfw.hd_parity[v_old] = p_old;
-        if (p_old) yals->ddfw.hd_window++; else yals->ddfw.hd_window--;
-        yals->ddfw.hd_ring[h2] = v;
-      }
-      yals->ddfw.hd_ring_head = (h2 + 1) % K2;
-
-      // Sample current hd_window into the rolling K-window mean buffer.
-      {
-        int hh = yals->ddfw.hd_value_head;
-        int sample = yals->ddfw.hd_window;
-        if (yals->ddfw.hd_value_count < K2) {
-          yals->ddfw.hd_value_ring[hh] = sample;
-          yals->ddfw.hd_value_sum += sample;
-          yals->ddfw.hd_value_count++;
-        } else {
-          yals->ddfw.hd_value_sum -= yals->ddfw.hd_value_ring[hh];
-          yals->ddfw.hd_value_ring[hh] = sample;
-          yals->ddfw.hd_value_sum += sample;
-        }
-        yals->ddfw.hd_value_head = (hh + 1) % K2;
-      }
-    }
   }
 
 
@@ -3135,9 +3097,6 @@ void yals_del (Yals * yals) {
   free (yals->ddfw.max_weighted_neighbour);
   free (yals->ddfw.tabu_last_flipped);
   free (yals->ddfw.age_window_buf);
-  free (yals->ddfw.hd_ring);
-  free (yals->ddfw.hd_parity);
-  free (yals->ddfw.hd_value_ring);
   free (yals->ddfw.sat_count_in_clause);
   free (yals->ddfw.helper_hash_clauses);
   free (yals->ddfw.helper_hash_vars);
@@ -4808,26 +4767,6 @@ void yals_init_ddfw (Yals *yals)
   yals->ddfw.age_window_head = 0;
   yals->ddfw.age_window_count = 0;
   yals->ddfw.age_window_sum  = 0;
-  // Sliding-window Hamming-distance buffers (same K as age window).
-  // Only allocated when --hd_restart > 0; per-flip maintenance is also
-  // gated on the option, so leaving these NULL is safe in the off case.
-  yals->ddfw.hd_ring          = 0;
-  yals->ddfw.hd_parity        = 0;
-  yals->ddfw.hd_value_ring    = 0;
-  yals->ddfw.hd_ring_head     = 0;
-  yals->ddfw.hd_ring_count    = 0;
-  yals->ddfw.hd_window        = 0;
-  yals->ddfw.hd_value_head    = 0;
-  yals->ddfw.hd_value_count   = 0;
-  yals->ddfw.hd_value_sum     = 0;
-  yals->ddfw.hd_last_restart_flip = 0;
-  if (yals->opts.hd_restart.val > 0) {
-    int K2 = yals->ddfw.age_window_size;
-    int nv = yals->nvars + 1;
-    yals->ddfw.hd_ring       = malloc ((size_t) K2 * sizeof (int));
-    yals->ddfw.hd_parity     = calloc ((size_t) nv, sizeof (unsigned char));
-    yals->ddfw.hd_value_ring = malloc ((size_t) K2 * sizeof (int));
-  }
 
   yals->ddfw.conscutive_lm = 0;
   yals->ddfw.count_conscutive_lm = 0;
@@ -5891,33 +5830,6 @@ int yals_inner_loop_max_tries (Yals * yals)
             continue;  // transfer iterations don't advance the cutoff counter
           }
           yals_flip_ddfw (yals, lit);
-          // --hd_restart: trigger an inner restart (same control flow as
-          // hitting --cutoff) as soon as the rolling K-window mean of HD
-          // drops below the threshold. Two gates:
-          //   1. window must be full (hd_value_count >= K) so we have a
-          //   2. at least K flips since the previous HD-trigger fire, so
-          //      consecutive HD-restarts are spaced like cutoff restarts.
-          {
-            int hd_thresh = yals->opts.hd_restart.val;
-            int K_full = yals->ddfw.age_window_size;
-            if (hd_thresh > 0 &&
-                yals->ddfw.hd_value_count >= K_full &&
-                yals->stats.flips - yals->ddfw.hd_last_restart_flip
-                  >= (int64_t) K_full) {
-              double avg_hd = (double) yals->ddfw.hd_value_sum
-                              / (double) yals->ddfw.hd_value_count;
-              if (avg_hd < (double) hd_thresh) {
-                yals->ddfw.hd_last_restart_flip = yals->stats.flips;
-                yals_msg (yals, 1,
-                  "hd_restart trigger at flips %lld: avg_hd %.2f < %d "
-                  "(K=%d), forcing restart %lld",
-                  (long long) yals->stats.flips, avg_hd, hd_thresh,
-                  K_full,
-                  (long long) (yals->stats.restart.inner.count + 1));
-                break;
-              }
-            }
-          }
           c++;  // one flip = one tick toward the cutoff
     }
   }
