@@ -277,8 +277,6 @@ typedef struct DDFW {
 
   heap uvars_heap; // heap for variables in falsified constraints
 
-  int reset_weights_on_restart;
-
   /*
     additional data for cardinality constraint handling
   */
