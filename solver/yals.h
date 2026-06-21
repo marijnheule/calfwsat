@@ -624,7 +624,6 @@ unsigned yals_satcnt (Yals * yals, int cidx);
 void yals_add_vars_to_uvars (Yals* yals, int cidx, int constraint_type);
 void yals_delete_vars_from_uvars (Yals* yals, int cidx, int constraint_type);
 
-int yals_pick_from_list_scores (Yals * yals);
 void yals_flip_value_of_lit (Yals * yals, int lit);
 void yals_make_clauses_after_flipping_lit (Yals * yals, int lit);
 void yals_break_clauses_after_flipping_lit (Yals * yals, int lit);

@@ -42,7 +42,6 @@ This code extends the solver yal-lin (Md Solimul Chowdhury, Cayden Codel, Marijn
   OPT (verbose,0,0,5,"set verbose level"); \
   OPT (witness,1,0,1,"print witness"); \
   OPT (card_compute,4,1,4,"cardinality constraint weight computation rule (1: linear c*d, 2: exponential c^d capped at d=7, 3: quadratic c*d^2, 4: cubic c*d^3)"); \
-  OPT (hard_stochastic_selection,1,0,INT_MAX,"All/Hard Constraints: pick from top K variables with weighted stochastic selection"); \
   OPT (init_clause_weight,100,1,INT_MAX,"initial clause weight"); \
   OPT (init_card_weight,100,1,INT_MAX,"initial cardinality constraint weight"); \
   OPT (sat_init_card_weight,100,1,INT_MAX,"initial cardinality constraint weight for SAT"); \
@@ -61,7 +60,6 @@ This code extends the solver yal-lin (Md Solimul Chowdhury, Cayden Codel, Marijn
   OPT (oldestsource,0,0,1,"random-source selection: instead of random, pick the satisfied source that has been least-recently used as a source (LRU)"); \
   OPT (sourcecap,500,0,1000,"cap per-transfer amount at source_weight*sourcecap/1000 (1000 = cap at source weight, the loosest binding; 0 = no transfer)"); \
   OPT (flip_gain_eps_e4,1000,0,INT_MAX,"if >0, snap |flip_gain| < val/10000 to 0 in basic score"); \
-  OPT (select_exp,1,1,INT_MAX,"exponent for weighting variable values in stochastic selection"); \
   OPT (random_select,-1,-1,INT_MAX,"chance of selecting a literal from the stack at random during variable selection, N / 100000"); \
   OPT (reset_weights_on_restart,0,0,1,"reset weights to initial values on inner restart"); \
   OPTSTEMPLATENDEBUG

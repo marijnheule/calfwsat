@@ -51,7 +51,6 @@ This code extends the solver yal-lin (Md Solimul Chowdhury, Cayden Codel, Marijn
 static void yals_check_global_best_weight_invariant (Yals * yals) {
   #ifndef NDEBUG
   if (!yals->opts.checking.val) return;
-  if (yals->opts.hard_stochastic_selection.val > 1) return;
 
   int max_var = -1, var, true_lit, false_lit;
   double max_gain = INT_MIN*1.0, flip_gain;

@@ -5015,57 +5015,19 @@ void yals_update_changed_var_weights (Yals * yals) {
   yals->stats.nheap_updated += nChanged;
 }
 
-// weighted selection of variable from lit_scores
-int yals_pick_from_list_scores (Yals * yals) {
-
-  int counter = 0, res;
-  double sum,lim,score = 0;
-  int choice_of = COUNT (yals->lit_scores);
-
-  assert (choice_of > 0);
-
-  sum = 0;
-  for (int i = 0; i < choice_of; i++) {
-    sum += PEEK (yals->lit_scores, i).score;
-    assert (PEEK (yals->lit_scores, i).score >= 0);
-  }
-
-  lim = (yals_rand (yals) / (1.0 + (double) UINT_MAX))*sum;
-
-  res = PEEK (yals->lit_scores, 0).lit;
-  score = PEEK (yals->lit_scores, 0).score;
-
-  if (sum > 0.0) {
-
-    while (counter+1 < choice_of && score <= lim) {
-      lim -= score;
-      counter++;
-      res = PEEK (yals->lit_scores, counter).lit;
-      score = PEEK (yals->lit_scores, counter).score;
-    }
-
-  }
-
-  yals->ddfw.best_weight = score;
-
-  return res;
-}
-
 /*
 
   Grab a literal from the heap to flip.
 
-  Can either use stochastic selection or 
-  pick the best literal.
+  Pick the best (max-weight) literal, optionally skipping --tabu vars.
 
   Return 0 if no literals on the heap.
 
 */
 int yals_pick_literal_from_heap (Yals * yals) {
-  int lit = 0, selectCnt;
+  int lit = 0;
   heap *heap;
   heap = &yals->ddfw.uvars_heap;
-  selectCnt = yals->opts.hard_stochastic_selection.val;
 
   yals_update_changed_var_weights (yals);
 
@@ -5083,34 +5045,7 @@ int yals_pick_literal_from_heap (Yals * yals) {
       yals->ddfw.best_weight = yals_get_heap_score (heap, lit);
     } else {
 
-      if (selectCnt > 1) { // stochastic selection 
-        int choice_of = MIN (COUNT (heap->stack), selectCnt);
-        int added_lits = 0;
-        CLEAR (yals->lit_scores);
-
-        for (int i = 0; i < choice_of; i++) {
-          Lit_Score temp;
-          temp.lit = yals_pop_max_heap (yals, heap);
-          temp.score = yals_get_heap_score (heap, temp.lit);
-          if (temp.score <= 0) continue;
-          if (yals->opts.select_exp.val > 1) {
-            temp.score = pow (temp.score, (yals->opts.select_exp.val/10000.0));
-          }
-          PUSH (yals->lit_scores, temp);
-          added_lits++;
-        }
-        if (added_lits)
-          lit = yals_pick_from_list_scores (yals); // weighted choice from lit_scores
-
-        // push back non-selected variables
-        int sCnt = COUNT (yals->lit_scores);
-        for (int i = 0; i < sCnt; i++) {
-          Lit_Score temp = POP (yals->lit_scores);
-          if (temp.lit == lit) continue;
-          yals_update_heap (yals,heap,temp.lit,temp.score);
-        }
-
-      } else {
+      {
         // --tabu: if N most-recently-flipped vars should be skipped, pop the
         // heap, check each candidate, stash tabu ones in lit_scores, and use
         // the first non-tabu. If everything popped is tabu, fall back to the
