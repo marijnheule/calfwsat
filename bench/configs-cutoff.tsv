@@ -1,16 +1,13 @@
 # Sweep over per-try flip cutoff. cutoff = flips per try before inner restart
-# (cache insert + assignment redraw + optional strategy randomization via
-# --fixed). Smaller cutoff = more restarts = more cache churn + more
-# diversification; larger cutoff = longer continuous search per try.
+# (assignment redraw + optional strategy randomization via --fixed). Smaller
+# cutoff = more restarts = more diversification; larger cutoff = longer
+# continuous search per try.
 #
-# Current default cutoff=20000. This sweep probes the curve up to 2.5M
-# (~125x default) to see whether the historical 20K default is still right
-# after all the recent perf and algorithm changes.
-#
-# Values: cutoff in {20K, 80K, 300K, 1M, 2.5M}. Name encodes cutoff in K.
+# Current solver default cutoff=300000. This sweep probes a wide log-scale
+# range {100K, 1M, 10M, 100M} to see where the cutoff curve peaks after the
+# recent perf/algorithm changes. Name encodes the cutoff.
 # name	args
-co20	--cutoff=20000
-co80	--cutoff=80000
-co300	--cutoff=300000
-co1000	--cutoff=1000000
-co2500	--cutoff=2500000
+co100k	--cutoff=100000
+co1m	--cutoff=1000000
+co10m	--cutoff=10000000
+co100m	--cutoff=100000000
