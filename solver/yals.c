@@ -5773,9 +5773,19 @@ int yals_inner_loop_max_tries (Yals * yals)
     // (expected) flips.
     int c = 0;
     int cutoffs_this_probe = 0;
+    // --dynmul: when D>0, extend this probe's flip budget to D * (probe flips
+    // at the last time the falsified-clause count improved), never shrinking
+    // below the static --cutoff. prev_tmp tracks the probe-best (stats.tmp,
+    // set to the starting assignment's nunsat by the preceding restart) so a
+    // drop in it signals an improvement. D=0 leaves the static cutoff alone.
+    int dynmul = yals->opts.dynmul.val;
+    int prev_tmp = yals->stats.tmp;
+    int64_t dyn_limit = 0;
     while (1) {
-      // Cutoff reached?
-      if (yals->opts.cutoff.val > 0 && c >= yals->opts.cutoff.val) {
+      // Cutoff reached? (effective budget = max(static cutoff, dynmul limit))
+      int64_t limit = yals->opts.cutoff.val;
+      if (dynmul > 0 && dyn_limit > limit) limit = dyn_limit;
+      if (limit > 0 && (int64_t) c >= limit) {
         cutoffs_this_probe++;
         // Attribute every cutoff hit to the current best, whether or not
         // the subsequent bypass roll succeeds. bypass_by_tmp[v] /
@@ -5804,6 +5814,9 @@ int yals_inner_loop_max_tries (Yals * yals)
             (long long) yals->stats.flips, yals->stats.tmp,
             pp, cutoffs_this_probe, p_eff);
           c = 0;
+          // Restart the dynmul deadline from scratch for the extended probe.
+          dyn_limit = 0;
+          prev_tmp = yals->stats.tmp;
           continue;
         }
         break;  // normal cutoff exit
@@ -5831,6 +5844,11 @@ int yals_inner_loop_max_tries (Yals * yals)
           }
           yals_flip_ddfw (yals, lit);
           c++;  // one flip = one tick toward the cutoff
+          // --dynmul: a new probe minimum extends the deadline to D * c.
+          if (dynmul > 0 && yals->stats.tmp < prev_tmp) {
+            prev_tmp = yals->stats.tmp;
+            dyn_limit = (int64_t) dynmul * c;
+          }
     }
   }
   return -1;
