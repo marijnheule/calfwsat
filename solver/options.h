@@ -54,7 +54,7 @@ This code extends the solver yal-lin (Md Solimul Chowdhury, Cayden Codel, Marijn
   OPT (tabu,0,0,INT_MAX,"tabu length: skip N most-recent flips (0 = disabled)"); \
   OPT (age_window,10000,1,INT_MAX,"window size for avg_age stats"); \
   OPT (bypass,0,0,1,"probabilistically bypass inner restart at cutoff"); \
-  OPT (heat,1,0,1,"track per-variable true-in-best counts; print at end"); \
+  OPT (heat,0,0,1,"track per-variable true-in-best counts; print at end"); \
   OPT (improving,1,0,1,"at restart keep assignment if best improved (0 = always re-pick)"); \
   OPT (oldestsource,0,0,1,"pick least-recently-used satisfied source (not random)"); \
   OPT (sourcecap,500,0,1000,"cap per-transfer at source_weight*sourcecap/1000"); \
