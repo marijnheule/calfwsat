@@ -27,7 +27,7 @@ This code extends the solver yal-lin (Md Solimul Chowdhury, Cayden Codel, Marijn
   OPT (clsselectp, 16 , 1, 100, "Clause selection probability for weight transfer."); \
   OPT (topk,8,0,64,"per-literal top-K heaviest neighbors (0 = full scan)"); \
   OPT (cutoff,300000,0,INT_MAX,"flips per try (0 = unlimited)"); \
-  OPT (dynmul,0,0,INT_MAX,"extend cutoff to D*probe-flips on improvement (0=off)"); \
+  OPT (dynmul,10,0,INT_MAX,"extend cutoff to D*probe-flips on improvement (0=off)"); \
   OPT (defrag,1,0,1,"defragemtation of unsat queue"); \
   OPT (fixed,1,0,INT_MAX,"fixed default strategy frequency (1=always)"); \
   OPT (wtadd,0,-1000,1000,"weight-transfer additive term (init_weight*wtadd/1000)"); \
@@ -53,7 +53,7 @@ This code extends the solver yal-lin (Md Solimul Chowdhury, Cayden Codel, Marijn
   OPT (wsamplepow,2,0,8,"random-source sampling exponent on weight (0 = uniform)"); \
   OPT (tabu,0,0,INT_MAX,"tabu length: skip N most-recent flips (0 = disabled)"); \
   OPT (age_window,10000,1,INT_MAX,"window size for avg_age stats"); \
-  OPT (bypass,1,0,1,"probabilistically bypass inner restart at cutoff"); \
+  OPT (bypass,0,0,1,"probabilistically bypass inner restart at cutoff"); \
   OPT (heat,1,0,1,"track per-variable true-in-best counts; print at end"); \
   OPT (improving,1,0,1,"at restart keep assignment if best improved (0 = always re-pick)"); \
   OPT (oldestsource,0,0,1,"pick least-recently-used satisfied source (not random)"); \
