@@ -19,9 +19,9 @@
 # Env overrides:
 #   THREADS=192   worker threads per run (default: all cores)
 #   SEED0=1       first seed (runs SEED0 .. SEED0+N-1)
-#   TIMEOUT=      wall-clock cap per run in seconds (default: none). When set,
-#                 a run that hits the cap counts as unsolved and contributes
-#                 2*TIMEOUT to PAR-2.
+#   TIMEOUT=3600  wall-clock cap per run in seconds (default: 3600; set empty
+#                 for no cap). A run that hits the cap counts as unsolved and
+#                 contributes 2*TIMEOUT to PAR-2.
 #
 # Output goes to bench-results/<base>-defaults-<timestamp>/ and a plain-text
 # + markdown table is printed to stdout for copy/paste into email.
@@ -38,7 +38,7 @@ case "$N" in (*[!0-9]*|"") echo "error: N must be a positive integer" >&2; exit 
 # -------- defaults (override via env) ----------
 THREADS="${THREADS:-$( (nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 192) )}"
 SEED0="${SEED0:-1}"
-TIMEOUT="${TIMEOUT:-}"
+TIMEOUT="${TIMEOUT-3600}"
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PALSAT="$SCRIPT_DIR/solver/palsat"
