@@ -81,7 +81,7 @@ void set_options (Yals * yals);
 void yals_outer_loop_maxtries (Yals * yals);
 void yals_set_wid (Yals * yals, int widx);
 int yals_inner_loop_max_tries (Yals * yals);
-void yals_flip_ddfw (Yals * yals, int lit);
+void yals_flip (Yals * yals, int lit);
 void yals_transfer_weights (Yals *yals);
 
 int * yals_card_lits (Yals * yals, int cidx);

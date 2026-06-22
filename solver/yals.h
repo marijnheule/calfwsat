@@ -197,7 +197,7 @@ typedef STACK (int) STACK_INT;
 
 
 // structure for weight-transfer algorithm
-typedef struct DDFW {
+typedef struct WT {
 
   LitClauses* lit_clauses_map;
  
@@ -209,9 +209,9 @@ typedef struct DDFW {
   int prev_unsat_weights;
  
  
-  double * clause_weights; // ddfw weight of each clause
-  double * unsat_weights; // ddfw weight gain for flipping lit (unsat to sat)
-  double * sat1_weights; // ddfw weight lost for flipping lit (sat to unsat)
+  double * clause_weights; // wt weight of each clause
+  double * unsat_weights; // wt weight gain for flipping lit (unsat to sat)
+  double * sat1_weights; // wt weight lost for flipping lit (sat to unsat)
   int init_weight_done;
   STACK (int) satisfied_clauses;
  
@@ -265,12 +265,12 @@ typedef struct DDFW {
   int prob_check_window;
   int alg_switch;
 
-  double time_ddfw;
-  int flips_temp, flips_ddfw;
+  double time_wt;
+  int flips_temp, flips_wt;
 
   double sum_uwr;
   double clsselectp;
-  double ddfwstartth;
+  double wtstartth;
   int guaranteed_uwrvs, missed_guaranteed_uwvars;
   unsigned source_not_selected;
   unsigned total_transfers;
@@ -285,7 +285,7 @@ typedef struct DDFW {
   int * card_helper_hash_clauses;
   int * card_sat_count_in_clause;
   int * card_sat_dirty; // 1 iff the sat/unsat partition may have drifted while over-satisfied (needs a full re-sort on re-entry to critical)
-  double * card_weights; // cardinality constraint ddfw weights
+  double * card_weights; // cardinality constraint wt weights
 
   // Preallocated per-thread scratch for the weight-transfer source-selection
   // path (each Yals is per-thread, so these need no locking). Avoids the
@@ -343,9 +343,9 @@ typedef struct DDFW {
   int64_t topk_stat_diverged;      // (TOPK_VERIFY=1 env var) queries where top-K pick != full-scan pick
   int topk_verify;                 // set from TOPK_VERIFY env at build time
 
-  // --wsamplepow: segment sum-tree over the ddfw weight of every constraint
+  // --wsamplepow: segment sum-tree over the wt weight of every constraint
   // (unified id: clause u<nclauses; else card u-nclauses). Leaf u holds the
-  // raw ddfw weight; internal nodes hold subtree sums; tree[1] = total. Drawn
+  // raw wt weight; internal nodes hold subtree sums; tree[1] = total. Drawn
   // proportional to weight in O(log N); a single weight change updates one
   // leaf-to-root path. Satisfaction is NOT encoded here (the caller
   // rejection-filters drawn sources for SAT / min-weight / hard-soft).
@@ -358,7 +358,7 @@ typedef struct DDFW {
   // was last flipped). Used by:
   //   - --tabu: v is tabu while stats.flips - last_flipped[v] < opts.tabu.val
   //   - avg-age stat in "new minimum" prints
-  // Always allocated when DDFW is built. Indexed by variable id (1..nvars).
+  // Always allocated when WT is built. Indexed by variable id (1..nvars).
   // 0 is the "never flipped yet" sentinel -- callers gate on `prev > 0`
   // so these vars don't pollute the age stat or appear tabu at startup.
   int64_t * tabu_last_flipped;
@@ -389,7 +389,7 @@ typedef struct DDFW {
   int * oldsrc_next;
   int oldsrc_head, oldsrc_tail, oldsrc_ncons;
 
-} DDFW;
+} WT;
 
 // structure for stack constaining falsified constraints,
 // also stores the weight of falsified constraints in the stack
@@ -460,7 +460,7 @@ typedef struct Yals {
   Mem mem;
   FPU fpu;
   Exp exp;
-  DDFW ddfw;
+  WT wt;
   int wid;
   int consecutive_non_improvement, last_flip_unsat_count;
 
@@ -577,7 +577,7 @@ void yals_print_combined_heat (Yals ** ys, int n);
 void yals_print_heat_slack (Yals * winner, int top_n);
 
 // Print a single probe-best histogram aggregated across `n` workers.
-// Each worker's per-probe scores (yals->ddfw.probe_bests) are merged
+// Each worker's per-probe scores (yals->wt.probe_bests) are merged
 // into one flat list before bucketing. Use `n=1` for sequential runs.
 // Output is emitted via yals_msg on ys[0] so it picks up that worker's
 // prefix; safe to call with all workers (palsat) or just the single
@@ -1089,7 +1089,7 @@ static inline void yals_card_sat_iters (Yals *yals, int cidx, int **begin, int *
   assert_valid_card_cidx (cidx);
 
   *begin = yals_card_lits (yals, cidx);
-  *end = *begin + yals->ddfw.card_sat_count_in_clause[cidx];
+  *end = *begin + yals->wt.card_sat_count_in_clause[cidx];
 }
 
 /*
@@ -1101,7 +1101,7 @@ static inline void yals_card_sat_iters (Yals *yals, int cidx, int **begin, int *
 static inline void yals_card_unsat_iters (Yals *yals, int cidx, int **begin, int **end) {
   assert_valid_card_cidx (cidx);
 
-  *begin = yals_card_lits (yals, cidx) + yals->ddfw.card_sat_count_in_clause [cidx];
+  *begin = yals_card_lits (yals, cidx) + yals->wt.card_sat_count_in_clause [cidx];
   *end = yals_card_lits (yals, cidx) + yals_card_length (yals, cidx);
 }
 
@@ -1112,12 +1112,12 @@ static inline void yals_update_var_weight (Yals *yals, int lit, int sat, double 
   STACK_INT *uvars;
   int * pos;
   int var = ABS(lit);
-  uvars = &yals->ddfw.uvars_changed;
-  pos = yals->ddfw.uvar_changed_pos;
+  uvars = &yals->wt.uvars_changed;
+  pos = yals->wt.uvar_changed_pos;
   if (sat)
-    weights = yals->ddfw.sat1_weights;
+    weights = yals->wt.sat1_weights;
   else
-    weights = yals->ddfw.unsat_weights;
+    weights = yals->wt.unsat_weights;
 
   LOG ("weight update of %lf for lit %d with sat %d", weight_change, lit, sat);
 

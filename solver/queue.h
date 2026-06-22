@@ -26,7 +26,7 @@ This code extends the solver yal-lin (Md Solimul Chowdhury, Cayden Codel, Marijn
     yals->unsat for falsified clauses,
     yals_card_unsat for falsified cardinality constraints,
 
-  The stack is necessary for the DDFW base algorithm. It allows us to
+  The stack is necessary for the WT base algorithm. It allows us to
   loop over falsified constraints during the weight transfer.
 
   The stack is also used to implement a probSAT-like algorithm

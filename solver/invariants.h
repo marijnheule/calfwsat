@@ -25,12 +25,12 @@ This code extends the solver yal-lin (Md Solimul Chowdhury, Cayden Codel, Marijn
 
   Invariant checks:
 
-  (1) Check "best variable" has the best ddfw weight change
+  (1) Check "best variable" has the best wt weight change
       - not applicable if using stochastic choice
 
-  (2) Check ddfw weight changes for variables match ddfw weights of constraints.
-      Check ddfw weight calculation is correct for cardinality constraints.
-      Check total ddfw weight in system has not changed during execution.
+  (2) Check wt weight changes for variables match wt weights of constraints.
+      Check wt weight calculation is correct for cardinality constraints.
+      Check total wt weight in system has not changed during execution.
 
   (3) Check falsified constraints are on unsat stacks.
       Check constraints have correct nsat (number satisfied literals) counts.
@@ -43,7 +43,7 @@ This code extends the solver yal-lin (Md Solimul Chowdhury, Cayden Codel, Marijn
 
 /*
 
-  Check that the best picked ddfw var is actually the best to flip
+  Check that the best picked wt var is actually the best to flip
 
   This invariant can fail if the set uvars is not complete
 
@@ -60,45 +60,45 @@ static void yals_check_global_best_weight_invariant (Yals * yals) {
     false_lit = -true_lit;
 
     // should always be a positive weight
-    assert (yals->ddfw.sat1_weights [get_pos (true_lit)] >= -0.1);
+    assert (yals->wt.sat1_weights [get_pos (true_lit)] >= -0.1);
 
     flip_gain =
-        yals->ddfw.unsat_weights [get_pos (false_lit)]  
-        - yals->ddfw.sat1_weights [get_pos (true_lit)];
+        yals->wt.unsat_weights [get_pos (false_lit)]  
+        - yals->wt.sat1_weights [get_pos (true_lit)];
 
     if (flip_gain > max_gain) {
       max_gain = flip_gain;
       max_var = true_lit;
     }
 
-    if (flip_gain > 0 && var != yals->ddfw.best_var) {
+    if (flip_gain > 0 && var != yals->wt.best_var) {
       LOG ("determine uwvar %d with gain %lf", var, flip_gain);
-      assert (yals_heap_contains (&yals->ddfw.uvars_heap, var));
-      assert (yals->ddfw.uvars_heap.score [var] == flip_gain);
+      assert (yals_heap_contains (&yals->wt.uvars_heap, var));
+      assert (yals->wt.uvars_heap.score [var] == flip_gain);
     }
 
   }
 
-  if (!yals->ddfw.best_var) {
+  if (!yals->wt.best_var) {
     assert (max_gain <= 0);
     return;
   }
   LOG ("Expected max var %d best gain %lf", max_var, max_gain);
-  LOG ("Found max var %d best gain %lf", yals->ddfw.best_var, yals->ddfw.best_weight);
+  LOG ("Found max var %d best gain %lf", yals->wt.best_var, yals->wt.best_weight);
   if (max_gain > 0.1) {
-    if (!(fabs (yals->ddfw.best_weight - max_gain) < 0.1)) {
-      printf ("Expected max var %d pos %d best gain %lf\n", max_var, yals->ddfw.uvar_pos[abs(max_var)],max_gain);
-      printf ("Unsat %lf sat %lf\n",yals->ddfw.unsat_weights [get_pos (-max_var)],yals->ddfw.sat1_weights [get_pos (max_var)] );
-      printf ("Found max var %d best gain %lf\n", yals->ddfw.best_var, yals->ddfw.best_weight);
+    if (!(fabs (yals->wt.best_weight - max_gain) < 0.1)) {
+      printf ("Expected max var %d pos %d best gain %lf\n", max_var, yals->wt.uvar_pos[abs(max_var)],max_gain);
+      printf ("Unsat %lf sat %lf\n",yals->wt.unsat_weights [get_pos (-max_var)],yals->wt.sat1_weights [get_pos (max_var)] );
+      printf ("Found max var %d best gain %lf\n", yals->wt.best_var, yals->wt.best_weight);
     }
-    assert (fabs (yals->ddfw.best_weight - max_gain) < 0.1);
+    assert (fabs (yals->wt.best_weight - max_gain) < 0.1);
   }
   #endif
 }
 
 /*
 
-  Check the ddfw accumulated weights for each literal
+  Check the wt accumulated weights for each literal
 
   Loops over all constraints, checking that the total constraint weight is correct. 
   The total should not change over the course of the algorithm because constraints 
@@ -129,11 +129,11 @@ static void yals_check_global_weight_invariant (Yals * yals) {
   LOG("Clause weights"); // printing out each constraints weights
   for (cidx = 0; cidx < yals->nclauses; cidx++) {
     if (yals_satcnt (yals, cidx) > 0) {
-      LOGCIDX (cidx, "SAT Weight %lf",yals->ddfw.clause_weights[cidx]);
+      LOGCIDX (cidx, "SAT Weight %lf",yals->wt.clause_weights[cidx]);
     } else {
-      LOGCIDX (cidx, "UNSAT Weight %lf",yals->ddfw.clause_weights[cidx]);
+      LOGCIDX (cidx, "UNSAT Weight %lf",yals->wt.clause_weights[cidx]);
     }
-    actual_total_weight += yals->ddfw.clause_weights[cidx];
+    actual_total_weight += yals->wt.clause_weights[cidx];
     expected_total_weight += yals->opts.init_clause.val; // each clause started with this
 
     // look at actual unsat and sat1 weights
@@ -143,22 +143,22 @@ static void yals_check_global_weight_invariant (Yals * yals) {
     }
     if (sat == 1) {
       for (p = yals_lits (yals, cidx), sat = 0; (lit = *p); p++) {
-        if (yals_val (yals, lit)) expected_sat1_weights[get_pos (lit)] += yals->ddfw.clause_weights[cidx];
+        if (yals_val (yals, lit)) expected_sat1_weights[get_pos (lit)] += yals->wt.clause_weights[cidx];
       }
     } else if (sat == 0) {
       for (p = yals_lits (yals, cidx), sat = 0; (lit = *p); p++) {
-        expected_unsat_weights[get_pos (lit)] += yals->ddfw.clause_weights[cidx];
+        expected_unsat_weights[get_pos (lit)] += yals->wt.clause_weights[cidx];
       }
     }
   }
   LOG("Cardinality weights"); // printing out each constraints weights
   for (cidx = 0; cidx < yals->card_nclauses; cidx++) {
     if (yals_card_satcnt (yals, cidx) >= yals_card_bound (yals, cidx)) {
-      LOGCARDCIDX (cidx, "SAT Weight %lf",yals->ddfw.card_weights[cidx]); 
+      LOGCARDCIDX (cidx, "SAT Weight %lf",yals->wt.card_weights[cidx]); 
     } else {
-      LOGCARDCIDX (cidx, "UNSAT Weight %lf",yals->ddfw.card_weights[cidx]); 
+      LOGCARDCIDX (cidx, "UNSAT Weight %lf",yals->wt.card_weights[cidx]); 
     }
-    actual_total_weight += yals->ddfw.card_weights[cidx];
+    actual_total_weight += yals->wt.card_weights[cidx];
     expected_total_weight += yals->opts.init_card.val; // each cardinality constraint started with this
 
     // look at actual unsat and sat1 weights
@@ -193,19 +193,19 @@ static void yals_check_global_weight_invariant (Yals * yals) {
     if (temp_iter == 0) continue;
 
     LOG ("Lit %d, unsat expected %lf actual %lf, sat expected %lf actual %lf",\
-    temp_iter, expected_unsat_weights[get_pos (temp_iter)],yals->ddfw.unsat_weights[get_pos (temp_iter)],expected_sat1_weights[get_pos (temp_iter)],yals->ddfw.sat1_weights[get_pos (temp_iter)] );
+    temp_iter, expected_unsat_weights[get_pos (temp_iter)],yals->wt.unsat_weights[get_pos (temp_iter)],expected_sat1_weights[get_pos (temp_iter)],yals->wt.sat1_weights[get_pos (temp_iter)] );
 
     // if assertion is about to fail, print out the information necessary for debugging
-    if (!(fabs (expected_unsat_weights[get_pos (temp_iter)] - yals->ddfw.unsat_weights[get_pos (temp_iter)]) < .01) ||\
-    !(fabs (expected_sat1_weights[get_pos (temp_iter)] - yals->ddfw.sat1_weights[get_pos (temp_iter)]) < 0.1) ) {
+    if (!(fabs (expected_unsat_weights[get_pos (temp_iter)] - yals->wt.unsat_weights[get_pos (temp_iter)]) < .01) ||\
+    !(fabs (expected_sat1_weights[get_pos (temp_iter)] - yals->wt.sat1_weights[get_pos (temp_iter)]) < 0.1) ) {
 
       yals_msg (yals, 1, "Lit %d, unsat expected %lf actual %lf, sat expected %lf actual %lf",\
-    temp_iter, expected_unsat_weights[get_pos (temp_iter)],yals->ddfw.unsat_weights[get_pos (temp_iter)],expected_sat1_weights[get_pos (temp_iter)],yals->ddfw.sat1_weights[get_pos (temp_iter)] );
+    temp_iter, expected_unsat_weights[get_pos (temp_iter)],yals->wt.unsat_weights[get_pos (temp_iter)],expected_sat1_weights[get_pos (temp_iter)],yals->wt.sat1_weights[get_pos (temp_iter)] );
     }
 
-    assert (fabs (expected_unsat_weights[get_pos (temp_iter)] - yals->ddfw.unsat_weights[get_pos (temp_iter)]) < .01);
+    assert (fabs (expected_unsat_weights[get_pos (temp_iter)] - yals->wt.unsat_weights[get_pos (temp_iter)]) < .01);
 
-    assert (fabs (expected_sat1_weights[get_pos (temp_iter)] - yals->ddfw.sat1_weights[get_pos (temp_iter)]) < 0.1);
+    assert (fabs (expected_sat1_weights[get_pos (temp_iter)] - yals->wt.sat1_weights[get_pos (temp_iter)]) < 0.1);
   }
 
   #endif
