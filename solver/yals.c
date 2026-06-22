@@ -4423,7 +4423,11 @@ int yals_sat (Yals * yals) {
     }
   }
 
-  yals->stats.time.entered = yals_time (yals);
+  // Stats clock is the calling (worker) thread's CPU time, so flips and
+  // elapsed time refer to the same thread. Unfreeze in case this Yals is
+  // reused for another solve.
+  yals->stats.time_frozen = 0;
+  yals->stats.time.entered = yals_thread_time ();
 
   if (yals->opts.setfpu.val) yals_set_fpu (yals);
 
@@ -4487,6 +4491,10 @@ int yals_sat (Yals * yals) {
 
   if (yals->opts.setfpu.val) yals_reset_fpu (yals);
   yals_flush_time (yals);
+  // Finalize this worker's CPU time: freeze so the main thread's later flush
+  // (from yals_stats after pthread_join) can't overwrite it with its own
+  // unrelated thread CPU time.
+  yals->stats.time_frozen = 1;
   return res;
 }
 

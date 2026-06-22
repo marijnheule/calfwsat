@@ -16,6 +16,7 @@ This code extends the solver yal-lin (Md Solimul Chowdhury, Cayden Codel, Marijn
 #include <string.h>
 #include <sys/resource.h>
 #include <sys/time.h>
+#include <time.h>
 #include "stack.h"
 #include "options.h"
 #include "assert.h"
@@ -120,6 +121,8 @@ typedef struct Stats {
 #ifdef __GNUC__
   volatile int flushing_time;
 #endif
+  volatile int time_frozen;  // once the worker thread finalizes its CPU time,
+                             // freeze it so a later main-thread flush is a no-op
 #ifndef NYALSMEMS
   struct { long long all, crit, lits, occs, read, update, weight; } mems;
 #endif
@@ -899,6 +902,22 @@ static inline double yals_time (Yals * yals) {
   else return yals_process_time ();
 }
 
+// Per-thread CPU time of the *calling* thread. Used for the stats clock so
+// that the flip count and the elapsed time always refer to the same worker
+// thread: in PALSAT each worker runs yals_sat on its own pthread, so a shared
+// wall-clock would mix one worker's flips with all workers' contention. This
+// also sidesteps the flush race (a stale main-thread flush) since each
+// worker's time advances independently. Falls back to process time if the
+// clock is unavailable.
+static inline double yals_thread_time () {
+#ifdef CLOCK_THREAD_CPUTIME_ID
+  struct timespec ts;
+  if (!clock_gettime (CLOCK_THREAD_CPUTIME_ID, &ts))
+    return ts.tv_sec + 1e-9 * ts.tv_nsec;
+#endif
+  return yals_process_time ();
+}
+
 // Per-phase profiling timer. Returns 0 unless verbose printing is enabled,
 // skipping the getrusage syscall in production (verbose=0) runs. The
 // stats.time.restart field it populates is only consumed by
@@ -907,29 +926,30 @@ static inline double yals_time (Yals * yals) {
 // it was the largest non-algorithmic cost.
 static inline double yals_time_phase (Yals * yals) {
   if (yals->opts.verbose.val == 0) return 0.0;
-  return yals_time (yals);
+  return yals_thread_time ();
 }
 
 static void yals_flush_time (Yals * yals) {
   double time, entered;
+  // Once the worker thread has finalized its CPU time at yals_sat exit, the
+  // accumulator is frozen: a later flush (e.g. from yals_stats on the main
+  // thread after pthread_join) must not re-read this thread's clock, which
+  // would corrupt total with an unrelated thread's CPU time.
+  if (yals->stats.time_frozen) return;
 #ifdef __GNUC__
   int old;
   // begin{atomic}
   old = __sync_val_compare_and_swap (&yals->stats.flushing_time, 0, 42);
   assert (old == 0 || old == 42);
   if (old) return;
-  //
-  // TODO I still occasionally have way too large kflips/sec if interrupted
-  // and I do not know why?  Either there is a bug in flushing or there is
-  // still a data race here and I did not apply this CAS sequence correctly.
-  //
 #endif
-  time = yals_time (yals);
+  time = yals_thread_time ();
   entered = yals->stats.time.entered;
   yals->stats.time.entered = time;
-  assert (time >= entered);
-  time -= entered;
-  yals->stats.time.total += time;
+  // Clamp instead of asserting monotonicity: if a flush ever runs on a
+  // different thread than the one that set 'entered', the per-thread clocks
+  // are unrelated and 'time' can be smaller, so just don't go backwards.
+  if (time >= entered) yals->stats.time.total += time - entered;
 #ifdef __GNUC__
   old = __sync_val_compare_and_swap (&yals->stats.flushing_time, 42, 0);
   assert (old == 42);
