@@ -949,6 +949,8 @@ static void yals_topk_increased (Yals * yals, int u) {
   for (int e = cstart[u]; e < cstart[u+1]; e++) {
     nbr_w[e] = nw;  // keep the cache in sync for every edge of u
     int p = lit_of[e];
+    // Stale list: frozen pos is garbage; skip -- yals_topk_best rebuilds lazily.
+    if (yals->ddfw.topk_gen[p] != yals->ddfw.topk_epoch) continue;
     if (pos[e] >= 0) yals_topk_bubble_up (yals, p, e);
     else yals_topk_insert (yals, p, e);
   }
@@ -969,6 +971,8 @@ static void yals_topk_decreased (Yals * yals, int u) {
   for (int e = cstart[u]; e < cstart[u+1]; e++) {
     nbr_w[e] = nw;  // keep the cache in sync for every edge of u
     int p = lit_of[e];
+    // Stale list: frozen pos is garbage; skip -- yals_topk_best rebuilds lazily.
+    if (yals->ddfw.topk_gen[p] != yals->ddfw.topk_epoch) continue;
     if (pos[e] < 0) continue;
     yals_topk_bubble_down (yals, p, e);
     // If we ended up at the bottom of the list, evict. With count > 1 the
@@ -1028,6 +1032,8 @@ static void yals_topk_rebuild_lit (Yals * yals, int p) {
       }
     }
   }
+  // This list is now exact for the current weights: mark it current.
+  yals->ddfw.topk_gen[p] = yals->ddfw.topk_epoch;
 }
 
 static void yals_topk_rebuild_all (Yals * yals) {
@@ -1091,7 +1097,9 @@ static int yals_topk_best (Yals * yals, int lit, int * ret_con_type) {
   int p = get_pos (lit);
   int * count = yals->ddfw.topk_count;
   yals->ddfw.topk_stat_q++;
-  if (count[p] == 0) {
+  // Stale (epoch mismatch) or empty list: rebuild from a fresh neighbor scan.
+  // rebuild_lit restamps gen = epoch, so the list is current afterward.
+  if (yals->ddfw.topk_gen[p] != yals->ddfw.topk_epoch || count[p] == 0) {
     yals_topk_rebuild_lit (yals, p);
     yals->ddfw.topk_stat_rebuild++;
   }
@@ -1145,6 +1153,10 @@ static void yals_topk_build (Yals * yals) {
   yals->ddfw.topk_count = calloc (nlits, sizeof (int));
   yals->ddfw.topk_pos = malloc (E * sizeof (int));
   for (int i = 0; i < E; i++) yals->ddfw.topk_pos[i] = -1;
+  // Epoch stamps. gen starts at 0 == epoch, so the initial rebuild_all below
+  // populates lists that are already "current" (gen restamped per rebuild_lit).
+  yals->ddfw.topk_epoch = 0;
+  yals->ddfw.topk_gen = calloc (nlits, sizeof (unsigned));
   // Per-edge weight cache (read by yals_nbr_better). Seed every edge with its
   // constraint's current weight; kept in sync thereafter at every weight
   // change (apply_one_transfer's increased/decreased sweeps, and rebuild_lit).
@@ -1173,6 +1185,7 @@ static void yals_topk_free (Yals * yals) {
   free (yals->ddfw.topk_list); yals->ddfw.topk_list = NULL;
   free (yals->ddfw.topk_count); yals->ddfw.topk_count = NULL;
   free (yals->ddfw.topk_pos); yals->ddfw.topk_pos = NULL;
+  free (yals->ddfw.topk_gen); yals->ddfw.topk_gen = NULL;
   free (yals->ddfw.nbr_w); yals->ddfw.nbr_w = NULL;
   yals->ddfw.topk_built = 0;
 }
@@ -1384,8 +1397,10 @@ void yals_reset_ddfw (Yals * yals)
     for (int i=0; i< yals->card_nclauses; i++) {
       yals->ddfw.card_weights [i] = yals->opts.init_card.val;
     }
-    // --topk: weights changed in bulk; rebuild the structure.
-    if (yals->opts.topk.val > 0) yals_topk_rebuild_all (yals);
+    // --topk: weights changed in bulk. Bump the epoch (O(1)) to invalidate
+    // every list; each is rebuilt lazily on first access (yals_topk_best),
+    // so literals never queried this probe skip the rebuild entirely.
+    if (yals->opts.topk.val > 0) yals->ddfw.topk_epoch++;
     // --wsamplepow: weights changed in bulk; recompute the sum-tree.
     if (yals->opts.wsamplepow.val > 0) yals_wsample_refill (yals);
   }
