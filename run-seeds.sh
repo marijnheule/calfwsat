@@ -106,8 +106,41 @@ for ((s = SEED0; s <= SEED_END; s++)); do
   printf '%-8s  %-10s  %14s  %10s\n' "$s" "$result" "$flips" "$secs"
 done
 
-# -------- aggregate --------
+# -------- aggregate: one config row, sweep-one leaderboard columns --------
+# Columns match sweep-one.sh: config runs SAT TO PAR-2 mean_flips median_flips
+# (only one config here = solver defaults, so the table has a single data row).
+read RUNS NSAT NTO PAR2 MEAN_FLIPS MEDIAN_FLIPS < <(awk -F, -v to="${TIMEOUT:-0}" '
+  NR==1 { next }
+  { n++
+    if ($2=="SAT") { sat++; sumt+=$4+0; f[fs++]=$3+0 }
+    else           { unsolved++ }
+  }
+  END {
+    par = (sumt + 2*to*unsolved)
+    parv = n ? par/n : 0
+    for (i=1;i<fs;i++){ k=f[i]; j=i-1; while(j>=0 && f[j]>k){f[j+1]=f[j];j--}; f[j+1]=k }
+    if (fs>0) {
+      for (i=0;i<fs;i++) mean+=f[i]; mean/=fs
+      med = (fs%2) ? f[int(fs/2)] : (f[fs/2-1]+f[fs/2])/2.0
+      mf=sprintf("%.0f",mean); mdf=sprintf("%.0f",med)
+    } else { mf="-"; mdf="-" }
+    printf "%d %d %d %.2f %s %s\n", n, sat, unsolved, parv, mf, mdf
+  }
+' "$CSV")
+
+[ -n "$TIMEOUT" ] && TIMEOUT_DISP="${TIMEOUT}s per run" || TIMEOUT_DISP="none"
+
+# Leaderboard table (plain) — the single config row.
 SUMMARY="$OUT_DIR/summary.txt"
+{
+  printf '%-10s %5s %5s %5s %10s %12s %14s\n' \
+    config runs SAT TO PAR-2 mean_flips median_flips
+  printf '%-10s %5s %5s %5s %10s %12s %14s\n' \
+    default "$RUNS" "$NSAT" "$NTO" "$PAR2" "$MEAN_FLIPS" "$MEDIAN_FLIPS"
+} > "$SUMMARY"
+
+# Plain-text email (metadata header + leaderboard), like sweep-one.sh.
+TXT="$OUT_DIR/email.txt"
 {
   echo "palsat default-settings run on $FORMULA"
   echo "  host:    $HOST"
@@ -115,40 +148,12 @@ SUMMARY="$OUT_DIR/summary.txt"
   echo "  date:    $DATE"
   echo "  threads: $THREADS per run"
   echo "  seeds:   $N  ($SEED0..$SEED_END)"
-  echo "  timeout: ${TIMEOUT:-none}"
+  echo "  timeout: $TIMEOUT_DISP"
   echo
-  awk -F, -v to="${TIMEOUT:-0}" '
-    NR==1 { next }
-    {
-      n++
-      res=$2
-      if (res=="SAT") { sat++; t[ts++]=$4+0; f[fs++]=$3+0; par+=$4+0; sumt+=$4+0; sumf+=$3+0 }
-      else            { par += 2*to }
-    }
-    function med(arr, m,  c, i, j, key) {
-      # insertion sort the first m elements of arr
-      for (i=1;i<m;i++){ key=arr[i]; j=i-1; while(j>=0 && arr[j]>key){arr[j+1]=arr[j];j--}; arr[j+1]=key }
-      if (m==0) return 0
-      if (m%2) return arr[int(m/2)]
-      return (arr[m/2-1]+arr[m/2])/2.0
-    }
-    END {
-      printf "runs:          %d\n", n
-      printf "solved (SAT):  %d / %d  (%.1f%%)\n", sat, n, n?100.0*sat/n:0
-      if (sat>0) {
-        printf "time   (s):    mean %.2f  median %.2f  min %.2f  max %.2f   [solved only]\n",
-               sumt/sat, med(t,ts), tmin(t,ts), tmax(t,ts)
-        printf "flips:         mean %.0f  median %.0f                       [solved only]\n",
-               sumf/sat, med(f,fs)
-      }
-      if (to+0>0) printf "PAR-2 (s):     %.2f  (unsolved charged 2x timeout)\n", par/n
-    }
-    function tmin(a,m,  i,v){ v=a[0]; for(i=1;i<m;i++) if(a[i]<v)v=a[i]; return v }
-    function tmax(a,m,  i,v){ v=a[0]; for(i=1;i<m;i++) if(a[i]>v)v=a[i]; return v }
-  ' "$CSV"
-} > "$SUMMARY"
+  cat "$SUMMARY"
+} > "$TXT"
 
-# Markdown per-seed table for email.
+# Markdown email (single-row table), like sweep-one.sh.
 MD="$OUT_DIR/email.md"
 {
   echo "## palsat default-settings run on \`$FORMULA\`"
@@ -158,27 +163,25 @@ MD="$OUT_DIR/email.md"
   echo "- date: $DATE"
   echo "- threads: $THREADS per run"
   echo "- seeds: $N ($SEED0..$SEED_END)"
-  echo "- timeout: ${TIMEOUT:-none}"
+  echo "- timeout: $TIMEOUT_DISP"
   echo
-  echo "| seed | result | flips | seconds |"
-  echo "|---:|---|---:|---:|"
-  awk -F, 'NR>1 { printf "| %s | %s | %s | %s |\n", $1,$2,$3,$4 }' "$CSV"
-  echo
-  echo '```'
-  cat "$SUMMARY"
-  echo '```'
+  echo "| config | runs | SAT | TO | PAR-2 | mean_flips | median_flips |"
+  echo "|---|---:|---:|---:|---:|---:|---:|"
+  printf "| %s | %s | %s | %s | %s | %s | %s |\n" \
+    default "$RUNS" "$NSAT" "$NTO" "$PAR2" "$MEAN_FLIPS" "$MEDIAN_FLIPS"
 } > "$MD"
 
 echo
-echo "==================== summary ===================="
-cat "$SUMMARY"
+echo "==================== copy/paste for email (plain) ===================="
+cat "$TXT"
 echo
-echo "==================== markdown (copy/paste) ======"
+echo "==================== copy/paste for email (markdown) ================="
 cat "$MD"
-echo "================================================="
+echo "======================================================================"
 echo
 echo "Files in ${OUT_DIR#$SCRIPT_DIR/}/:"
-echo "  results.csv   — per-seed raw data (seed,result,flips,seconds)"
-echo "  summary.txt   — aggregate stats"
-echo "  email.md      — markdown table + summary"
+echo "  email.txt     — plain text, paste into email body"
+echo "  email.md      — markdown, paste into email body"
+echo "  summary.txt   — leaderboard (single config row)"
+echo "  results.csv   — raw per-seed data (seed,result,flips,seconds)"
 echo "  seed-*.log    — full palsat output per seed"
