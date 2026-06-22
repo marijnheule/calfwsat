@@ -820,15 +820,18 @@ static inline int yals_nbr_better (Yals * yals, int e1, int e2) {
   // is bit-identical. nbr_con is only touched on an exact-weight tie.
   double w1 = yals->wt.nbr_w[e1], w2 = yals->wt.nbr_w[e2];
   if (w1 != w2) return w1 > w2;
-  return yals->wt.nbr_con[e1] < yals->wt.nbr_con[e2];
+  return yals->f->nbr_con[e1] < yals->f->nbr_con[e2];
 }
 
 static void yals_nbr_free (Yals * yals) {
-  if (!yals->wt.nbr_built) return;
-  free (yals->wt.nbr_con);   free (yals->wt.nbr_lit);
-  free (yals->wt.nbr_heap);
-  free (yals->wt.nbr_cstart); free (yals->wt.nbr_lstart);
-  yals->wt.nbr_built = 0;
+  // The graph lives in the shared formula: only the owner frees it. Non-owners
+  // merely point at it (they dropped their own empty YalsFormula at share time).
+  if (!yals->owns_formula) return;
+  if (!yals->f->nbr_built) return;
+  free (yals->f->nbr_con);   free (yals->f->nbr_lit);
+  free (yals->f->nbr_heap);
+  free (yals->f->nbr_cstart); free (yals->f->nbr_lstart);
+  yals->f->nbr_built = 0;
 }
 
 /*------------------------------------------------------------------------*/
@@ -941,8 +944,8 @@ static void yals_topk_remove (Yals * yals, int p, int e) {
 // bubble up the existing list entry, or try to insert if not in the list.
 static void yals_topk_increased (Yals * yals, int u) {
   if (!yals->wt.topk_built) return;
-  int * cstart = yals->wt.nbr_cstart;
-  int * lit_of = yals->wt.nbr_lit;
+  int * cstart = yals->f->nbr_cstart;
+  int * lit_of = yals->f->nbr_lit;
   int * pos = yals->wt.topk_pos;
   double * nbr_w = yals->wt.nbr_w;
   double nw = yals_nbr_weight (yals, u);  // u's new (increased) weight
@@ -962,8 +965,8 @@ static void yals_topk_increased (Yals * yals, int u) {
 // smallest other entry).
 static void yals_topk_decreased (Yals * yals, int u) {
   if (!yals->wt.topk_built) return;
-  int * cstart = yals->wt.nbr_cstart;
-  int * lit_of = yals->wt.nbr_lit;
+  int * cstart = yals->f->nbr_cstart;
+  int * lit_of = yals->f->nbr_lit;
   int * pos = yals->wt.topk_pos;
   int * count = yals->wt.topk_count;
   double * nbr_w = yals->wt.nbr_w;
@@ -1012,13 +1015,13 @@ static void yals_topk_rebuild_lit (Yals * yals, int p) {
   count[p] = 0;
   // Edges with literal p live in nbr_heap[lstart[p] .. lstart[p+1]).
   // (The heap may be unsorted under --topk, but the set of edges is correct.)
-  int lo = yals->wt.nbr_lstart[p], hi = yals->wt.nbr_lstart[p+1];
+  int lo = yals->f->nbr_lstart[p], hi = yals->f->nbr_lstart[p+1];
   for (int s = lo; s < hi; s++) {
-    int e = yals->wt.nbr_heap[s];
+    int e = yals->f->nbr_heap[s];
     // Refresh the weight cache for this edge. Idempotent on the hot path
     // (weights already current); on the post-bulk-reset rebuild_all this is
     // what re-syncs the cache for every edge after a wholesale weight reset.
-    yals->wt.nbr_w[e] = yals_nbr_weight (yals, yals->wt.nbr_con[e]);
+    yals->wt.nbr_w[e] = yals_nbr_weight (yals, yals->f->nbr_con[e]);
     if (count[p] < K) {
       int i = count[p]++;
       list[i] = e; pos[e] = i;
@@ -1038,7 +1041,7 @@ static void yals_topk_rebuild_lit (Yals * yals, int p) {
 
 static void yals_topk_rebuild_all (Yals * yals) {
   if (!yals->wt.topk_built) return;
-  for (int p = 0; p < yals->wt.nbr_nlits; p++) yals_topk_rebuild_lit (yals, p);
+  for (int p = 0; p < yals->f->nbr_nlits; p++) yals_topk_rebuild_lit (yals, p);
 }
 
 // Test eligibility of a single unified-id constraint (satisfied AND
@@ -1069,8 +1072,8 @@ static inline int yals_topk_eligible (Yals * yals, int u, int * ret_con_type) {
 // TYPECLAUSE, card cidx if TYPECARDINALITY) -- NOT unified id.
 static int yals_topk_scan_best (Yals * yals, int lit, int * ret_con_type) {
   int p = get_pos (lit);
-  int lo = yals->wt.nbr_lstart[p], hi = yals->wt.nbr_lstart[p+1];
-  int * con = yals->wt.nbr_con, * heap = yals->wt.nbr_heap;
+  int lo = yals->f->nbr_lstart[p], hi = yals->f->nbr_lstart[p+1];
+  int * con = yals->f->nbr_con, * heap = yals->f->nbr_heap;
   int best_cidx = -1, best_ct = 0;
   double best_w = 0.0; int best_uid = INT_MAX;
   for (int s = lo; s < hi; s++) {
@@ -1110,7 +1113,7 @@ static int yals_topk_best (Yals * yals, int lit, int * ret_con_type) {
 
   int K = yals->wt.topk_k;
   int * list = yals->wt.topk_list + p * K;
-  int * con = yals->wt.nbr_con;
+  int * con = yals->f->nbr_con;
   // Match yals_nbr_best's contract: return per-type cidx, not unified id.
   // For cards we'd be returning nclauses+cidx otherwise, which the caller
   // indexes straight into card_weights[] -- out of bounds, silent
@@ -1145,9 +1148,17 @@ static int yals_topk_best (Yals * yals, int lit, int * ret_con_type) {
 
 // Build the top-K structure. Requires the shared nbr_* graph to be built.
 static void yals_topk_build (Yals * yals) {
-  if (!yals->wt.nbr_built) yals_nbr_build (yals);
+  // The shared nbr_* graph is normally built eagerly by the owner in
+  // yals_card_connect (before the build barrier is released), so non-owners
+  // find it ready here. This lazy build only fires in the single-worker /
+  // non-shared case, where the owner builds its own copy. A non-owner must
+  // never reach an unbuilt graph.
+  if (!yals->f->nbr_built) {
+    assert (yals->owns_formula);
+    yals_nbr_build (yals);
+  }
   int K = yals->opts.topk.val;
-  int nlits = yals->wt.nbr_nlits, E = yals->wt.nbr_E;
+  int nlits = yals->f->nbr_nlits, E = yals->f->nbr_E;
   yals->wt.topk_k = K;
   yals->wt.topk_list = malloc ((size_t) nlits * K * sizeof (int));
   yals->wt.topk_count = calloc (nlits, sizeof (int));
@@ -1162,7 +1173,7 @@ static void yals_topk_build (Yals * yals) {
   // change (apply_one_transfer's increased/decreased sweeps, and rebuild_lit).
   yals->wt.nbr_w = malloc (E * sizeof (double));
   for (int e = 0; e < E; e++)
-    yals->wt.nbr_w[e] = yals_nbr_weight (yals, yals->wt.nbr_con[e]);
+    yals->wt.nbr_w[e] = yals_nbr_weight (yals, yals->f->nbr_con[e]);
   // Zero diagnostics + read TOPK_VERIFY env var (set to 1 to compare each
   // top-K pick against a fresh full literal scan -- slow but reveals when
   // the approximation diverges from the actual max-weight eligible source).
@@ -1361,11 +1372,11 @@ static void yals_nbr_build (Yals * yals) {
   }
   free (fill);
 
-  yals->wt.nbr_con = con; yals->wt.nbr_lit = litp;
-  yals->wt.nbr_heap = heap;
-  yals->wt.nbr_cstart = cstart; yals->wt.nbr_lstart = lstart;
-  yals->wt.nbr_E = E; yals->wt.nbr_ncons = ncons; yals->wt.nbr_nlits = nlits;
-  yals->wt.nbr_built = 1;
+  yals->f->nbr_con = con; yals->f->nbr_lit = litp;
+  yals->f->nbr_heap = heap;
+  yals->f->nbr_cstart = cstart; yals->f->nbr_lstart = lstart;
+  yals->f->nbr_E = E; yals->f->nbr_ncons = ncons; yals->f->nbr_nlits = nlits;
+  yals->f->nbr_built = 1;
 }
 
 // reset stacks, weight change values, constraint weights (if option is set)
@@ -2801,6 +2812,14 @@ void yals_card_connect (Yals * yals) {
   yals_msg (yals, 1,
     "need %d bytes per cardinality constraint for counting satisfied literals",
     yals->card_satcntbytes);
+
+  // Build the immutable neighbor graph once, owner-only, while non-owners are
+  // still blocked at the build barrier. They then share this single read-only
+  // copy via yals->f instead of each rebuilding it in yals_init -- removing 191
+  // redundant O(E) builds (and their allocator/bandwidth contention) at startup.
+  // Gated on --topk since that is the only consumer of the graph.
+  if (yals->owns_formula && yals->opts.topk.val > 0 && !yals->f->nbr_built)
+    yals_nbr_build (yals);
 
   // The shared formula is now fully built: release any non-owners waiting at the
   // top of yals_connect. Harmless in non-shared mode (nobody is waiting).
@@ -4888,8 +4907,10 @@ void yals_init (Yals *yals)
   }
 
   // --topk: build the per-literal top-K bounded list now that all weights
-  // are set. (Implicitly builds the shared nbr_* edge graph it uses.)
-  yals->wt.nbr_built = 0;
+  // are set. The shared nbr_* edge graph it uses was already built once by the
+  // owner in yals_card_connect (do NOT reset f->nbr_built here -- that flag and
+  // its arrays are shared across workers); topk_build only lazily builds the
+  // graph in the single-worker / non-shared case.
   yals->wt.topk_built = 0;
   if (yals->opts.topk.val > 0) yals_topk_build (yals);
 

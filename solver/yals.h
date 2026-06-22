@@ -311,15 +311,10 @@ typedef struct WT {
   int      tkm_cap;
 
 
-  // --litheap: per-literal max-weight neighbor heaps (mixed clause/card).
-  // See the "--litheap" block in yals.c for the encoding.
-  int nbr_built;
-  int nbr_E, nbr_nlits, nbr_ncons;
-  int * nbr_con;     // [E] edge -> unified constraint id (clause u<nclauses; else card)
-  int * nbr_lit;     // [E] edge -> literal position (get_pos)
-  int * nbr_heap;    // [E] edge enumeration by literal (slots [lstart[p], lstart[p+1]) hold edges with literal p, in arrival order)
-  int * nbr_cstart;  // [ncons+1] constraint -> first edge (constraint-major)
-  int * nbr_lstart;  // [nlits+1] literal position -> first slot in nbr_heap
+  // The immutable neighbor graph (nbr_built, nbr_E/nlits/ncons, nbr_con,
+  // nbr_lit, nbr_heap, nbr_cstart, nbr_lstart) now lives in the shared
+  // YalsFormula (yals->f) so palsat workers share one read-only copy. Only the
+  // mutable per-edge weight cache nbr_w (below) remains per-worker.
 
   // --topk: per-literal top-K list of heaviest neighbors (shares cstart,
   // lstart, con, lit with the nbr_* graph but uses its own list/pos arrays).
@@ -419,6 +414,17 @@ typedef struct YalsFormula {
   int * card_lits, * card_refs;
   int * card_occs, card_noccs;
   STACK(int) card_size;
+  // Immutable neighbor graph (the "nbr_*" edge list): a pure function of the
+  // formula, so it is built once by the owner and shared read-only across
+  // workers instead of each worker rebuilding it. The mutable per-edge weight
+  // cache (nbr_w) and the top-K lists stay per-worker in Yals.wt.
+  int nbr_built;
+  int nbr_E, nbr_nlits, nbr_ncons;
+  int * nbr_con;     // [E] edge -> unified constraint id (clause u<nclauses; else card)
+  int * nbr_lit;     // [E] edge -> literal position (get_pos)
+  int * nbr_heap;    // [E] edge enumeration by literal (slots [lstart[p], lstart[p+1]) hold edges with literal p, in arrival order)
+  int * nbr_cstart;  // [ncons+1] constraint -> first edge (constraint-major)
+  int * nbr_lstart;  // [nlits+1] literal position -> first slot in nbr_heap
   // Forced assignment derived during parsing + preprocessing (the trail after
   // unit propagation). Read-only after the formula is built; every worker seeds
   // its set/clear masks from this, so it is shared along with the clause DB.
