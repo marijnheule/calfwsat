@@ -5782,9 +5782,14 @@ int yals_inner_loop_max_tries (Yals * yals)
     int prev_tmp = yals->stats.tmp;
     int64_t dyn_limit = 0;
     while (1) {
-      // Cutoff reached? (effective budget = max(static cutoff, dynmul limit))
+      // Cutoff reached? With dynmul on the budget is purely dynamic: a restart
+      // seeds it at 1000 flips, and each improvement extends it to D*flips
+      // (effective budget = max(1000, dynmul limit)). D=0 uses static --cutoff.
       int64_t limit = yals->opts.cutoff.val;
-      if (dynmul > 0 && dyn_limit > limit) limit = dyn_limit;
+      if (dynmul > 0) {
+        limit = 1000;
+        if (dyn_limit > limit) limit = dyn_limit;
+      }
       if (limit > 0 && (int64_t) c >= limit) {
         cutoffs_this_probe++;
         // Attribute every cutoff hit to the current best, whether or not
