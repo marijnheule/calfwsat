@@ -55,7 +55,7 @@ This code extends the solver yal-lin (Md Solimul Chowdhury, Cayden Codel, Marijn
   OPT (age_window,10000,1,INT_MAX,"window size for avg_age stats"); \
   OPT (bypass,0,0,1,"probabilistically bypass inner restart at cutoff"); \
   OPT (heat,0,0,1,"track per-variable true-in-best counts; print at end"); \
-  OPT (improving,1,0,1,"at restart keep assignment if best improved (0 = always re-pick)"); \
+  OPT (improving,0,0,1,"at restart keep assignment if best improved (0 = always re-pick)"); \
   OPT (oldestsource,0,0,1,"pick least-recently-used satisfied source (not random)"); \
   OPT (sourcecap,500,0,1000,"cap per-transfer at source_weight*sourcecap/1000"); \
   OPT (flip_gain_eps_e4,1000,0,INT_MAX,"snap |flip_gain| < val/10000 to 0 (0 = off)"); \
