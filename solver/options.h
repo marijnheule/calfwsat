@@ -24,7 +24,7 @@ This code extends the solver yal-lin (Md Solimul Chowdhury, Cayden Codel, Marijn
 
 #define OPTSTEMPLATE \
   OPT (best,0,0,1,"always pick best assignment during restart"); \
-  OPT (clsselectp, 12 , 1, 100, "Clause selection probability for weight transfer."); \
+  OPT (clsselectp, 16 , 1, 100, "Clause selection probability for weight transfer."); \
   OPT (topk,8,0,64,"per-literal top-K heaviest neighbors (0 = full scan)"); \
   OPT (cutoff,300000,0,INT_MAX,"flips per try (0 = unlimited)"); \
   OPT (defrag,1,0,1,"defragemtation of unsat queue"); \
