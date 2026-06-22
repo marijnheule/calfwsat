@@ -1,0 +1,13 @@
+# dynmul x bypass sweep. --dynmul=D extends a probe's flip budget to D*flips
+# whenever the falsified-clause count improves; after a restart the budget is
+# seeded at 1000 flips (static --cutoff ignored when dynmul>0). --bypass
+# probabilistically re-extends a probe at the cutoff. Everything else default.
+#
+# 3x2 grid: D in {10,100,1000} x bypass in {0,1}. bypass default is 1.
+# name	args
+dm10_byp0	--dynmul=10 --bypass=0
+dm10_byp1	--dynmul=10 --bypass=1
+dm100_byp0	--dynmul=100 --bypass=0
+dm100_byp1	--dynmul=100 --bypass=1
+dm1000_byp0	--dynmul=1000 --bypass=0
+dm1000_byp1	--dynmul=1000 --bypass=1
