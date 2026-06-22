@@ -1164,9 +1164,12 @@ static void yals_topk_build (Yals * yals) {
   yals->wt.topk_count = calloc (nlits, sizeof (int));
   yals->wt.topk_pos = malloc (E * sizeof (int));
   for (int i = 0; i < E; i++) yals->wt.topk_pos[i] = -1;
-  // Epoch stamps. gen starts at 0 == epoch, so the initial rebuild_all below
-  // populates lists that are already "current" (gen restamped per rebuild_lit).
-  yals->wt.topk_epoch = 0;
+  // Epoch stamps. gen is calloc'd to 0 while epoch starts at 1, so every list
+  // begins STALE: we skip the eager full build and let each list be rebuilt
+  // lazily on its first yals_topk_best query (gen restamped to epoch by
+  // rebuild_lit). This mirrors the bulk-reset path and saves an O(nlits*deg)
+  // scan per worker at startup -- important on the 192-core shared-formula run.
+  yals->wt.topk_epoch = 1;
   yals->wt.topk_gen = calloc (nlits, sizeof (unsigned));
   // Per-edge weight cache (read by yals_nbr_better). Seed every edge with its
   // constraint's current weight; kept in sync thereafter at every weight
@@ -1188,7 +1191,8 @@ static void yals_topk_build (Yals * yals) {
     yals->wt.topk_verify = (v && *v && *v != '0');
   }
   yals->wt.topk_built = 1;
-  yals_topk_rebuild_all (yals);
+  // No eager yals_topk_rebuild_all here: lists start dirty (see epoch note
+  // above) and are built on demand by yals_topk_best.
 }
 
 static void yals_topk_free (Yals * yals) {
