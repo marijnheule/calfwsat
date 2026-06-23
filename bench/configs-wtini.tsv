@@ -1,0 +1,9 @@
+# --wtini sweep {20,30,40,50}. wtini controls weight transfer for sources still
+# at their initial weight: transfer = init_weight * wtini/1000. All else at
+# solver defaults (compiled default is --wtini=0, i.e. no transfer from
+# at-initial-weight sources).
+# name	args
+wti20	--wtini=20
+wti30	--wtini=30
+wti40	--wtini=40
+wti50	--wtini=50
