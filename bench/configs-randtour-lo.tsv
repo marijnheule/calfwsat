@@ -1,0 +1,10 @@
+# --randtour low sweep {1,2,3,4}. randtour is the random-source tournament
+# multiplier for --randk: a larger value samples R*K candidates and keeps the
+# top-K heaviest, biasing random source selection toward heavy constraints.
+# Everything else at solver defaults (--wsamplepow=1 --randk=1), so rt1
+# reproduces the compiled default.
+# name	args
+rt1	--randtour=1
+rt2	--randtour=2
+rt3	--randtour=3
+rt4	--randtour=4
