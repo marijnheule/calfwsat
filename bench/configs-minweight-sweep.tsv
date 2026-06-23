@@ -1,0 +1,11 @@
+# --min_weight sweep {20,40,60,80}. All other options at solver defaults
+# (compiled default is --min_weight=10).
+#
+# --min_weight=M is a true weight floor: no clause/card weight can drop below
+# M. A source must have weight > M to be picked, and any single transfer is
+# capped at (source_weight - M).
+# name	args
+mw20	--min_weight=20
+mw40	--min_weight=40
+mw60	--min_weight=60
+mw80	--min_weight=80

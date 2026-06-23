@@ -32,7 +32,7 @@ THREADS_DEFAULT="${THREADS:-8}"
 # A run differs from solver defaults only by what each config row sets.
 # Override deliberately with e.g. CUTOFF=20000 bash sweep-one.sh <formula>.
 CUTOFF_DEFAULT="${CUTOFF:-}"
-CONFIGS_REL="${CONFIGS:-bench/configs-oldestsource-heat.tsv}"
+CONFIGS_REL="${CONFIGS:-bench/configs-minweight-sweep.tsv}"
 # ------------------------------------------------------------------
 
 FORMULA="${1:?usage: $0 <formula.knf>}"
