@@ -1,0 +1,11 @@
+# card_compute sweep: cardinality-constraint weight rule.
+#   --card_compute=1  linear
+#   --card_compute=2  exponential
+#   --card_compute=3  quadratic
+#   --card_compute=4  cubic   (solver default)
+# Everything else at solver defaults.
+# name	args
+cc1_linear	--card_compute=1
+cc2_exp	--card_compute=2
+cc3_quad	--card_compute=3
+cc4_cubic	--card_compute=4
