@@ -1,0 +1,10 @@
+# Uniform-draw tournament sweep: --wsamplepow=0 (turn OFF weighted-proportional
+# sampling, back to uniform candidate draws) x --randtour {15,20,25,30}. Larger
+# randtour samples R*K candidates and keeps the top-K heaviest, so this isolates
+# how far the uniform-draw tournament alone scales without proportional bias.
+# All else at solver defaults (--randk=1).
+# name	args
+rt15_ws0	--wsamplepow=0 --randtour=15
+rt20_ws0	--wsamplepow=0 --randtour=20
+rt25_ws0	--wsamplepow=0 --randtour=25
+rt30_ws0	--wsamplepow=0 --randtour=30
