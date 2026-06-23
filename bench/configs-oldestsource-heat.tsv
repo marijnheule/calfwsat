@@ -1,0 +1,9 @@
+# 2x2: --oldestsource {0,1} x --heat {0,1}. All else at solver defaults
+# (both flags default to 0, so os0_heat0 reproduces the compiled default).
+#   --oldestsource=1  pick least-recently-used satisfied source (not random)
+#   --heat=1          track per-variable true-in-best counts; bias restarts
+# name	args
+os0_heat0	--oldestsource=0 --heat=0
+os1_heat0	--oldestsource=1 --heat=0
+os0_heat1	--oldestsource=0 --heat=1
+os1_heat1	--oldestsource=1 --heat=1
