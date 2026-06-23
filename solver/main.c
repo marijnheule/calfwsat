@@ -390,23 +390,43 @@ static void resetsighandlers (void) {
   (void) signal (SIGTERM, sig_term_handler);
 }
 
-static void caughtsigmsg (int sig) {
-  if (!verbose) return;
-  printf ("c\nc [CaLFwSAT] CAUGHT SIGNAL %d\nc\n", sig);
-  fflush (stdout);
-}
-
 static int catchedsig;
 
+// Set by catchsig() on SIGINT/SIGTERM. Read by the worker termination
+// callbacks (terminate / terminate_single). volatile sig_atomic_t is the only
+// thing a signal handler may safely touch here.
+static volatile sig_atomic_t terminating;
+
 static void catchsig (int sig) {
+  if (sig == SIGINT || sig == SIGTERM) {
+    if (!terminating) {
+      // Async-signal-safe path: only raise a flag and write() a short notice.
+      // The per-worker term callback sees the flag and unwinds every worker;
+      // the main thread then prints stats/witness *after* join, on a normal
+      // (non-handler) stack. This replaces the old async-UNSAFE handler, which
+      // called stats()/printf/write_witness()/malloc directly and could
+      // deadlock on a stdio or heap lock -> the "CAUGHT SIGNAL but still
+      // running" hang.
+      static const char m[] =
+        "c\nc [CaLFwSAT] CAUGHT SIGNAL, terminating workers"
+        " (signal again to force)...\nc\n";
+      ssize_t n = write (1, m, sizeof m - 1);
+      (void) n;
+      terminating = 1;
+      return;
+    }
+    // Second interrupt: stop waiting for a clean unwind and die now.
+    resetsighandlers ();
+    raise (sig);
+    return;
+  }
+  // SIGSEGV / SIGABRT: a crash, no clean unwind is possible. Emit a marker
+  // (async-safe) and re-raise with the default handler.
   if (!catchedsig) {
-    fputs ("c s UNKNOWN\n", stdout);
-    fflush (stdout);
+    static const char m[] = "c s UNKNOWN\n";
+    ssize_t n = write (1, m, sizeof m - 1);
+    (void) n;
     catchedsig = 1;
-    caughtsigmsg (sig);
-    stats ();
-    if (verbose) write_witness();
-    caughtsigmsg (sig);
   }
   resetsighandlers ();
   raise (sig);
@@ -418,6 +438,15 @@ static void setsighandlers (void) {
   sig_abrt_handler = signal (SIGABRT, catchsig);
   sig_term_handler = signal (SIGTERM, catchsig);
 }
+
+#ifndef PALSAT
+// Single-instance counterpart of terminate(): lets the lone worker unwind on
+// SIGINT/SIGTERM so the normal exit path prints stats/witness after it returns.
+static int terminate_single (void * dummy) {
+  (void) dummy;
+  return terminating;
+}
+#endif
 
 /*------------------------------------------------------------------------*/
 
@@ -513,6 +542,7 @@ static int setdone (int w, int r) {
 static int terminate (void * dummy) {
   int res;
   (void) dummy;
+  if (terminating) return 1;   // SIGINT/SIGTERM: unwind this worker
   LOCK (done);
   res = done;
   UNLOCK (done);
@@ -771,6 +801,7 @@ int main (int argc, char** argv) {
 #else
   yals = yals_new_with_mem_mgr (0, mymalloc, myrealloc, myfree);
   yals_setprefix (yals, "c ");
+  yals_seterm (yals, terminate_single, 0);
   // Shared probe-best pool (in this build, "shared" = "self"): same
   // bypass mechanism works with a single solver, accumulating against
   // its own history.
