@@ -863,7 +863,7 @@ int main (int argc, char** argv) {
       closefile = 1, filename = argv[i];
   }
 #ifdef PALSAT
-  // Shared probe-best pool: always allocated. Tracks per-probe stats.tmp
+  // Shared probe-best pool: always allocated. Tracks per-probe stats.pbest
   // across all workers; consumed by --bypass.
   probe_pool = yals_probe_pool_new ();
   for (i = 0; i < threads; i++)

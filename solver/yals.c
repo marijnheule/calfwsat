@@ -670,8 +670,8 @@ static void yals_report (Yals * yals, const char * fmt, ...) {
   vfprintf (yals->out, fmt, ap);
   va_end (ap);
   fprintf (yals->out,
-    " : best %d (tmp %d), clauses %d, constraints %d, flips %.0f, %.2f sec, %.2f kflips/sec\n",
-    yals->stats.best, yals->stats.tmp, yals->stats.best_clauses, yals->stats.best_cardinality, f, t, yals_avg (f/1e3, t));
+    " : best %d (pbest %d), clauses %d, constraints %d, flips %.0f, %.2f sec, %.2f kflips/sec\n",
+    yals->stats.best, yals->stats.pbest, yals->stats.best_clauses, yals->stats.best_cardinality, f, t, yals_avg (f/1e3, t));
   fflush (yals->out);
   yals_msgunlock (yals);
 }
@@ -707,10 +707,10 @@ void yals_save_new_minimum (Yals * yals) {
   yals_msg (yals, 4, "nunsat %d", nunsat);
   size_t bytes = yals->nvarwords * sizeof (Word);
   if (yals->stats.worst < nunsat) yals->stats.worst = nunsat;
-  if (yals->stats.tmp > nunsat) {
+  if (yals->stats.pbest > nunsat) {
     LOG ("minimum %d is best assignment since last restart", nunsat);
-    memcpy (yals->tmp, yals->vals, bytes);
-    yals->stats.tmp = nunsat;
+    memcpy (yals->pbest_vals, yals->vals, bytes);
+    yals->stats.pbest = nunsat;
     // First time this probe reaches `nunsat` -> fewest flips for it this
     // probe. Offer it to the shared global-best tracker, but only for probes
     // that started from a random assignment (never best/keep picks).
@@ -1852,11 +1852,11 @@ struct YalsProbePool {
   // O(capacity).
   int64_t * above;
   // Per-tmp bypass count: bypass_by_tmp[v] = # times a bypass roll
-  // succeeded when the current probe had stats.tmp = v. Aggregated
+  // succeeded when the current probe had stats.pbest = v. Aggregated
   // globally; printed at end of run.
   int64_t * bypass_by_tmp;
   // Per-tmp total cutoff hits: cutoffs_by_tmp[v] = # times the cutoff
-  // was reached when stats.tmp = v, *regardless* of whether the
+  // was reached when stats.pbest = v, *regardless* of whether the
   // subsequent roll resulted in a bypass. bypass_by_tmp[v] is always
   // <= cutoffs_by_tmp[v]; their ratio is the empirical bypass rate
   // observed at value v.
@@ -1992,7 +1992,7 @@ static void yals_probe_pool_record_cutoff (YalsProbePool * p, int v) {
   pthread_mutex_unlock (&p->lock);
 }
 
-// --heat: scan the just-completed probe's best assignment (yals->tmp)
+// --heat: scan the just-completed probe's best assignment (yals->pbest_vals)
 // and bump heat[v] for every variable v that is true in it. Lazy-allocs
 // the heat array on first call.
 static void yals_probe_pool_record_heat (YalsProbePool * p, Yals * yals) {
@@ -2008,7 +2008,7 @@ static void yals_probe_pool_record_heat (YalsProbePool * p, Yals * yals) {
   // Clamp to the smaller of {this yals' nvars, the pool's heat_nvars}.
   int N = (nvars < p->heat_nvars) ? nvars : p->heat_nvars;
   for (int v = 1; v < N; v++) {
-    if (GETBIT (yals->tmp, yals->nvarwords, v)) p->heat[v]++;
+    if (GETBIT (yals->pbest_vals, yals->nvarwords, v)) p->heat[v]++;
   }
   p->heat_probes++;
   pthread_mutex_unlock (&p->lock);
@@ -2592,7 +2592,7 @@ static void yals_connect (Yals * yals) {
 
   NEWN (yals->vals, yals->nvarwords);
   NEWN (yals->best, yals->nvarwords);
-  NEWN (yals->tmp, yals->nvarwords);
+  NEWN (yals->pbest_vals, yals->nvarwords);
   NEWN (yals->flips, nvars);
 
   if (maxlen < (1<<8)) {
@@ -3016,7 +3016,7 @@ Yals * yals_new_with_mem_mgr (void * mgr,
   yals->owns_formula = 1;
   pthread_mutex_init (&yals->f->build_lock, 0);
   pthread_cond_init (&yals->f->build_cond, 0);
-  yals->stats.tmp = INT_MAX;
+  yals->stats.pbest = INT_MAX;
   yals->stats.best = INT_MAX;
   yals->stats.last = INT_MAX;
   yals->stats.probe_start_flips = 0;
@@ -3096,7 +3096,7 @@ void yals_del (Yals * yals) {
   else DELN (yals->satcnt4, yals->nclauses);
   DELN (yals->vals, yals->nvarwords);
   DELN (yals->best, yals->nvarwords);
-  DELN (yals->tmp, yals->nvarwords);
+  DELN (yals->pbest_vals, yals->nvarwords);
   DELN (yals->clear, yals->nvarwords);
   DELN (yals->set, yals->nvarwords);
   if (yals->owns_formula) DELN (yals->f->occs, yals->f->noccs);
@@ -3421,14 +3421,14 @@ void save_current_assignment (Yals *yals)
 static void yals_restart_inner (Yals * yals) {
   double start;
   start = yals_time_phase (yals);
-  // Snapshot the just-completed probe's best (stats.tmp). Skip the very
+  // Snapshot the just-completed probe's best (stats.pbest). Skip the very
   // first call (no probe has run yet -- restart.inner.count == 0) and
   // any probe that recorded no improvement (tmp still INT_MAX).
-  if (yals->stats.restart.inner.count > 0 && yals->stats.tmp != INT_MAX) {
-    PUSH (yals->wt.probe_bests, yals->stats.tmp);
+  if (yals->stats.restart.inner.count > 0 && yals->stats.pbest != INT_MAX) {
+    PUSH (yals->wt.probe_bests, yals->stats.pbest);
     // Also feed the shared cross-worker pool used by --bypass.
     if (yals->probe_pool)
-      yals_probe_pool_record (yals->probe_pool, yals->stats.tmp);
+      yals_probe_pool_record (yals->probe_pool, yals->stats.pbest);
     // --heat: attribute this probe's best assignment to per-var counters.
     if (yals->opts.heat.val && yals->probe_pool)
       yals_probe_pool_record_heat (yals->probe_pool, yals);
@@ -3448,7 +3448,7 @@ static void yals_restart_inner (Yals * yals) {
       save_current_assignment (yals);
       yals_pick_assignment (yals, 0);
       yals_update_sat_and_unsat (yals);
-      yals->stats.tmp = INT_MAX;
+      yals->stats.pbest = INT_MAX;
       yals->stats.probe_start_flips = yals->stats.flips;
       yals_save_new_minimum (yals);
     }
@@ -4329,7 +4329,7 @@ static void yals_outer_loop (Yals * yals) {
     yals_set_default_strategy (yals);
     yals_pick_assignment (yals, 1);
     yals_update_sat_and_unsat (yals);
-    yals->stats.tmp = INT_MAX;
+    yals->stats.pbest = INT_MAX;
     yals_save_new_minimum (yals);
     yals->stats.last = yals_nunsat (yals);
 
@@ -5805,7 +5805,7 @@ int yals_inner_loop_max_tries (Yals * yals)
     yals_restart_inner (yals);
     // Hand-rolled inner cutoff loop so we can intercept the natural
     // cutoff exit and apply --bypass (probabilistic re-extension
-    // based on stats.tmp's rank vs. the global probe-best pool).
+    // based on stats.pbest's rank vs. the global probe-best pool).
     // Effective bypass probability is p^k, where p comes from the pool
     // and k = # cutoffs hit so far in THIS probe -- consecutive bypasses
     // taper off geometrically so even high-p probes terminate in finite
@@ -5814,11 +5814,11 @@ int yals_inner_loop_max_tries (Yals * yals)
     int cutoffs_this_probe = 0;
     // --dynmul: when D>0, extend this probe's flip budget to D * (probe flips
     // at the last time the falsified-clause count improved), never shrinking
-    // below the static --cutoff. prev_tmp tracks the probe-best (stats.tmp,
+    // below the static --cutoff. prev_pbest tracks the probe-best (stats.pbest,
     // set to the starting assignment's nunsat by the preceding restart) so a
     // drop in it signals an improvement. D=0 leaves the static cutoff alone.
     int dynmul = yals->opts.dynmul.val;
-    int prev_tmp = yals->stats.tmp;
+    int prev_pbest = yals->stats.pbest;
     int64_t dyn_limit = 0;
     while (1) {
       // Cutoff reached? With dynmul on the budget is purely dynamic: a restart
@@ -5834,13 +5834,13 @@ int yals_inner_loop_max_tries (Yals * yals)
         // Attribute every cutoff hit to the current best, whether or not
         // the subsequent bypass roll succeeds. bypass_by_tmp[v] /
         // cutoffs_by_tmp[v] is then the empirical bypass rate at tmp=v.
-        if (yals->probe_pool && yals->stats.tmp != INT_MAX)
-          yals_probe_pool_record_cutoff (yals->probe_pool, yals->stats.tmp);
+        if (yals->probe_pool && yals->stats.pbest != INT_MAX)
+          yals_probe_pool_record_cutoff (yals->probe_pool, yals->stats.pbest);
         int bypass = 0;
         double pp = 0.0, p_eff = 0.0;
         if (yals->opts.bypass.val && yals->probe_pool
-            && yals->stats.tmp != INT_MAX) {
-          pp = yals_probe_pool_query_p (yals->probe_pool, yals->stats.tmp);
+            && yals->stats.pbest != INT_MAX) {
+          pp = yals_probe_pool_query_p (yals->probe_pool, yals->stats.pbest);
           if (pp > 0.0) {
             // p^c: pow() is fine here (called once per cutoff hit, ~1/sec).
             p_eff = pow (pp, (double) cutoffs_this_probe);
@@ -5852,15 +5852,15 @@ int yals_inner_loop_max_tries (Yals * yals)
         if (bypass) {
           yals->stats.restart.bypassed++;
           yals_probe_pool_record_bypass (yals->probe_pool,
-                                         yals->stats.tmp);
+                                         yals->stats.pbest);
           yals_msg (yals, 2,
             "cutoff bypass at flips %lld: tmp=%d, p=%.3f, p^%d=%.3f -- extending probe",
-            (long long) yals->stats.flips, yals->stats.tmp,
+            (long long) yals->stats.flips, yals->stats.pbest,
             pp, cutoffs_this_probe, p_eff);
           c = 0;
           // Restart the dynmul deadline from scratch for the extended probe.
           dyn_limit = 0;
-          prev_tmp = yals->stats.tmp;
+          prev_pbest = yals->stats.pbest;
           continue;
         }
         break;  // normal cutoff exit
@@ -5889,8 +5889,8 @@ int yals_inner_loop_max_tries (Yals * yals)
           yals_flip (yals, lit);
           c++;  // one flip = one tick toward the cutoff
           // --dynmul: a new probe minimum extends the deadline to D * c.
-          if (dynmul > 0 && yals->stats.tmp < prev_tmp) {
-            prev_tmp = yals->stats.tmp;
+          if (dynmul > 0 && yals->stats.pbest < prev_pbest) {
+            prev_pbest = yals->stats.pbest;
             dyn_limit = (int64_t) dynmul * c;
           }
     }

@@ -90,7 +90,7 @@ typedef struct Strat { STRATSTEMPLATE } Strat;
 // stats used throughout execution and displayed on exit
 typedef struct Stats {
   int  card_maxstacksize;
-  int best, worst, last, tmp, maxstacksize;
+  int best, worst, last, pbest, maxstacksize;
 
   // cardinality additions
   int best_cardinality, best_clauses;
@@ -374,9 +374,9 @@ typedef struct WT {
 
   // Per-probe best-score log. A "probe" is the work between consecutive
   // inner restarts: from yals_pick_assignment to the next cutoff. Each
-  // entry is stats.tmp at the *end* of a
+  // entry is stats.pbest at the *end* of a
   // probe (i.e. the best nunsat reached during that probe). Skips the
-  // initial pre-flip pseudo-restart and any probe with no flips (tmp
+  // initial pre-flip pseudo-restart and any probe with no flips (pbest
   // still INT_MAX). Printed as a histogram by yals_stats at end of run.
   STACK (int) probe_bests;
 
@@ -453,7 +453,7 @@ typedef struct Yals {
   int nvars; int64_t * flips;
   STACK(signed char) mark;
   int trivial, mt, pick;
-  Word * vals, * best, * tmp, * clear, * set, *curr; int nvarwords;
+  Word * vals, * best, * pbest_vals, * clear, * set, *curr; int nvarwords;
   STACK(int) trail, phases, clause;
   int satcntbytes; union { U1 * satcnt1; U2 * satcnt2; U4 * satcnt4; };
   int * pos; Lnk ** lnk;
@@ -557,7 +557,7 @@ int yals_nunsat_external (Yals *yals);
 
 void yals_stats (Yals *);
 
-// Shared probe-best pool: a histogram of per-probe stats.tmp values
+// Shared probe-best pool: a histogram of per-probe stats.pbest values
 // pooled across all workers, used by --bypass to gauge how the
 // current probe's best compares to the global distribution. Lock-
 // protected; reads/writes are infrequent (~1 per probe per worker)
