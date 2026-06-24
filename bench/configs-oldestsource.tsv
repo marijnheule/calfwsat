@@ -1,10 +1,12 @@
 # --oldestsource on/off. With the set_options coupling, oldestsource=1 forces
 # randk=0 so the LRU picker (yals_get_random_sat_clause) actually drives source
-# selection instead of maintaining an unread list.
-#   os0 = default (oldestsource=0, randk=1: top-k random picker)
-#   os1 = oldestsource=1 (randk auto-forced to 0: LRU least-recently-used source)
+# selection instead of maintaining an unread list. A second coupling makes
+# reset_os=1 force oldestsource=1, so turning oldestsource OFF requires also
+# setting --reset-os=0 (otherwise the reset_os=1 default flips it back on).
+#   os0 = oldestsource=0 + reset_os=0 (randk=1: top-k random picker)
+#   os1 = oldestsource=1 (now the compiled default; randk auto-forced to 0: LRU)
 # Caveat: os1 also consumes the init Fisher-Yates shuffle in yals_oldsrc_build,
 # so the os0-vs-os1 gap blends "LRU mechanism" with a one-time reseed.
 # name	args
-os0	--oldestsource=0
+os0	--oldestsource=0 --reset-os=0
 os1	--oldestsource=1

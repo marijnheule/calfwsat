@@ -4759,6 +4759,15 @@ void yals_stats (Yals * yals) {
 
 void set_options (Yals * yals)
 {
+  // --reset-os only does anything with --oldestsource (it re-shuffles the LRU
+  // list, which is otherwise unbuilt). So reset_os=1 implies oldestsource=1:
+  // force it on rather than silently leaving a meaningless reset_os. To run
+  // with the random source picker, set --oldestsource=0 AND --reset-os=0.
+  if (yals->opts.reset_os.val && !yals->opts.oldestsource.val) {
+    yals_msg (yals, 1,
+      "reset_os=1 forces oldestsource=1 (was 0); set --reset-os=0 too to disable");
+    yals->opts.oldestsource.val = 1;
+  }
   // --oldestsource only takes effect through yals_get_random_sat_clause, which
   // is reached exclusively when randk==0 (randk>0 routes to the top-k picker
   // that never consults the LRU list). Force randk=0 so oldestsource=1 actually
