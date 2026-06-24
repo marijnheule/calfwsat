@@ -1,18 +1,13 @@
-# --min_weight sweep: 0 to 80 in steps of 10. All other options default.
-#
-# --min_weight=M is a true weight floor: no clause/card weight can drop
-# below M. A source must have weight > M to be picked, and any single
-# transfer is capped at (source_weight - M).
-#
-# Default M=80. This sweep brackets that with M in {0, 10, ..., 80}.
-#
-# name		args
-mw00		--min_weight=0
-mw10		--min_weight=10
-mw20		--min_weight=20
-mw30		--min_weight=30
-mw40		--min_weight=40
-mw50		--min_weight=50
-mw60		--min_weight=60
-mw70		--min_weight=70
-mw80		--min_weight=80
+# --min_weight in {5,10,20,30,40,50}, sweeping the weight floor on the current
+# default solver (relative=1, oldestsource=1 are now compiled defaults, so the
+# rows inherit them). Under relative=1 min_weight does double duty: it is the
+# source-selection floor AND the subtrahend in the transfer term
+# wtmul*(source_weight - min_weight). Refines around the mw30 optimum found in
+# the earlier rel1_mw sweep, and probes below the mw10 default down to 5.
+# name	args
+mw5	--min_weight=5
+mw10	--min_weight=10
+mw20	--min_weight=20
+mw30	--min_weight=30
+mw40	--min_weight=40
+mw50	--min_weight=50
