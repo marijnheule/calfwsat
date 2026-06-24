@@ -55,6 +55,13 @@ if [ "$COMMIT" != unknown ] && ! git -C "$SCRIPT_DIR" diff --quiet HEAD 2>/dev/n
   COMMIT="${COMMIT}-dirty"
 fi
 
+# Compiled default of --oldestsource, read from the source the binary should be
+# built from (same provenance assumption as COMMIT). Surfaced in the log because
+# it flips the whole source-selection path (default-on => deterministic LRU
+# picker, randk forced 0). Individual config rows may still override it.
+OLDESTSOURCE_DEFAULT="$(grep -oE 'oldestsource,[0-9]+' "$SCRIPT_DIR/solver/options.h" 2>/dev/null | head -1 | cut -d, -f2)"
+OLDESTSOURCE_DEFAULT="${OLDESTSOURCE_DEFAULT:-?}"
+
 echo "sweep-one: $FORMULA"
 echo "  configs:  $CONFIGS"
 echo "  commit:   $COMMIT"
@@ -62,6 +69,7 @@ echo "  seeds:    $SEEDS_DEFAULT"
 echo "  timeout:  ${TIMEOUT_DEFAULT}s"
 echo "  threads:  $THREADS_DEFAULT per palsat"
 echo "  cutoff:   ${CUTOFF_DEFAULT:-(solver default; per-config rows can set --cutoff=)}"
+echo "  oldestsource: $OLDESTSOURCE_DEFAULT (compiled default; per-config rows can set --oldestsource=)"
 echo "  out:      bench-results/$OUT_NAME"
 echo
 
@@ -96,6 +104,7 @@ TXT="$OUT_DIR/email.txt"
   echo "  date:    $DATE"
   echo "  seeds:   $NSEEDS  ($SEEDS_DEFAULT)"
   echo "  timeout: ${TIMEOUT_DEFAULT}s per run"
+  echo "  oldestsource: $OLDESTSOURCE_DEFAULT (compiled default; per-config rows can override)"
   echo
   cat "$SUMMARY"
 } > "$TXT"
@@ -110,6 +119,7 @@ MD="$OUT_DIR/email.md"
   echo "- date: $DATE"
   echo "- seeds: $NSEEDS ($SEEDS_DEFAULT)"
   echo "- timeout: ${TIMEOUT_DEFAULT}s per run"
+  echo "- oldestsource: $OLDESTSOURCE_DEFAULT (compiled default; per-config rows can override)"
   echo
   echo "| config | runs | SAT | TO | PAR-2 | mean_flips | median_flips |"
   echo "|---|---:|---:|---:|---:|---:|---:|"
