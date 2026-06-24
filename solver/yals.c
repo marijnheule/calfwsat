@@ -1289,17 +1289,15 @@ static inline int yals_wsample_draw (Yals * yals) {
 /* Head = least-recently used as a source. Moved on every source pick.    */
 /*------------------------------------------------------------------------*/
 
-static void yals_oldsrc_build (Yals * yals) {
-  int ncons = yals->nclauses + yals->card_nclauses;
-  yals->wt.oldsrc_ncons = ncons;
-  yals->wt.oldsrc_prev = malloc (ncons * sizeof (int));
-  yals->wt.oldsrc_next = malloc (ncons * sizeof (int));
+// (Re)build the LRU order as a random permutation seeded by the solver's RNG
+// (so the same --seed reproduces it, but the order varies across seeds). The
+// oldsrc_prev/next arrays must already be allocated (sized oldsrc_ncons).
+static void yals_oldsrc_shuffle (Yals * yals) {
+  int ncons = yals->wt.oldsrc_ncons;
   if (ncons <= 0) {
     yals->wt.oldsrc_head = yals->wt.oldsrc_tail = -1;
     return;
   }
-  // Initial list order is a random permutation seeded by the solver's RNG
-  // (so the same --seed reproduces it, but the order varies across seeds).
   int * perm = malloc (ncons * sizeof (int));
   for (int i = 0; i < ncons; i++) perm[i] = i;
   for (int i = ncons - 1; i > 0; i--) {
@@ -1314,6 +1312,14 @@ static void yals_oldsrc_build (Yals * yals) {
   yals->wt.oldsrc_head = perm[0];
   yals->wt.oldsrc_tail = perm[ncons - 1];
   free (perm);
+}
+
+static void yals_oldsrc_build (Yals * yals) {
+  int ncons = yals->nclauses + yals->card_nclauses;
+  yals->wt.oldsrc_ncons = ncons;
+  yals->wt.oldsrc_prev = malloc (ncons * sizeof (int));
+  yals->wt.oldsrc_next = malloc (ncons * sizeof (int));
+  yals_oldsrc_shuffle (yals);
 }
 
 static void yals_oldsrc_free (Yals * yals) {
@@ -1419,6 +1425,12 @@ void yals_reset (Yals * yals)
     // --wsamplepow: weights changed in bulk; recompute the sum-tree.
     if (yals->opts.wsamplepow.val > 0) yals_wsample_refill (yals);
   }
+
+  // --reset-os: the oldestsource LRU order otherwise persists for the whole
+  // run; re-shuffle it here so each probe starts from a fresh source-visit
+  // order. Only meaningful with --oldestsource (the list is unbuilt otherwise).
+  if (yals->opts.reset_os.val && yals->opts.oldestsource.val)
+    yals_oldsrc_shuffle (yals);
 }
 
 static void yals_reset_unsat (Yals * yals) {
@@ -3387,51 +3399,13 @@ static void yals_set_default_strategy (Yals * yals) {
 
 /*------------------------------------------------------------------------*/
 
-static int yals_rand_opt (Yals * yals, Opt * opt, const char * name) {
-  unsigned mod, r;
-  int res;
-  mod = opt->max;
-  mod -= opt->min;
-  mod++;
-  if (mod) {
-    r = yals_rand_mod (yals, mod);
-    res = (int)(r + (unsigned) opt->min);
-  } else {
-    assert (opt->min == INT_MIN);
-    assert (opt->max == INT_MAX);
-    res = (int) yals_rand (yals);
-  }
-  assert (opt->min <= res), assert (res <= opt->max);
-  (void) name;
-  LOG ("randomly picking strategy %s=%d from [%d,%d] default %d",
-    name, res, opt->min, opt->max, opt->val);
-  return res;
-}
-
-#define RANDSTRAT(NAME,ENABLED) \
-do { \
-  if ((ENABLED)) { \
-    yals->strat.NAME = \
-      yals_rand_opt (yals, &yals->opts.NAME, #NAME); \
-  } else yals->strat.NAME = yals->opts.NAME.val; \
-} while (0)
-#undef STRAT
-#define STRAT RANDSTRAT
-
-static void yals_set_random_strategy (Yals * yals) {
-  STRATSTEMPLATE
-  assert (yals->stats.restart.inner.count > 1);
-  yals->stats.strat.rnd++;
-}
-
-/*------------------------------------------------------------------------*/
-
 static void yals_pick_strategy (Yals * yals) {
   assert (yals->stats.restart.inner.count > 0);
-  if (yals->stats.restart.inner.count == 1 ||
-      !yals_rand_mod (yals, yals->opts.fixed.val))
-    yals_set_default_strategy (yals);
-  else yals_set_random_strategy (yals);
+  // Always use the default strategy. (Previously gated by --fixed, whose
+  // default of 1 made yals_rand_mod(.,1) short-circuit to 0 -- so the default
+  // strategy was already chosen unconditionally and no RNG was drawn. The
+  // random-strategy path and its --fixed knob have been removed.)
+  yals_set_default_strategy (yals);
   yals_print_strategy (yals, "picked strategy:", 2);
 }
 

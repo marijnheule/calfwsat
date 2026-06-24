@@ -29,7 +29,6 @@ This code extends the solver yal-lin (Md Solimul Chowdhury, Cayden Codel, Marijn
   OPT (cutoff,300000,0,INT_MAX,"flips per try (0 = unlimited)"); \
   OPT (dynmul,10,0,INT_MAX,"extend cutoff to D*probe-flips on improvement (0=off)"); \
   OPT (defrag,1,0,1,"defragemtation of unsat queue"); \
-  OPT (fixed,1,0,INT_MAX,"fixed default strategy frequency (1=always)"); \
   OPT (wtadd,0,-1000,1000,"weight-transfer additive term (init_weight*wtadd/1000)"); \
   OPT (wtmul,167,0,1000,"weight-transfer multiplicative factor (wtmul/1000)"); \
   OPT (relative,0,0,1,"wtmul term scales (source_weight - min_weight) not source_weight"); \
@@ -57,6 +56,7 @@ This code extends the solver yal-lin (Md Solimul Chowdhury, Cayden Codel, Marijn
   OPT (heat,0,0,1,"track per-variable true-in-best counts; print at end"); \
   OPT (improving,0,0,1,"at restart keep assignment if best improved (0 = always re-pick)"); \
   OPT (oldestsource,0,0,1,"pick least-recently-used satisfied source (not random)"); \
+  OPT (reset_os,1,0,1,"re-shuffle the oldestsource LRU order on each restart"); \
   OPT (sourcecap,500,0,1000,"cap per-transfer at source_weight*sourcecap/1000"); \
   OPT (flip_gain_eps_e4,1000,0,INT_MAX,"snap |flip_gain| < val/10000 to 0 (0 = off)"); \
   OPT (reset_weights,1,0,1,"reset weights to initial values on inner restart"); \
