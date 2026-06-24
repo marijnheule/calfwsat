@@ -1049,14 +1049,14 @@ static void yals_topk_rebuild_all (Yals * yals) {
 // path. Sets *ret_con_type on success.
 static inline int yals_topk_eligible (Yals * yals, int u, int * ret_con_type) {
   if (u < yals->nclauses) {
-    double thr = (double) yals->opts.init_clause.val;
+    double thr = (double) yals->opts.init.val;
     if (yals_satcnt (yals, u) > 0 &&
         (yals->wt.clause_weights[u] >= thr)) {
       *ret_con_type = TYPECLAUSE; return 1;
     }
   } else {
     int c = u - yals->nclauses;
-    double thr = (double) yals->opts.init_card.val;
+    double thr = (double) yals->opts.init.val;
     if (yals_card_satcnt (yals, c) >= yals_card_bound (yals, c) &&
         (yals->wt.card_weights[c] >= thr)) {
       *ret_con_type = TYPECARDINALITY; return 1;
@@ -1407,10 +1407,10 @@ void yals_reset (Yals * yals)
   // for resetting constraint weights on restart
   if (yals->opts.reset_weights.val) {
     for (int i=0; i< yals->nclauses; i++) {
-      yals->wt.clause_weights [i] = yals->opts.init_clause.val;
+      yals->wt.clause_weights [i] = yals->opts.init.val;
     }
     for (int i=0; i< yals->card_nclauses; i++) {
-      yals->wt.card_weights [i] = yals->opts.init_card.val;
+      yals->wt.card_weights [i] = yals->opts.init.val;
     }
     // --topk: weights changed in bulk. Bump the epoch (O(1)) to invalidate
     // every list; each is rebuilt lazily on first access (yals_topk_best),
@@ -3560,10 +3560,10 @@ double linear_wt (Yals * yals, int source, int type_source)
 
   if (type_source == TYPECLAUSE) {
     source_weight = yals->wt.clause_weights [source];
-    init_w = (double) yals->opts.init_clause.val;
+    init_w = (double) yals->opts.init.val;
   } else if (type_source == TYPECARDINALITY) {
     source_weight = yals->wt.card_weights [source];
-    init_w = (double) yals->opts.init_card.val;
+    init_w = (double) yals->opts.init.val;
   }
 
   // weight transfer: w = source_weight^p + a*source_weight + c
@@ -3585,7 +3585,15 @@ double linear_wt (Yals * yals, int source, int type_source)
   }
   double a = (float) yals->opts.wtmul.val / 1000.0;
   double c = init_w * ((float) yals->opts.wtadd.val / 1000.0);
-  return pow_term + (double) ((float) source_weight * (float) a + (float) c);
+  // --relative: the multiplicative (wtmul) term scales the source weight ABOVE
+  // the min-weight floor, (source_weight - min_weight), rather than the full
+  // source_weight. Clamp at 0 so a source at/below the floor adds nothing.
+  double mul_base = source_weight;
+  if (yals->opts.relative.val) {
+    mul_base = source_weight - (double) yals->opts.min_weight.val;
+    if (mul_base < 0.0) mul_base = 0.0;
+  }
+  return pow_term + (double) ((float) mul_base * (float) a + (float) c);
 }
 
 /*
@@ -3670,7 +3678,7 @@ int yals_get_max_weight_sat_clause (Yals *yals, int cidx, int constraint_type, i
 
       if (yals_satcnt (yals, nidx)>0) { // clause is satisfied
         // check if clause has geq it's initial weight, then (weight, id) tie-break
-        double thr = (double) yals->opts.init_clause.val;
+        double thr = (double) yals->opts.init.val;
         if (yals->wt.clause_weights [nidx] >= thr) {
           double cw = yals->wt.clause_weights [nidx];
           if (cw > best_w || (cw == best_w && nidx < best_uid)) {
@@ -3687,7 +3695,7 @@ int yals_get_max_weight_sat_clause (Yals *yals, int cidx, int constraint_type, i
 
       if (yals_card_satcnt (yals, nidx)>= yals_card_bound (yals, nidx)) { // constraint satisfied
         // check if cardinality constraint has geq it's initial weight, then (weight, id) tie-break
-        double thr = (double) yals->opts.init_card.val;
+        double thr = (double) yals->opts.init.val;
         if (yals->wt.card_weights [nidx] >= thr) {
           double cw = yals->wt.card_weights [nidx];
           int cuid = yals->nclauses + nidx;
@@ -3760,7 +3768,7 @@ int yals_get_top_k_max_weight_sat_clause (
       for (p = occs; (occ = *p) >= 0; p++) {
         int nidx = occ >> LENSHIFT;
         if (yals_satcnt (yals, nidx) > 0) {
-          double thr = (double) yals->opts.init_clause.val;
+          double thr = (double) yals->opts.init.val;
           if (yals->wt.clause_weights[nidx] >= thr) {
             double cw = yals->wt.clause_weights[nidx];
             if (cw > best_w || (cw == best_w && nidx < best_uid)) {
@@ -3776,7 +3784,7 @@ int yals_get_top_k_max_weight_sat_clause (
         int nidx = occ >> LENSHIFT;
         if (yals_card_satcnt (yals, nidx)
             >= yals_card_bound (yals, nidx)) {
-          double thr = (double) yals->opts.init_card.val;
+          double thr = (double) yals->opts.init.val;
           if (yals->wt.card_weights[nidx] >= thr) {
             double cw = yals->wt.card_weights[nidx];
             int cuid = yals->nclauses + nidx;
@@ -4093,10 +4101,10 @@ double yals_get_weight (Yals *yals, int source, int sink, int constraint_type_so
   if (yals->opts.wtini.val) {
     double init_w = 0.0, cur_w = 0.0;
     if (constraint_type_source == TYPECLAUSE) {
-      init_w = (double) yals->opts.init_clause.val;
+      init_w = (double) yals->opts.init.val;
       cur_w = yals->wt.clause_weights [source];
     } else if (constraint_type_source == TYPECARDINALITY) {
-      init_w = (double) yals->opts.init_card.val;
+      init_w = (double) yals->opts.init.val;
       cur_w = yals->wt.card_weights [source];
     }
     if (cur_w == init_w) {
@@ -4854,7 +4862,7 @@ void yals_init (Yals *yals)
   yals_resize_heap (yals, &yals->wt.uvars_heap, yals->nvars);
 
   for (int i=0; i< yals->nclauses; i++) {
-    yals->wt.clause_weights [i] = yals->opts.init_clause.val;
+    yals->wt.clause_weights [i] = yals->opts.init.val;
   }
 
   for (int i=1; i< yals->nvars; i++) {
@@ -4916,7 +4924,7 @@ void yals_init (Yals *yals)
     yals->wt.tkm_wts  = malloc ((size_t) yals->wt.tkm_cap * sizeof (double));
   }
   for (int i = 0; i < yals->card_nclauses; i++) {
-    yals->wt.card_weights [i] = yals->opts.init_card.val;
+    yals->wt.card_weights [i] = yals->opts.init.val;
   }
 
   // --topk: build the per-literal top-K bounded list now that all weights

@@ -134,7 +134,7 @@ static void yals_check_global_weight_invariant (Yals * yals) {
       LOGCIDX (cidx, "UNSAT Weight %lf",yals->wt.clause_weights[cidx]);
     }
     actual_total_weight += yals->wt.clause_weights[cidx];
-    expected_total_weight += yals->opts.init_clause.val; // each clause started with this
+    expected_total_weight += yals->opts.init.val; // each clause started with this
 
     // look at actual unsat and sat1 weights
     unsigned sat;
@@ -159,7 +159,7 @@ static void yals_check_global_weight_invariant (Yals * yals) {
       LOGCARDCIDX (cidx, "UNSAT Weight %lf",yals->wt.card_weights[cidx]); 
     }
     actual_total_weight += yals->wt.card_weights[cidx];
-    expected_total_weight += yals->opts.init_card.val; // each cardinality constraint started with this
+    expected_total_weight += yals->opts.init.val; // each cardinality constraint started with this
 
     // look at actual unsat and sat1 weights
     unsigned sat;
