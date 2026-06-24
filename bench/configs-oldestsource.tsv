@@ -1,5 +1,10 @@
-# A/B: default vs --oldestsource (LRU source) + --suppress=0 (no weight floor).
-# Config 2 differs from default in TWO ways: oldestsource on AND suppress off.
+# --oldestsource on/off. With the set_options coupling, oldestsource=1 forces
+# randk=0 so the LRU picker (yals_get_random_sat_clause) actually drives source
+# selection instead of maintaining an unread list.
+#   os0 = default (oldestsource=0, randk=1: top-k random picker)
+#   os1 = oldestsource=1 (randk auto-forced to 0: LRU least-recently-used source)
+# Caveat: os1 also consumes the init Fisher-Yates shuffle in yals_oldsrc_build,
+# so the os0-vs-os1 gap blends "LRU mechanism" with a one-time reseed.
 # name	args
-def
-old_nosup	--oldestsource --suppress=0
+os0	--oldestsource=0
+os1	--oldestsource=1

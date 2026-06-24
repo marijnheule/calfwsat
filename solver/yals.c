@@ -4777,7 +4777,16 @@ void yals_stats (Yals * yals) {
 
 void set_options (Yals * yals)
 {
-  (void) yals;
+  // --oldestsource only takes effect through yals_get_random_sat_clause, which
+  // is reached exclusively when randk==0 (randk>0 routes to the top-k picker
+  // that never consults the LRU list). Force randk=0 so oldestsource=1 actually
+  // drives source selection instead of silently maintaining an unread list.
+  if (yals->opts.oldestsource.val && yals->opts.randk.val != 0) {
+    yals_msg (yals, 1,
+      "oldestsource=1 forces randk=0 (was %d) so the LRU picker is used",
+      yals->opts.randk.val);
+    yals->opts.randk.val = 0;
+  }
 }
 
 void yals_init (Yals *yals)
