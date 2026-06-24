@@ -1,0 +1,10 @@
+# --relative on/off. Changes the wtmul (multiplicative) term of the weight
+# transfer: instead of wtmul/1000 * source_weight, transfer
+# wtmul/1000 * (source_weight - min_weight), clamped at 0. pow/additive terms
+# unchanged. With min_weight=0 the two are identical, so this isolates the
+# effect of scaling the transfer by weight-above-floor (default min_weight=10).
+#   rel0 = default (wtmul scales full source_weight)
+#   rel1 = relative (wtmul scales source_weight - min_weight)
+# name	args
+rel0	--relative=0
+rel1	--relative=1
