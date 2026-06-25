@@ -1,0 +1,13 @@
+# --min_weight=30 fixed. Couples the transfer terms: --wtmul in {150,200,250,
+# 300,350} with --wtadd = wtmul-150, so wm150 has wtadd=0 (pure multiplicative,
+# the prior mw30 baseline) and each step adds a flat additive component on top
+# of a steeper slope. Under relative=1 the per-transfer weight is
+# wtmul/1000*(src_w-30) + init_w*wtadd/1000, so wtadd shifts every transfer by a
+# min_weight-independent constant. Rides the current defaults (relative=1,
+# oldestsource=1).
+# name	args
+mw30_wm150_wa0	--min_weight=30 --wtmul=150 --wtadd=0
+mw30_wm200_wa50	--min_weight=30 --wtmul=200 --wtadd=50
+mw30_wm250_wa100	--min_weight=30 --wtmul=250 --wtadd=100
+mw30_wm300_wa150	--min_weight=30 --wtmul=300 --wtadd=150
+mw30_wm350_wa200	--min_weight=30 --wtmul=350 --wtadd=200
