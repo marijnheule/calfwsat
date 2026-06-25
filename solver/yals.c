@@ -4223,11 +4223,16 @@ void yals_transfer_weights_for_clause (Yals *yals, int sink)
   double divk = (double) k;
   for (int i = 0; i < k; i++) {
     int src = sources[i], src_t = types[i];
+    double w = yals_get_weight (yals, src, sink, src_t, TYPECLAUSE) / divk;
+    // A non-positive transfer moves nothing (w==0) or runs the transfer
+    // backwards (w<0, reachable via negative --wtadd) -- both pointless or
+    // harmful. Skip the source: no transfer applied, and leave its LRU
+    // recency untouched so a later, productive pick can still use it.
+    if (w <= 0.0) continue;
     // --oldestsource: mark source as just-used.
     if (yals->opts.oldestsource.val)
       yals_oldsrc_move_to_tail (yals,
         (src_t == TYPECLAUSE) ? src : yals->nclauses + src);
-    double w = yals_get_weight (yals, src, sink, src_t, TYPECLAUSE) / divk;
     yals_apply_one_transfer (yals, src, sink, src_t, TYPECLAUSE, w);
   }
 }
@@ -4296,10 +4301,16 @@ void yals_transfer_weights_for_card (Yals *yals, int sink)
   double divk = (double) k;
   for (int i = 0; i < k; i++) {
     int src = sources[i], src_t = types[i];
+    double w = yals_get_weight (yals, src, sink, src_t, TYPECARDINALITY) / divk;
+    // A non-positive transfer moves nothing (w==0) or runs the transfer
+    // backwards (w<0, reachable via negative --wtadd) -- both pointless or
+    // harmful. Skip the source: no transfer applied, and leave its LRU
+    // recency untouched so a later, productive pick can still use it.
+    if (w <= 0.0) continue;
+    // --oldestsource: mark source as just-used.
     if (yals->opts.oldestsource.val)
       yals_oldsrc_move_to_tail (yals,
         (src_t == TYPECLAUSE) ? src : yals->nclauses + src);
-    double w = yals_get_weight (yals, src, sink, src_t, TYPECARDINALITY) / divk;
     yals_apply_one_transfer (yals, src, sink, src_t, TYPECARDINALITY, w);
   }
 }
