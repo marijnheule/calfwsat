@@ -29,9 +29,9 @@ This code extends the solver yal-lin (Md Solimul Chowdhury, Cayden Codel, Marijn
   OPT (cutoff,300000,0,INT_MAX,"flips per try (0 = unlimited)"); \
   OPT (dynmul,10,0,INT_MAX,"extend cutoff to D*probe-flips on improvement (0=off)"); \
   OPT (defrag,1,0,1,"defragemtation of unsat queue"); \
-  OPT (wtadd,0,-1000,1000,"weight-transfer additive term (init_weight*wtadd/1000)"); \
-  OPT (wtmul,167,0,1000,"weight-transfer multiplicative factor (wtmul/1000)"); \
-  OPT (relative,1,0,1,"wtmul term scales (source_weight - min_weight) not source_weight"); \
+  OPT (wtadd,-200,-1000,1000,"weight-transfer additive term (init_weight*wtadd/1000)"); \
+  OPT (wtmul,350,0,1000,"weight-transfer multiplicative factor (wtmul/1000)"); \
+  OPT (relative,0,0,1,"wtmul term scales (source_weight - min_weight) not source_weight"); \
   OPT (wtpow,0,0,1000,"weight-transfer power term (0 = off, 1000 = linear)"); \
   OPT (keep,0,0,1,"keep assignment during restart"); \
   OPT (maxtries,INT_MAX , 0,INT_MAX,"Maximum number of tries (default INT_MAX = unlimited)"); \
@@ -45,7 +45,7 @@ This code extends the solver yal-lin (Md Solimul Chowdhury, Cayden Codel, Marijn
   OPT (card_compute,4,1,4,"card weight rule: 1=linear 2=exp 3=quadratic 4=cubic"); \
   OPT (init,100,1,INT_MAX,"initial clause/cardinality constraint weight"); \
   OPT (wtini,0,0,1000,"transfer for at-initial-weight sources (init_weight*wtini/1000)"); \
-  OPT (min_weight,10,0,INT_MAX,"weight floor M for clauses/cards (0 = no floor)"); \
+  OPT (min_weight,0,0,INT_MAX,"weight floor M for clauses/cards (0 = no floor)"); \
   OPT (maxk,1,1,INT_MAX,"weight-transfer top-K sink sources (1 = single)"); \
   OPT (randk,1,0,INT_MAX,"random-source top-K sample size (0 = single random)"); \
   OPT (randtour,1,1,INT_MAX,"random-source tournament multiplier for --randk"); \
