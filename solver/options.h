@@ -31,7 +31,7 @@ This code extends the solver yal-lin (Md Solimul Chowdhury, Cayden Codel, Marijn
   OPT (defrag,1,0,1,"defragemtation of unsat queue"); \
   OPT (wtadd,-200,-1000,1000,"weight-transfer additive term (init_weight*wtadd/1000)"); \
   OPT (wtmul,350,0,1000,"weight-transfer multiplicative factor (wtmul/1000)"); \
-  OPT (relative,0,0,1,"wtmul term scales (source_weight - min_weight) not source_weight"); \
+  OPT (relative,1,0,1,"wtmul term scales (source_weight - min_weight) not source_weight"); \
   OPT (wtpow,0,0,1000,"weight-transfer power term (0 = off, 1000 = linear)"); \
   OPT (keep,0,0,1,"keep assignment during restart"); \
   OPT (maxtries,INT_MAX , 0,INT_MAX,"Maximum number of tries (default INT_MAX = unlimited)"); \
