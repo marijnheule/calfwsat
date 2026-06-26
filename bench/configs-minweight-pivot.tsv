@@ -1,13 +1,12 @@
-# Sweeps --min_weight in {0,10,20,30,40} riding the current compiled defaults
+# Sweeps --min_weight in {0,10,20,30} riding the current compiled defaults
 # (relative=1, wtmul=350, wtadd=-200, oldestsource=1). Under relative=1 the
 # wtmul term scales (src_w - min_weight), so here min_weight acts as the
 # relative *pivot*, not a floor: each transfer is 0.35*(src_w-min_weight) - 20
 # and the transfer fixed point (where a source stops donating) sits at
-# min_weight + 57.14 -- i.e. floors of ~57/67/77/87/97 for these five rows.
+# min_weight + 57.14 -- i.e. floors of ~57/67/77/87 for these four rows.
 # mw0 is the current default (baseline anchor).
 # name	args
 mw0	--min_weight=0
 mw10	--min_weight=10
 mw20	--min_weight=20
 mw30	--min_weight=30
-mw40	--min_weight=40
