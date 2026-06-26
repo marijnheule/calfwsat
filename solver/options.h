@@ -45,7 +45,7 @@ This code extends the solver yal-lin (Md Solimul Chowdhury, Cayden Codel, Marijn
   OPT (card_compute,4,1,4,"card weight rule: 1=linear 2=exp 3=quadratic 4=cubic"); \
   OPT (init,100,1,INT_MAX,"initial clause/cardinality constraint weight"); \
   OPT (wtini,0,0,1000,"transfer for at-initial-weight sources (init_weight*wtini/1000)"); \
-  OPT (min_weight,0,0,INT_MAX,"weight floor M for clauses/cards (0 = no floor)"); \
+  OPT (min_weight,10,0,INT_MAX,"weight floor M for clauses/cards (0 = no floor)"); \
   OPT (maxk,1,1,INT_MAX,"weight-transfer top-K sink sources (1 = single)"); \
   OPT (randk,1,0,INT_MAX,"random-source top-K sample size (0 = single random)"); \
   OPT (randtour,1,1,INT_MAX,"random-source tournament multiplier for --randk"); \
