@@ -3418,9 +3418,47 @@ void save_current_assignment (Yals *yals)
   memcpy (yals->curr, yals->vals, bytes);
 }
 
+// --wtstats: print the constraint-weight distribution at the end of a probe
+// (called before reset_weights wipes it). Buckets are relative to min_weight
+// (the hard floor M) so the output directly shows whether mass piles up at the
+// floor or sits at the transfer fixed point well above it. Off by default, so
+// this is dead code at default settings (bit-identical).
+static void yals_wtstats_one (Yals * yals, const char * tag,
+                              double * w, int n) {
+  if (n <= 0) { yals_report (yals, "wtstats %s n=0", tag); return; }
+  double M = (double) yals->opts.min_weight.val;
+  double mn = w[0], mx = w[0], sum = 0.0;
+  // Buckets: [<=M], (M,50], (50,70], (70,90], (90,110], (>110].
+  long b_floor = 0, b1 = 0, b2 = 0, b3 = 0, b4 = 0, b5 = 0;
+  for (int i = 0; i < n; i++) {
+    double x = w[i];
+    if (x < mn) mn = x;
+    if (x > mx) mx = x;
+    sum += x;
+    if (x <= M)            b_floor++;
+    else if (x <= 50.0)    b1++;
+    else if (x <= 70.0)    b2++;
+    else if (x <= 90.0)    b3++;
+    else if (x <= 110.0)   b4++;
+    else                   b5++;
+  }
+  yals_report (yals,
+    "wtstats %s n=%d min=%.3f max=%.3f mean=%.3f "
+    "floor(<=%.0f)=%ld (%.1f%%) (M,50]=%ld (50,70]=%ld (70,90]=%ld "
+    "(90,110]=%ld (>110]=%ld",
+    tag, n, mn, mx, sum / n, M,
+    b_floor, 100.0 * b_floor / n, b1, b2, b3, b4, b5);
+}
+
 static void yals_restart_inner (Yals * yals) {
   double start;
   start = yals_time_phase (yals);
+  // --wtstats: dump the end-of-probe weight distribution before reset_weights
+  // wipes it. Guarded to real probes (count>0; the count==0 call is pre-probe).
+  if (yals->opts.wtstats.val && yals->stats.restart.inner.count > 0) {
+    yals_wtstats_one (yals, "cls", yals->wt.clause_weights, yals->nclauses);
+    yals_wtstats_one (yals, "card", yals->wt.card_weights, yals->card_nclauses);
+  }
   // Snapshot the just-completed probe's best (stats.pbest). Skip the very
   // first call (no probe has run yet -- restart.inner.count == 0) and
   // any probe that recorded no improvement (tmp still INT_MAX).
