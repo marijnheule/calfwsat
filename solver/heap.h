@@ -33,7 +33,6 @@ struct heap {
   unsigneds stack;
   double *score;
   unsigned *pos;
-  double (*score_fun)(struct Yals *,int);
 };
 
 struct Yals;

@@ -3015,32 +3015,6 @@ Yals * yals_new_with_mem_mgr (void * mgr,
   yals->stats.wb.min = UINT_MAX;
   yals->stats.wb.max = 0;
 #endif
-#if 0
-  if (getenv ("YALSAMPLES") && getenv ("YALSMOD")) {
-    int s = atoi (getenv ("YALSAMPLES")), i;
-    int m = atoi (getenv ("YALSMOD"));
-    double start = yals_time (yals), delta;
-    int64_t * count;
-    if (m <= 0) m = 1;
-    yals_msg (yals, 0, "starting to sample %d times RNG mod %d", s, m);
-    NEWN (count, m);
-    for (i = 0; i < s; i++) {
-      int r = yals_rand_mod (yals, m);
-      assert (0 <= r), assert (r < m);
-      count[r]++;
-    }
-    for (i = 0; i < m; i++)
-      yals_msg (yals, 0,
-        " mod %6d hit %10d times %7.2f%% with error %7.2f%%",
-i, count[i], yals_pct (count[i], s),
-        yals_pct (count[i] - s/(double)m, s/(double) m));
-    DELN (count, m);
-    delta = yals_time (yals) - start;
-    yals_msg (yals, 0,
-      "finished sampling RNG in %.3f seconds, %.2f ns per 'rand'",
-      delta, yals_avg (delta*1e9, s));
-  }
-#endif
   return yals;
 }
 
@@ -4441,7 +4415,6 @@ int yals_sat (Yals * yals) {
   }
 
   {
-    yals->wt.uvars_heap.score_fun = basic_score;
     yals_outer_loop (yals);
   }
 
@@ -4740,9 +4713,7 @@ void yals_init (Yals *yals)
   yals->wt.recent_max_reduction = -1;
   yals->last_flip_unsat_count = -1;
   yals->consecutive_non_improvement = 0;
-  yals->wt.flip_span = 0;
   yals->wt.alg_switch = 0;
-  yals->wt.prob_check_window = 100;
 
 
   yals->wt.max_weighted_neighbour = calloc(yals->nclauses, sizeof (int));
@@ -4887,38 +4858,6 @@ void yals_init (Yals *yals)
 
 
 /*
-  When changing the scoring function of a heap, we need to go through
-  and reupdate scores. Not a part of heap API. We could pop all 
-  elements then push again with new scores. Maybe that is faster 
-  than inline updates, but would require popping all elements (each pop
-  leads to a bubble down operation for the element from Last that
-  replaced the max element)
-*/
-void yals_update_score_function_weights (Yals * yals) {
-  int var;
-  double score;
-  STACK_INT vars_on;
-  INIT (vars_on);
-
-  yals_msg (yals, 1, "updating scores");
-
-  // remove everything from heap
-  while (!yals_empty_heap (&yals->wt.uvars_heap)) {
-    var = yals_pop_max_heap (yals, &yals->wt.uvars_heap);
-    PUSH (vars_on, var);
-  }
-
-  // add back to heap with updated score function
-  while (!EMPTY (vars_on)) {
-    var = POP (vars_on);
-    score = (yals->wt.uvars_heap.score_fun) (yals, var);
-    yals_update_heap (yals, &yals->wt.uvars_heap, var, score);
-  }
-
-  RELEASE (vars_on);
-}
-
-/*
 
   After a flip, we store all changed variables in uvar_changed.
 
@@ -4941,7 +4880,7 @@ void yals_update_changed_var_weights (Yals * yals) {
           yals_pop_heap (yals, &yals->wt.uvars_heap, var);
         continue;
       }
-      score = (yals->wt.uvars_heap.score_fun) (yals, var); // heap has a scoring function
+      score = basic_score (yals, var); // heap has a scoring function
       if (score <= 0 && !yals_heap_contains (&yals->wt.uvars_heap, var))
         continue;
       yals_update_heap (yals, &yals->wt.uvars_heap, var, score);
@@ -5017,7 +4956,7 @@ int yals_pick_literal_from_heap (Yals * yals) {
 
   // score less than or equal to 0 is not flipped (not weight reducing)
   // todo: handle sideways flips
-  if (lit && yals->wt.uvars_heap.score_fun (yals,lit) <= 0)
+  if (lit && basic_score (yals, lit) <= 0)
     lit = 0;
 
   if (lit) // as it occurs in current assignment

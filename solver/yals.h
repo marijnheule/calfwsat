@@ -246,8 +246,6 @@ typedef struct WT {
 
   int active;
   int recent_max_reduction;
-  int flip_span;
-  int prob_check_window;
   int alg_switch;
 
   double time_wt;
@@ -603,8 +601,6 @@ void yals_break_clauses_after_flipping_lit (Yals * yals, int lit);
 void yals_update_sat_and_unsat (Yals * yals);
 
 int yals_pick_literal_from_heap (Yals * yals);
-
-void yals_update_score_function_weights (Yals * yals);
 
 void yals_remove_trailing_bits (Yals * yals);
 void yals_set_units (Yals * yals);
