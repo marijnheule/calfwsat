@@ -1,54 +1,55 @@
-# 2D sweep: --slope in {800..940 step 20} x --floor in {35,40,45,50,55,60},
+# 2D sweep: --slope in {350,400,450,500,550,600} x --floor in {80..94 step 2},
 # riding the other compiled defaults (clsselectp=15, min_weight=10,
 # oldestsource=1). Each transfer is slope/1000*(src_w-floor): slope is the
-# gradient (0.80..0.94, steeper than the 0.5 default) and floor is the source
-# weight at which the transfer hits 0. 48 configs total.
+# gradient (0.35..0.60, bracketing the 0.5 default) and floor is the source
+# weight at which the transfer hits 0. s500_f80 is the current default
+# (baseline anchor). 48 configs total.
 # name	args
-s800_f35	--slope=800 --floor=35
-s800_f40	--slope=800 --floor=40
-s800_f45	--slope=800 --floor=45
-s800_f50	--slope=800 --floor=50
-s800_f55	--slope=800 --floor=55
-s800_f60	--slope=800 --floor=60
-s820_f35	--slope=820 --floor=35
-s820_f40	--slope=820 --floor=40
-s820_f45	--slope=820 --floor=45
-s820_f50	--slope=820 --floor=50
-s820_f55	--slope=820 --floor=55
-s820_f60	--slope=820 --floor=60
-s840_f35	--slope=840 --floor=35
-s840_f40	--slope=840 --floor=40
-s840_f45	--slope=840 --floor=45
-s840_f50	--slope=840 --floor=50
-s840_f55	--slope=840 --floor=55
-s840_f60	--slope=840 --floor=60
-s860_f35	--slope=860 --floor=35
-s860_f40	--slope=860 --floor=40
-s860_f45	--slope=860 --floor=45
-s860_f50	--slope=860 --floor=50
-s860_f55	--slope=860 --floor=55
-s860_f60	--slope=860 --floor=60
-s880_f35	--slope=880 --floor=35
-s880_f40	--slope=880 --floor=40
-s880_f45	--slope=880 --floor=45
-s880_f50	--slope=880 --floor=50
-s880_f55	--slope=880 --floor=55
-s880_f60	--slope=880 --floor=60
-s900_f35	--slope=900 --floor=35
-s900_f40	--slope=900 --floor=40
-s900_f45	--slope=900 --floor=45
-s900_f50	--slope=900 --floor=50
-s900_f55	--slope=900 --floor=55
-s900_f60	--slope=900 --floor=60
-s920_f35	--slope=920 --floor=35
-s920_f40	--slope=920 --floor=40
-s920_f45	--slope=920 --floor=45
-s920_f50	--slope=920 --floor=50
-s920_f55	--slope=920 --floor=55
-s920_f60	--slope=920 --floor=60
-s940_f35	--slope=940 --floor=35
-s940_f40	--slope=940 --floor=40
-s940_f45	--slope=940 --floor=45
-s940_f50	--slope=940 --floor=50
-s940_f55	--slope=940 --floor=55
-s940_f60	--slope=940 --floor=60
+s350_f80	--slope=350 --floor=80
+s350_f82	--slope=350 --floor=82
+s350_f84	--slope=350 --floor=84
+s350_f86	--slope=350 --floor=86
+s350_f88	--slope=350 --floor=88
+s350_f90	--slope=350 --floor=90
+s350_f92	--slope=350 --floor=92
+s350_f94	--slope=350 --floor=94
+s400_f80	--slope=400 --floor=80
+s400_f82	--slope=400 --floor=82
+s400_f84	--slope=400 --floor=84
+s400_f86	--slope=400 --floor=86
+s400_f88	--slope=400 --floor=88
+s400_f90	--slope=400 --floor=90
+s400_f92	--slope=400 --floor=92
+s400_f94	--slope=400 --floor=94
+s450_f80	--slope=450 --floor=80
+s450_f82	--slope=450 --floor=82
+s450_f84	--slope=450 --floor=84
+s450_f86	--slope=450 --floor=86
+s450_f88	--slope=450 --floor=88
+s450_f90	--slope=450 --floor=90
+s450_f92	--slope=450 --floor=92
+s450_f94	--slope=450 --floor=94
+s500_f80	--slope=500 --floor=80
+s500_f82	--slope=500 --floor=82
+s500_f84	--slope=500 --floor=84
+s500_f86	--slope=500 --floor=86
+s500_f88	--slope=500 --floor=88
+s500_f90	--slope=500 --floor=90
+s500_f92	--slope=500 --floor=92
+s500_f94	--slope=500 --floor=94
+s550_f80	--slope=550 --floor=80
+s550_f82	--slope=550 --floor=82
+s550_f84	--slope=550 --floor=84
+s550_f86	--slope=550 --floor=86
+s550_f88	--slope=550 --floor=88
+s550_f90	--slope=550 --floor=90
+s550_f92	--slope=550 --floor=92
+s550_f94	--slope=550 --floor=94
+s600_f80	--slope=600 --floor=80
+s600_f82	--slope=600 --floor=82
+s600_f84	--slope=600 --floor=84
+s600_f86	--slope=600 --floor=86
+s600_f88	--slope=600 --floor=88
+s600_f90	--slope=600 --floor=90
+s600_f92	--slope=600 --floor=92
+s600_f94	--slope=600 --floor=94
