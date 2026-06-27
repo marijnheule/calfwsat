@@ -1,0 +1,54 @@
+# 2D sweep: --slope in {800..940 step 20} x --floor in {35,40,45,50,55,60},
+# riding the other compiled defaults (clsselectp=15, min_weight=10,
+# oldestsource=1). Each transfer is slope/1000*(src_w-floor): slope is the
+# gradient (0.80..0.94, steeper than the 0.5 default) and floor is the source
+# weight at which the transfer hits 0. 48 configs total.
+# name	args
+s800_f35	--slope=800 --floor=35
+s800_f40	--slope=800 --floor=40
+s800_f45	--slope=800 --floor=45
+s800_f50	--slope=800 --floor=50
+s800_f55	--slope=800 --floor=55
+s800_f60	--slope=800 --floor=60
+s820_f35	--slope=820 --floor=35
+s820_f40	--slope=820 --floor=40
+s820_f45	--slope=820 --floor=45
+s820_f50	--slope=820 --floor=50
+s820_f55	--slope=820 --floor=55
+s820_f60	--slope=820 --floor=60
+s840_f35	--slope=840 --floor=35
+s840_f40	--slope=840 --floor=40
+s840_f45	--slope=840 --floor=45
+s840_f50	--slope=840 --floor=50
+s840_f55	--slope=840 --floor=55
+s840_f60	--slope=840 --floor=60
+s860_f35	--slope=860 --floor=35
+s860_f40	--slope=860 --floor=40
+s860_f45	--slope=860 --floor=45
+s860_f50	--slope=860 --floor=50
+s860_f55	--slope=860 --floor=55
+s860_f60	--slope=860 --floor=60
+s880_f35	--slope=880 --floor=35
+s880_f40	--slope=880 --floor=40
+s880_f45	--slope=880 --floor=45
+s880_f50	--slope=880 --floor=50
+s880_f55	--slope=880 --floor=55
+s880_f60	--slope=880 --floor=60
+s900_f35	--slope=900 --floor=35
+s900_f40	--slope=900 --floor=40
+s900_f45	--slope=900 --floor=45
+s900_f50	--slope=900 --floor=50
+s900_f55	--slope=900 --floor=55
+s900_f60	--slope=900 --floor=60
+s920_f35	--slope=920 --floor=35
+s920_f40	--slope=920 --floor=40
+s920_f45	--slope=920 --floor=45
+s920_f50	--slope=920 --floor=50
+s920_f55	--slope=920 --floor=55
+s920_f60	--slope=920 --floor=60
+s940_f35	--slope=940 --floor=35
+s940_f40	--slope=940 --floor=40
+s940_f45	--slope=940 --floor=45
+s940_f50	--slope=940 --floor=50
+s940_f55	--slope=940 --floor=55
+s940_f60	--slope=940 --floor=60
