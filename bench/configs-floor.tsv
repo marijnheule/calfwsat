@@ -1,0 +1,12 @@
+# Sweeps --floor in {10,30,50,70,90} riding the current compiled defaults
+# (slope=500, min_weight=10, oldestsource=1). With slope=0.5 each transfer is
+# 0.5*(source_weight - floor): the floor is the source weight at which the
+# transfer is exactly 0 (below it w<0 and the source is skipped). Lower floor =
+# sources drain further down + larger transfers; higher floor = gentler, sources
+# stop donating sooner. fl90 is the current default (baseline anchor).
+# name	args
+fl10	--floor=10
+fl30	--floor=30
+fl50	--floor=50
+fl70	--floor=70
+fl90	--floor=90
