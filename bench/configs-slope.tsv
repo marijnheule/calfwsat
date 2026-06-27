@@ -1,0 +1,12 @@
+# Sweeps --slope in {30,40,50,60,70} riding the current compiled defaults
+# (floor=80, clsselectp=15, min_weight=10, oldestsource=1). slope is the
+# transfer gradient in /1000 units, so these are 0.03..0.07 -- far gentler than
+# the compiled default of 500 (0.5). Each transfer is slope/1000*(src_w-80):
+# smaller slope = much smaller per-transfer donations (the floor is unchanged at
+# 80, only the steepness drops). Probes whether near-flat transfers help.
+# name	args
+sl30	--slope=30
+sl40	--slope=40
+sl50	--slope=50
+sl60	--slope=60
+sl70	--slope=70
