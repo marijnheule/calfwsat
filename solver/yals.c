@@ -3457,18 +3457,22 @@ static void yals_restart_inner (Yals * yals) {
   account fo the change in weight.
 
 */
-void yals_update_lit_weights_on_weight_transfer (Yals *yals, int sink, int source, int constraint_type_source, int constraint_type_sink, double w)
+void yals_update_lit_weights_on_weight_transfer (Yals *yals, int sink, int source, int constraint_type_source, int constraint_type_sink, double w_src, double w_sink)
 {
+  // w_src is removed from the source, w_sink is added to the sink. They are
+  // equal for an ordinary (weight-conserving) transfer; --inject makes the
+  // sink gain more than the source loses (additive weighting in the drained
+  // regime), so the two deltas are threaded separately through all bookkeeping.
   // if source is critical,
   //   pulling weight from critical literals
   if (constraint_type_source == TYPECLAUSE) {
     if (yals_satcnt (yals, source) == 1) // also pulling this transferred weight off critical lit list
-      yals_update_var_weight (yals, yals->crit [source], 1, -w);
+      yals_update_var_weight (yals, yals->crit [source], 1, -w_src);
   } else if (constraint_type_source == TYPECARDINALITY) {
     if (yals_card_satcnt (yals, source) <= yals_card_bound (yals, source)) {
       // critical cardinality constraint when falsified
       // get change in critical values
-      double old_weight = yals->wt.card_weights [source] + w;
+      double old_weight = yals->wt.card_weights [source] + w_src;
 
       double old_unsat_weight = yals_card_calculate_weight (yals, yals_card_bound (yals, source), yals_card_satcnt (yals, source), old_weight, source);
       double new_unsat_weight = yals_card_get_calculated_weight (yals, source);
@@ -3493,11 +3497,11 @@ void yals_update_lit_weights_on_weight_transfer (Yals *yals, int sink, int sourc
   if (constraint_type_sink == TYPECLAUSE) {
     int * lits = yals_lits (yals, sink), lit;
     while ((lit = *lits++))
-      yals_update_var_weight (yals, lit, 0, w);
+      yals_update_var_weight (yals, lit, 0, w_sink);
   } else if (constraint_type_sink == TYPECARDINALITY) {
     // critical cardinality constraint when falsified
     // get change in critical values
-    double old_weight = yals->wt.card_weights [sink] - w; // difference, now gaining weight
+    double old_weight = yals->wt.card_weights [sink] - w_sink; // difference, now gaining weight
 
     double old_unsat_weight = yals_card_calculate_weight (yals, yals_card_bound (yals, sink), yals_card_satcnt (yals, sink), old_weight, sink);
     double new_unsat_weight = yals_card_get_calculated_weight (yals, sink);
@@ -4055,17 +4059,19 @@ double yals_get_weight (Yals *yals, int source, int sink, int constraint_type_so
 /*------------------------------------------------------------------------*/
 static void yals_apply_one_transfer (
     Yals * yals, int source, int sink,
-    int src_type, int sink_type, double w) {
+    int src_type, int sink_type, double w_src, double w_sink) {
+  // Ordinary transfer conserves weight (w_src == w_sink). With --inject the
+  // sink can gain more than the source loses, raising the total weight.
   // Subtract from source.
   if (src_type == TYPECLAUSE)
-    yals->wt.clause_weights[source] -= w;
+    yals->wt.clause_weights[source] -= w_src;
   else
-    yals->wt.card_weights[source] -= w;
+    yals->wt.card_weights[source] -= w_src;
   // Add to sink.
   if (sink_type == TYPECLAUSE)
-    yals->wt.clause_weights[sink] += w;
+    yals->wt.clause_weights[sink] += w_sink;
   else
-    yals->wt.card_weights[sink] += w;
+    yals->wt.card_weights[sink] += w_sink;
   // --topk maintenance.
   if (yals->opts.topk.val > 0) {
     yals_topk_decreased (yals,
@@ -4082,7 +4088,34 @@ static void yals_apply_one_transfer (
   }
   // Per-literal weight updates.
   yals_update_lit_weights_on_weight_transfer (
-    yals, sink, source, src_type, sink_type, w);
+    yals, sink, source, src_type, sink_type, w_src, w_sink);
+}
+
+// Decide how much weight leaves the source (*w_src) and how much reaches the
+// sink (*w_sink) for a raw per-source transfer amount w. Returns 0 to skip.
+//   --inject=0 (default): conservative, weight-conserving transfer
+//     (w_src == w_sink == w); any non-positive w is skipped (it would move
+//     nothing or run backwards). This path is bit-identical to the old code.
+//   --inject=N>0: additive weighting for the drained regime. A source below
+//     the floor (w<0) is still skipped, but once 0<=w<=N the multiplicative
+//     transfer has collapsed to a useless trickle, so the source still only
+//     donates w while the sink is *injected* a full N units -- total weight
+//     rises by N-w (>=0). Above N it reverts to a conservative transfer, so the
+//     rule is continuous at w=N. This guarantees a falsified sink keeps gaining
+//     weight even when every reachable source sits at the floor, which is the
+//     livelock condition.
+static inline int yals_xfer_amounts (Yals *yals, double w,
+                                     double *w_src, double *w_sink) {
+  int inj = yals->opts.inject.val;
+  if (inj > 0) {
+    if (w < 0.0) return 0;
+    *w_src = w;
+    *w_sink = (w <= (double) inj) ? (double) inj : w;
+  } else {
+    if (w <= 0.0) return 0;
+    *w_src = *w_sink = w;
+  }
+  return 1;
 }
 
 /*
@@ -4158,12 +4191,13 @@ void yals_transfer_weights_for_clause (Yals *yals, int sink)
     // backwards (w<0, reachable when src_w < floor) -- both pointless or
     // harmful. Skip the source: no transfer applied, and leave its LRU
     // recency untouched so a later, productive pick can still use it.
-    if (w <= 0.0) continue;
+    double w_src, w_sink;
+    if (!yals_xfer_amounts (yals, w, &w_src, &w_sink)) continue;
     // --oldestsource: mark source as just-used.
     if (yals->opts.oldestsource.val)
       yals_oldsrc_move_to_tail (yals,
         (src_t == TYPECLAUSE) ? src : yals->nclauses + src);
-    yals_apply_one_transfer (yals, src, sink, src_t, TYPECLAUSE, w);
+    yals_apply_one_transfer (yals, src, sink, src_t, TYPECLAUSE, w_src, w_sink);
   }
 }
 
@@ -4236,12 +4270,13 @@ void yals_transfer_weights_for_card (Yals *yals, int sink)
     // backwards (w<0, reachable when src_w < floor) -- both pointless or
     // harmful. Skip the source: no transfer applied, and leave its LRU
     // recency untouched so a later, productive pick can still use it.
-    if (w <= 0.0) continue;
+    double w_src, w_sink;
+    if (!yals_xfer_amounts (yals, w, &w_src, &w_sink)) continue;
     // --oldestsource: mark source as just-used.
     if (yals->opts.oldestsource.val)
       yals_oldsrc_move_to_tail (yals,
         (src_t == TYPECLAUSE) ? src : yals->nclauses + src);
-    yals_apply_one_transfer (yals, src, sink, src_t, TYPECARDINALITY, w);
+    yals_apply_one_transfer (yals, src, sink, src_t, TYPECARDINALITY, w_src, w_sink);
   }
 }
 
