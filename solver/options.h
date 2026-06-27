@@ -31,7 +31,6 @@ This code extends the solver yal-lin (Md Solimul Chowdhury, Cayden Codel, Marijn
   OPT (defrag,1,0,1,"defragemtation of unsat queue"); \
   OPT (slope,500,0,1000,"weight-transfer slope: w = slope/1000 * (source_weight - floor)"); \
   OPT (floor,80,0,INT_MAX,"weight-transfer floor: source weight where transfer = 0 (below it the source is skipped)"); \
-  OPT (wtpow,0,0,1000,"weight-transfer power term (0 = off, 1000 = linear)"); \
   OPT (keep,0,0,1,"keep assignment during restart"); \
   OPT (maxtries,INT_MAX , 0,INT_MAX,"Maximum number of tries (default INT_MAX = unlimited)"); \
   OPT (minchunksize,(1<<8),2,(1<<20),"minium queue chunk size"); \
@@ -43,7 +42,6 @@ This code extends the solver yal-lin (Md Solimul Chowdhury, Cayden Codel, Marijn
   OPT (witness,1,0,1,"print witness"); \
   OPT (card_compute,4,1,4,"card weight rule: 1=linear 2=exp 3=quadratic 4=cubic"); \
   OPT (init,100,1,INT_MAX,"initial clause/cardinality constraint weight"); \
-  OPT (wtini,0,0,1000,"transfer for at-initial-weight sources (init_weight*wtini/1000)"); \
   OPT (maxk,1,1,INT_MAX,"weight-transfer top-K sink sources (1 = single)"); \
   OPT (randk,1,0,INT_MAX,"random-source top-K sample size (0 = single random)"); \
   OPT (randtour,1,1,INT_MAX,"random-source tournament multiplier for --randk"); \

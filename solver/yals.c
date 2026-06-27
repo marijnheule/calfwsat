@@ -3569,37 +3569,20 @@ void yals_update_lit_weights_on_weight_transfer (Yals *yals, int sink, int sourc
 double linear_wt (Yals * yals, int source, int type_source)
 {
   double source_weight = 0.0;
-  double init_w = 0.0;
 
-  if (type_source == TYPECLAUSE) {
+  if (type_source == TYPECLAUSE)
     source_weight = yals->wt.clause_weights [source];
-    init_w = (double) yals->opts.init.val;
-  } else if (type_source == TYPECARDINALITY) {
+  else if (type_source == TYPECARDINALITY)
     source_weight = yals->wt.card_weights [source];
-    init_w = (double) yals->opts.init.val;
-  }
 
-  // weight transfer: w = source_weight^p + slope*(source_weight - floor)
+  // weight transfer: w = slope*(source_weight - floor)
   //   where slope = --slope/1000 and floor = --floor (an integer source
-  //   weight). The linear term is a single straight line through (floor, 0)
-  //   with gradient slope: a source exactly at the floor donates nothing,
-  //   above it donates slope*(src_w - floor), below it the value goes
-  //   negative and the apply loops skip it (transfer <= 0 => skipped).
-  // The optional power term is chosen so that at source_weight = init_w the
-  //   power-term equals init_w * (wtpow/1000). Solving
-  //   pow(init_w, p) = init_w*(wtpow/1000) gives p = 1 + log(wtpow/1000)/log(init_w).
-  // Special cases:
-  //   wtpow == 0   -> power term contributes 0 (term disabled)
-  //   init_w <= 1  -> log(init_w) <= 0, no real p satisfies; skip term
-  //   wtpow == 1000 -> p = 1, term equals source_weight (linear point)
-  double pow_term = 0.0;
-  if (yals->opts.wtpow.val > 0 && init_w > 1.0) {
-    double r = (double) yals->opts.wtpow.val / 1000.0;
-    double p = 1.0 + log (r) / log (init_w);
-    pow_term = pow ((float) source_weight, (float) p);
-  }
+  //   weight). A single straight line through (floor, 0) with gradient slope:
+  //   a source exactly at the floor donates nothing, above it donates
+  //   slope*(src_w - floor), below it the value goes negative and the apply
+  //   loops skip it (transfer <= 0 => skipped).
   double a = (float) yals->opts.slope.val / 1000.0;
-  return pow_term + (double) ((float) a * ((float) source_weight - (float) yals->opts.floor.val));
+  return (double) ((float) a * ((float) source_weight - (float) yals->opts.floor.val));
 }
 
 /*
@@ -4100,32 +4083,12 @@ int yals_get_random_sat_top_k (Yals * yals, int K,
 */
 double yals_get_weight (Yals *yals, int source, int sink, int constraint_type_source, int constraint_type_sink) {
   double w = 0.0;
-  int wtini_hit = 0;
 
-  // --wtini: if the source still has exactly its initial weight, transfer
-  // initial_weight * wtini / 1000 instead of the linear-rule amount.
-  if (yals->opts.wtini.val) {
-    double init_w = 0.0, cur_w = 0.0;
-    if (constraint_type_source == TYPECLAUSE) {
-      init_w = (double) yals->opts.init.val;
-      cur_w = yals->wt.clause_weights [source];
-    } else if (constraint_type_source == TYPECARDINALITY) {
-      init_w = (double) yals->opts.init.val;
-      cur_w = yals->wt.card_weights [source];
-    }
-    if (cur_w == init_w) {
-      w = init_w * (yals->opts.wtini.val / 1000.0);
-      wtini_hit = 1;
-    }
-  }
-
-  if (!wtini_hit) {
-    if (constraint_type_source == TYPECLAUSE)
-      w = linear_wt (yals, source, TYPECLAUSE);
-    else if (constraint_type_source == TYPECARDINALITY)
-      w = linear_wt (yals, source, TYPECARDINALITY);
-    else yals_abort (yals, "incorrect constraint type");
-  }
+  if (constraint_type_source == TYPECLAUSE)
+    w = linear_wt (yals, source, TYPECLAUSE);
+  else if (constraint_type_source == TYPECARDINALITY)
+    w = linear_wt (yals, source, TYPECARDINALITY);
+  else yals_abort (yals, "incorrect constraint type");
 
   // --sourcecap: cap the transfer at source_weight * sourcecap/1000.
   // 1000 = cap at the source's own weight (barely binds; prevents draining
