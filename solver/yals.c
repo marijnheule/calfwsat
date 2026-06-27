@@ -3578,34 +3578,27 @@ double linear_wt (Yals * yals, int source, int type_source)
     init_w = (double) yals->opts.init.val;
   }
 
-  // weight transfer: w = source_weight^p + a*source_weight + c
-  //   where a = wtmul/1000, c = init_w * wtadd/1000, and the exponent p
-  //   is chosen so that at source_weight = init_w the power-term equals
-  //   init_w * (wtpow/1000). Solving pow(init_w, p) = init_w*(wtpow/1000)
-  //   gives p = 1 + log(wtpow/1000) / log(init_w).
+  // weight transfer: w = source_weight^p + slope*(source_weight - floor)
+  //   where slope = --slope/1000 and floor = --floor (an integer source
+  //   weight). The linear term is a single straight line through (floor, 0)
+  //   with gradient slope: a source exactly at the floor donates nothing,
+  //   above it donates slope*(src_w - floor), below it the value goes
+  //   negative and the apply loops skip it (transfer <= 0 => skipped).
+  // The optional power term is chosen so that at source_weight = init_w the
+  //   power-term equals init_w * (wtpow/1000). Solving
+  //   pow(init_w, p) = init_w*(wtpow/1000) gives p = 1 + log(wtpow/1000)/log(init_w).
   // Special cases:
   //   wtpow == 0   -> power term contributes 0 (term disabled)
   //   init_w <= 1  -> log(init_w) <= 0, no real p satisfies; skip term
   //   wtpow == 1000 -> p = 1, term equals source_weight (linear point)
-  // All three normalized terms (pow, linear, additive) scale with init_w
-  // so the user reasons in fractions-of-init regardless of weight scale.
   double pow_term = 0.0;
   if (yals->opts.wtpow.val > 0 && init_w > 1.0) {
     double r = (double) yals->opts.wtpow.val / 1000.0;
     double p = 1.0 + log (r) / log (init_w);
     pow_term = pow ((float) source_weight, (float) p);
   }
-  double a = (float) yals->opts.wtmul.val / 1000.0;
-  double c = init_w * ((float) yals->opts.wtadd.val / 1000.0);
-  // --relative: the multiplicative (wtmul) term scales the source weight ABOVE
-  // the min-weight floor, (source_weight - min_weight), rather than the full
-  // source_weight. Clamp at 0 so a source at/below the floor adds nothing.
-  double mul_base = source_weight;
-  if (yals->opts.relative.val) {
-    mul_base = source_weight - (double) yals->opts.min_weight.val;
-    if (mul_base < 0.0) mul_base = 0.0;
-  }
-  return pow_term + (double) ((float) mul_base * (float) a + (float) c);
+  double a = (float) yals->opts.slope.val / 1000.0;
+  return pow_term + (double) ((float) a * ((float) source_weight - (float) yals->opts.floor.val));
 }
 
 /*
@@ -4263,7 +4256,7 @@ void yals_transfer_weights_for_clause (Yals *yals, int sink)
     int src = sources[i], src_t = types[i];
     double w = yals_get_weight (yals, src, sink, src_t, TYPECLAUSE) / divk;
     // A non-positive transfer moves nothing (w==0) or runs the transfer
-    // backwards (w<0, reachable via negative --wtadd) -- both pointless or
+    // backwards (w<0, reachable when src_w < floor) -- both pointless or
     // harmful. Skip the source: no transfer applied, and leave its LRU
     // recency untouched so a later, productive pick can still use it.
     if (w <= 0.0) continue;
@@ -4341,7 +4334,7 @@ void yals_transfer_weights_for_card (Yals *yals, int sink)
     int src = sources[i], src_t = types[i];
     double w = yals_get_weight (yals, src, sink, src_t, TYPECARDINALITY) / divk;
     // A non-positive transfer moves nothing (w==0) or runs the transfer
-    // backwards (w<0, reachable via negative --wtadd) -- both pointless or
+    // backwards (w<0, reachable when src_w < floor) -- both pointless or
     // harmful. Skip the source: no transfer applied, and leave its LRU
     // recency untouched so a later, productive pick can still use it.
     if (w <= 0.0) continue;

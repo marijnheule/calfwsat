@@ -29,9 +29,8 @@ This code extends the solver yal-lin (Md Solimul Chowdhury, Cayden Codel, Marijn
   OPT (cutoff,300000,0,INT_MAX,"flips per try (0 = unlimited)"); \
   OPT (dynmul,10,0,INT_MAX,"extend cutoff to D*probe-flips on improvement (0=off)"); \
   OPT (defrag,1,0,1,"defragemtation of unsat queue"); \
-  OPT (wtadd,-400,-1000,1000,"weight-transfer additive term (init_weight*wtadd/1000)"); \
-  OPT (wtmul,500,0,1000,"weight-transfer multiplicative factor (wtmul/1000)"); \
-  OPT (relative,1,0,1,"wtmul term scales (source_weight - min_weight) not source_weight"); \
+  OPT (slope,500,0,1000,"weight-transfer slope: w = slope/1000 * (source_weight - floor)"); \
+  OPT (floor,90,0,INT_MAX,"weight-transfer floor: source weight where transfer = 0 (below it the source is skipped)"); \
   OPT (wtpow,0,0,1000,"weight-transfer power term (0 = off, 1000 = linear)"); \
   OPT (keep,0,0,1,"keep assignment during restart"); \
   OPT (maxtries,INT_MAX , 0,INT_MAX,"Maximum number of tries (default INT_MAX = unlimited)"); \

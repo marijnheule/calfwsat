@@ -835,8 +835,8 @@ int main (int argc, char** argv) {
     }  
     
     else if (!strcmp (argv[i], "--clsselectp")) setopt ("clsselectp", atoll (argv[++i]));
-    else if (!strcmp (argv[i], "--wtadd")) setopt ("wtadd", atoll (argv[++i]));
-    else if (!strcmp (argv[i], "--wtmul")) setopt ("wtmul", atoll (argv[++i]));
+    else if (!strcmp (argv[i], "--slope")) setopt ("slope", atoll (argv[++i]));
+    else if (!strcmp (argv[i], "--floor")) setopt ("floor", atoll (argv[++i]));
     else if (!strcmp (argv[i], "--wtpow")) setopt ("wtpow", atoll (argv[++i]));
     else if (!strcmp (argv[i], "--maxtries")) { setopt ("maxtries", atoll (argv[++i]));}
     else if (!strcmp (argv[i], "--cutoff")) { setopt ("cutoff", atoll (argv[++i]));}
