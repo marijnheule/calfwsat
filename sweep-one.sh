@@ -62,6 +62,18 @@ fi
 OLDESTSOURCE_DEFAULT="$(grep -oE 'oldestsource,[0-9]+' "$SCRIPT_DIR/solver/options.h" 2>/dev/null | head -1 | cut -d, -f2)"
 OLDESTSOURCE_DEFAULT="${OLDESTSOURCE_DEFAULT:-?}"
 
+# Compiled defaults of the weight-transfer knobs (same provenance assumption).
+# floor/slope define the linear transfer w = slope/1000 * (source_weight - floor);
+# clsselectp is the random-source-shortcut probability (percent). Surfaced
+# because these set the baseline every config row is measured against.
+# (grep allows optional spaces after the comma, e.g. "clsselectp, 0".)
+FLOOR_DEFAULT="$(grep -oE 'floor, *[0-9]+' "$SCRIPT_DIR/solver/options.h" 2>/dev/null | head -1 | grep -oE '[0-9]+')"
+FLOOR_DEFAULT="${FLOOR_DEFAULT:-?}"
+SLOPE_DEFAULT="$(grep -oE 'slope, *[0-9]+' "$SCRIPT_DIR/solver/options.h" 2>/dev/null | head -1 | grep -oE '[0-9]+')"
+SLOPE_DEFAULT="${SLOPE_DEFAULT:-?}"
+CLSSELECTP_DEFAULT="$(grep -oE 'clsselectp, *[0-9]+' "$SCRIPT_DIR/solver/options.h" 2>/dev/null | head -1 | grep -oE '[0-9]+')"
+CLSSELECTP_DEFAULT="${CLSSELECTP_DEFAULT:-?}"
+
 echo "sweep-one: $FORMULA"
 echo "  configs:  $CONFIGS"
 echo "  commit:   $COMMIT"
@@ -70,6 +82,7 @@ echo "  timeout:  ${TIMEOUT_DEFAULT}s"
 echo "  threads:  $THREADS_DEFAULT per palsat"
 echo "  cutoff:   ${CUTOFF_DEFAULT:-(solver default; per-config rows can set --cutoff=)}"
 echo "  oldestsource: $OLDESTSOURCE_DEFAULT (compiled default; per-config rows can set --oldestsource=)"
+echo "  floor:    $FLOOR_DEFAULT  slope: $SLOPE_DEFAULT  clsselectp: $CLSSELECTP_DEFAULT (compiled defaults; per-config rows can override)"
 echo "  out:      bench-results/$OUT_NAME"
 echo
 
@@ -105,6 +118,7 @@ TXT="$OUT_DIR/email.txt"
   echo "  seeds:   $NSEEDS  ($SEEDS_DEFAULT)"
   echo "  timeout: ${TIMEOUT_DEFAULT}s per run"
   echo "  oldestsource: $OLDESTSOURCE_DEFAULT (compiled default; per-config rows can override)"
+  echo "  floor: $FLOOR_DEFAULT  slope: $SLOPE_DEFAULT  clsselectp: $CLSSELECTP_DEFAULT (compiled defaults; per-config rows can override)"
   echo
   cat "$SUMMARY"
 } > "$TXT"
@@ -120,6 +134,7 @@ MD="$OUT_DIR/email.md"
   echo "- seeds: $NSEEDS ($SEEDS_DEFAULT)"
   echo "- timeout: ${TIMEOUT_DEFAULT}s per run"
   echo "- oldestsource: $OLDESTSOURCE_DEFAULT (compiled default; per-config rows can override)"
+  echo "- floor: $FLOOR_DEFAULT, slope: $SLOPE_DEFAULT, clsselectp: $CLSSELECTP_DEFAULT (compiled defaults; per-config rows can override)"
   echo
   echo "| config | runs | SAT | TO | PAR-2 | mean_flips | median_flips |"
   echo "|---|---:|---:|---:|---:|---:|---:|"
