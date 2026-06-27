@@ -1,13 +1,13 @@
-# clsselectp sweep: probability of pulling weight from a RANDOM satisfied
-# clause instead of the max-weight same-sign neighbor (also the only channel
-# that moves weight between the positive- and negative-literal constraint
-# classes). clsselectp = paramval/100.
-#
-# Narrow probe around the default to see if a small bump helps. Solver default
-# clsselectp = 12 (included as the baseline row).
+# Sweeps --clsselectp in {0,10,20,30} riding the current compiled defaults
+# (slope=500, floor=80, min_weight=10, oldestsource=1). clsselectp is the
+# random-source-shortcut probability in percent: with probability clsselectp/100
+# the neighbor scan is skipped and the sink draws random satisfied source(s)
+# instead (also the only channel that moves weight between the positive- and
+# negative-literal constraint classes). cs0 (never shortcut, always
+# neighbor-scan) is the current default (baseline anchor); higher values inject
+# more random-source transfers.
 # name	args
-cls12	--clsselectp=12
-cls14	--clsselectp=14
-cls16	--clsselectp=16
-cls18	--clsselectp=18
-cls20	--clsselectp=20
+cs0	--clsselectp=0
+cs10	--clsselectp=10
+cs20	--clsselectp=20
+cs30	--clsselectp=30
