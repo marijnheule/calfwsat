@@ -53,7 +53,6 @@ This code extends the solver yal-lin (Md Solimul Chowdhury, Cayden Codel, Marijn
   OPT (improving,0,0,1,"at restart keep assignment if best improved (0 = always re-pick)"); \
   OPT (oldestsource,1,0,1,"pick least-recently-used satisfied source (not random)"); \
   OPT (reset_os,1,0,1,"re-shuffle the oldestsource LRU order on each restart"); \
-  OPT (sourcecap,500,0,1000,"cap per-transfer at source_weight*sourcecap/1000"); \
   OPT (flip_gain_eps_e4,1000,0,INT_MAX,"snap |flip_gain| < val/10000 to 0 (0 = off)"); \
   OPT (reset_weights,1,0,1,"reset weights to initial values on inner restart"); \
   OPT (wtstats,0,0,1,"print clause/card weight distribution at each probe end"); \

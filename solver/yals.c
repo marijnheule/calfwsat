@@ -4090,20 +4090,9 @@ double yals_get_weight (Yals *yals, int source, int sink, int constraint_type_so
     w = linear_wt (yals, source, TYPECARDINALITY);
   else yals_abort (yals, "incorrect constraint type");
 
-  // --sourcecap: cap the transfer at source_weight * sourcecap/1000.
-  // 1000 = cap at the source's own weight (barely binds; prevents draining
-  // a source below zero). Smaller N = tighter cap.
-  double src_w = (constraint_type_source == TYPECLAUSE)
-                 ? yals->wt.clause_weights [source]
-                 : yals->wt.card_weights [source];
-  {
-    double cap = src_w * (yals->opts.sourcecap.val / 1000.0);
-    if (w > cap) w = cap;
-  }
-
-  // No explicit floor clamp needed: the transfer w = slope*(src_w - floor)
-  // with slope <= 1 already satisfies w <= src_w - floor, so a source is
-  // never drained below the floor.
+  // No explicit cap needed: the transfer w = slope*(src_w - floor) with
+  // slope <= 1 already satisfies w <= src_w - floor, so a source is never
+  // drained below the floor (and never below zero).
 
   return w;
 }
