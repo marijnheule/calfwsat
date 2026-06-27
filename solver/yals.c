@@ -3110,15 +3110,6 @@ void yals_setprefix (Yals * yals, const char * prefix) {
   yals->opts.prefix = yals_strdup (yals, prefix ? prefix : "");
 }
 
-void yals_setout (Yals * yals, FILE * out) {
-  yals->out = out;
-}
-
-void yals_setphase (Yals * yals, int lit) {
-  if (!lit) yals_abort (yals, "zero literal argument to 'yals_val'");
-  PUSH (yals->phases, lit);
-}
-
 void yals_setflipslimit (Yals * yals, long long flips) {
   yals->limits.flips = flips;
   yals_msg (yals, 1, "new flips limit %lld", (long long) flips);
@@ -4398,14 +4389,6 @@ int yals_minimum (Yals * yals) { return yals->stats.best; }
 
 long long yals_flips (Yals * yals) { return yals->stats.flips; }
 
-long long yals_mems (Yals * yals) {
-#ifndef NYALSMEMS
-  return yals->stats.mems.all;
-#else
-  return 0;
-#endif
-}
-
 /*------------------------------------------------------------------------*/
 
 void yals_stats (Yals * yals) {
@@ -4897,11 +4880,6 @@ void yals_card_update_lit_weights_at_start (Yals * yals, int cidx, int satcnt, i
   } // else: satisfied, not critically satisfied (Do nothing)
 
   yals_msg (yals, 3, "finished initial weights for cidx %d", cidx);
-}
-
-int yals_flip_count (Yals *yals)
-{
-  return yals->stats.flips;
 }
 
 void yals_print_stats (Yals * yals)

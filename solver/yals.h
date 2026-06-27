@@ -464,8 +464,6 @@ void yals_share_formula (Yals * dst, Yals * src);
 
 int yals_setopt (Yals *, const char * name, int val);
 void yals_setprefix (Yals *, const char *);
-void yals_setout (Yals *, FILE *);
-void yals_setphase (Yals *, int lit);
 void yals_setflipslimit (Yals *, long long);
 void yals_setmemslimit (Yals *, long long);
 
@@ -482,12 +480,9 @@ int yals_sat (Yals *);
 /*------------------------------------------------------------------------*/
 
 long long yals_flips (Yals *);
-long long yals_mems (Yals *);
 
 int yals_minimum (Yals *);
 int yals_deref (Yals *, int lit);
-
-int yals_flip_count (Yals *yals);
 
 /*------------------------------------------------------------------------*/
 
