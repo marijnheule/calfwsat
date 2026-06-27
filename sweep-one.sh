@@ -5,10 +5,15 @@
 # result table suitable for sharing via email.
 #
 # Usage:
-#   bash sweep-one.sh <formula>
+#   bash sweep-one.sh <formula> [seed-start]
+#
+# The optional 2nd arg sets the start of the seed range; the sweep always uses
+# SEED_COUNT (200) consecutive seeds. Omit it to use the baked-in default start.
+# (The SEEDS env var still overrides the whole list and takes precedence.)
 #
 # Example:
-#   bash sweep-one.sh ntil-40.knf
+#   bash sweep-one.sh ntil-40.knf          # seeds <default-start> .. +199
+#   bash sweep-one.sh ntil-40.knf 6000     # seeds 6000 .. 6199
 #
 # Hardcoded defaults (edit at top of script to change):
 #   configs:   bench/configs-cutoff.tsv  (per-try flip cutoff sweep)
@@ -25,7 +30,17 @@ set -uo pipefail
 # -------- defaults (edit here, or override via env vars) ----------
 # Any of these can be overridden by setting an env var when invoking:
 #   TIMEOUT=300 SEEDS="1,2,3" bash sweep-one.sh <formula>
-SEEDS_DEFAULT="${SEEDS:-$(seq 5301 5500 | paste -sd, -)}"
+#
+# Seed range: SEED_COUNT consecutive seeds starting at SEED_START. The start
+# comes from the optional 2nd positional arg if given, else SEED_START_DEFAULT.
+# An explicit SEEDS env var overrides the whole list (highest precedence).
+SEED_START_DEFAULT=5301
+SEED_COUNT=200
+if [ -n "${2:-}" ] && ! [[ "$2" =~ ^[0-9]+$ ]]; then
+  echo "error: seed-start (2nd arg) must be a positive integer, got '$2'" >&2; exit 2
+fi
+SEED_START="${2:-$SEED_START_DEFAULT}"
+SEEDS_DEFAULT="${SEEDS:-$(seq "$SEED_START" "$((SEED_START + SEED_COUNT - 1))" | paste -sd, -)}"
 TIMEOUT_DEFAULT="${TIMEOUT:-900}"
 THREADS_DEFAULT="${THREADS:-8}"
 # Empty by default: do NOT override the solver's compiled cutoff default.
@@ -35,7 +50,7 @@ CUTOFF_DEFAULT="${CUTOFF:-}"
 CONFIGS_REL="${CONFIGS:-bench/configs-slope.tsv}"
 # ------------------------------------------------------------------
 
-FORMULA="${1:?usage: $0 <formula.knf>}"
+FORMULA="${1:?usage: $0 <formula.knf> [seed-start]}"
 [ -r "$FORMULA" ] || { echo "error: cannot read formula '$FORMULA'" >&2; exit 2; }
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
