@@ -77,10 +77,6 @@ enum ClausePicking {
 
 /*------------------------------------------------------------------------*/
 
-const char * yals_default_prefix () { return YALS_DEFAULT_PREFIX; }
-
-/*------------------------------------------------------------------------*/
-
 
 // polarity of literal in best solution
 static inline int yals_best (Yals * yals, int lit) {
@@ -600,38 +596,6 @@ double yals_card_get_calculated_weight (Yals * yals, int cidx) {
                          yals_card_bound (yals, cidx),
                          yals->wt.card_sat_count_in_clause[cidx],
                          yals->wt.card_weights [cidx]);
-}
-
-// get unsat weight DECREASE when one more literal becomes satisfied
-//   = w(d) - w(d-1)   where d = bound - nsat
-// Closed-form derivatives avoid two function calls per query.
-double yals_card_get_calculated_weight_change_pos (Yals * yals, int cidx) {
-  int bound = yals_card_bound (yals, cidx);
-  int nsat = yals->wt.card_sat_count_in_clause[cidx];
-  int d = bound - nsat;
-  if (d <= 0) return 0.0;  // already (over)satisfied, w(d) = w(d-1) = 0
-  double c = yals->wt.card_weights [cidx];
-  double diff;
-  switch (yals->opts.card_compute.val) {
-    case 1:   // d - (d-1) = 1     -> c
-      diff = c;
-      break;
-    case 3:   // d^2 - (d-1)^2 = 2d - 1
-      diff = c * (2*d - 1);
-      break;
-    case 4:   // d^3 - (d-1)^3 = 3d^2 - 3d + 1
-      diff = c * (3*d*d - 3*d + 1);
-      break;
-    case 2:   // exponential is capped/awkward; fall back to two pow-free calls
-    default: {
-      double w      = yals_card_calculate_weight (yals, bound, nsat,   c, cidx);
-      double w_next = yals_card_calculate_weight (yals, bound, nsat+1, c, cidx);
-      assert (w - w_next >= 0);
-      return w - w_next;
-    }
-  }
-  assert (diff >= 0);
-  return diff;
 }
 
 /*
@@ -4862,45 +4826,6 @@ int yals_pick_literal_from_heap (Yals * yals) {
   return lit;
 }
 
-// outdated, now use a heap
-void determine_uwvar (Yals *yals , int var)
-{
-  int true_lit = yals_val (yals, var) ? var : -var;
-  int false_lit = -true_lit;
-  /**
-      FLIP: true_lit ---> false_lit
-      1) unsat_weights [get_pos (false_lit)]
-      is the GAINS of satisfied weight with FLIP: cumilative weights of the currently unsatisfied clauses,
-      where false_lit appears. If true_lit is filpped to false_lit, these clauses will become satisfied.
-     
-      2) sat1_weights [get_pos (true_lit)];
-      is the LOSS of satisfied weight with FLIP: cumilative weights of the currently
-      critically satisfied (where only true_lit is satisfied) clauses, where true_lit appears.
-      If true_lit is filpped to false_lit, these clauses will become satisfied.
-     
-      3) if GAINS (of satisfaction) - LOSS (of satisfaction) > 0, it implies reduction of UNSAT weights.
-  **/
-  double flip_gain =
-        yals->wt.unsat_weights [get_pos (false_lit)]  
-        - yals->wt.sat1_weights [get_pos (true_lit)];
-  LOG ("determine uwvar %d with gain %lf", var, flip_gain);
-
-  if (flip_gain > 0.0)
-  {
-    yals->wt.uwrvs [yals->wt.uwrvs_size] = true_lit;
-    yals->wt.uwvars_gains [yals->wt.uwrvs_size] = flip_gain;
-    yals->wt.uwrvs_size++;
-    if (yals->wt.best_weight < flip_gain)
-    {
-      yals->wt.best_var = true_lit;
-      yals->wt.best_weight = flip_gain;
-    }
-  }
-  else if (flip_gain == 0.0) {
-    yals->wt.non_increasing [yals->wt.non_increasing_size++] = true_lit;
-  }
-}
-
 void yals_init_build (Yals *yals) {
   yals_init (yals);
 }
@@ -5476,20 +5401,6 @@ void yals_add_vars_to_uvars (Yals* yals, int cidx, int constraint_type) {
   }
 }
 
-
-// NEVER CALLED
-// int yals_var_in_unsat (Yals *yals, int v)
-// {
-//   for (o = pos_oocs; (occ = *o) >= 0; o++)
-//   {
-//     if (!yals_satcnt (yals, pcidx))
-//   }
-
-//   for (o = neg_occs; (occ = *o) >= 0; o++)
-//   {
-//     if (!yals_satcnt (yals, ncidx))
-//   }
-// }
 
 void yals_delete_vars_from_uvars (Yals* yals, int cidx, int constraint_type) {
   int * lits = NULL;

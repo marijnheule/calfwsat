@@ -165,13 +165,6 @@ static inline void yals_update_heap (Yals *yals, heap *heap,
 #endif
 }
 
-void yals_release_heap (Yals *yals,heap *heap) {
-  RELEASE (heap->stack);
-  DELN (heap->pos, heap->size);
-  DELN (heap->score, heap->size);
-  memset (heap, 0, sizeof *heap);
-}
-
 #ifndef NDEBUG
 
 void yals_check_heap (heap *heap) {
@@ -223,16 +216,6 @@ void yals_resize_heap (Yals *yals,heap *heap, unsigned new_size) {
 #endif
 }
 
-void yals_rescale_heap (Yals *yals,heap *heap, double factor) {
-  LOG ("rescaling scores on heap with factor %g", factor);
-  double *score = heap->score;
-  for (unsigned i = 0; i < heap->vars; i++)
-    score[i] *= factor;
-#ifndef NDEBUG
-  yals_check_heap (heap);
-#endif
-}
-
 void yals_enlarge_heap (Yals *yals,heap *heap, unsigned new_vars) {
   const unsigned old_vars = heap->vars;
   assert (old_vars < new_vars);
@@ -252,19 +235,4 @@ void yals_clear_heap (Yals *yals,heap *heap) {
     yals_pop_max_heap (yals, heap);
 }
 
-#ifndef NDEBUG
-
-static void dump_heap (heap *heap) {
-  for (unsigned i = 0; i < SIZE (heap->stack); i++)
-    printf ("heap.stack[%u] = %u\n", i, PEEK (heap->stack, i));
-  for (unsigned i = 0; i < heap->vars; i++)
-    printf ("heap.pos[%u] = %u\n", i, heap->pos[i]);
-  for (unsigned i = 0; i < heap->vars; i++)
-    printf ("heap.score[%u] = %g\n", i, heap->score[i]);
-}
-
-void yals_dump_heap (heap *heap) { dump_heap (heap); }
-
-
-#endif
 #endif

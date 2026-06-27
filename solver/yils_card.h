@@ -39,7 +39,6 @@ void yals_checking (Yals *, int checking);
 
 /*------------------------------------------------------------------------*/
 
-const char * yals_default_prefix (void);
 const char * yals_version ();
 void yals_banner (const char * prefix);
 
@@ -69,7 +68,6 @@ void yals_compute_neighborhood_for_clause (Yals *yals, int cidx);
 void yals_init_build (Yals *yals);
 void yals_update_lit_weights_on_break (Yals * yals, int cidx, int lit);
 void yals_add_vars_to_uvars (Yals* yals, int cidx, int constraint_type);
-int yals_var_in_unsat (Yals *yals, int v);
 void yals_delete_vars_from_uvars (Yals* yals, int cidx, int constraint_type);
 void yals_update_var_unsat_count (Yals *yals, int cidx);
 void yals_print_stats (Yals * yals);
@@ -98,7 +96,6 @@ void yals_card_sat_weight_update (Yals *yals, int cidx, double w_diff, int avoid
 void yals_card_unsat_weight_update (Yals *yals, int cidx, double w_diff, int avoid_lit) ;
 double yals_card_calculate_weight (Yals * yals, int bound, int nsat, double c_weight, int cidx);
 double yals_card_get_calculated_weight (Yals * yals, int cidx);
-double yals_card_get_calculated_weight_change_pos (Yals * yals, int cidx);
 double yals_card_get_calculated_weight_change_neg (Yals * yals, int cidx) ;
 
 int yals_clauses_nunsat (Yals * yals);

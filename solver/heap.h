@@ -38,7 +38,6 @@ struct heap {
 struct Yals;
 
 void yals_resize_heap (struct Yals *yals, heap *, unsigned size);
-void yals_release_heap (struct Yals *yals, heap *);
 
 static inline bool yals_heap_contains (heap *heap, unsigned idx) {
   return idx < heap->vars && !DISCONTAINED (heap->pos[idx]);
@@ -53,15 +52,9 @@ static inline bool yals_empty_heap (heap *heap) {
   return EMPTY (heap->stack);
 }
 
-void yals_rescale_heap (struct Yals *yals,heap *heap, double factor);
-
 void yals_enlarge_heap (struct Yals *yals,heap *, unsigned new_vars);
 
 void yals_clear_heap (struct Yals *yals,heap *heap);
-
-#ifndef NDEBUG
-void yals_dump_heap (heap *);
-#endif
 
 #ifndef NDEBUG
 void yals_check_heap (heap *);
