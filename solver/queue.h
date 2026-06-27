@@ -12,6 +12,11 @@ This code extends the solver yal-lin (Md Solimul Chowdhury, Cayden Codel, Marijn
 #include "yils_card.h"
 #include "invariants.h"
 
+// Minimum queue link-chunk size (formerly the --minchunksize option, removed
+// because the queue is hardcoded off -- see below -- so this is never read at
+// runtime; kept as a constant only so the dormant queue API still compiles).
+#define MIN_QUEUE_CHUNK_SIZE (1<<8)
+
 
 /*
 
@@ -116,7 +121,7 @@ static void yals_reset_unsat_queue (Yals * yals) {
 
 static void yals_defrag_queue (Yals * yals) {
   const int count = yals->unsat.queue.count;
-  const int size = MAX(2*(count + 1), yals->opts.minchunksize.val);
+  const int size = MAX(2*(count + 1), MIN_QUEUE_CHUNK_SIZE);
   Lnk * p, * first, * free, * prev = 0;
   double start = yals_time (yals);
   const Lnk * q;
@@ -169,7 +174,7 @@ static void yals_defrag_queue (Yals * yals) {
 static int yals_need_to_defrag_queue (Yals * yals) {
   if (!yals->opts.defrag.val) return 0;
   if (!yals->unsat.queue.count) return 0;
-  if (yals->unsat.queue.nlnks <= yals->opts.minchunksize.val) return 0;
+  if (yals->unsat.queue.nlnks <= MIN_QUEUE_CHUNK_SIZE) return 0;
   if (yals->unsat.queue.count > yals->unsat.queue.nfree/4) return 0;
   return 1;
 }
@@ -217,7 +222,7 @@ static void yals_new_chunk (Yals * yals) {
   Chunk * c;
   int size;
   size = yals->unsat.queue.chunksize;
-  assert (size >= yals->opts.minchunksize.val);
+  assert (size >= MIN_QUEUE_CHUNK_SIZE);
   LOG ("new chunk of size %d", size);
   NEWN (p, size);
   c = (Chunk*) p;
@@ -237,7 +242,7 @@ static void yals_new_chunk (Yals * yals) {
 
 static void yals_larger_new_chunk (Yals * yals) {
   if (!yals->unsat.queue.chunksize)
-    yals->unsat.queue.chunksize = yals->opts.minchunksize.val;
+    yals->unsat.queue.chunksize = MIN_QUEUE_CHUNK_SIZE;
   else yals->unsat.queue.chunksize *= 2;
   yals_new_chunk (yals);
 }

@@ -33,7 +33,6 @@ This code extends the solver yal-lin (Md Solimul Chowdhury, Cayden Codel, Marijn
   OPT (floor,80,0,INT_MAX,"weight-transfer floor: source weight where transfer = 0 (below it the source is skipped)"); \
   OPT (keep,0,0,1,"keep assignment during restart"); \
   OPT (maxtries,INT_MAX , 0,INT_MAX,"Maximum number of tries (default INT_MAX = unlimited)"); \
-  OPT (minchunksize,(1<<8),2,(1<<20),"minium queue chunk size"); \
   OPT (pol,0,-1,1,"negative=-1 positive=1 or random=0 polarity"); \
   OPT (prep,1,0,1,"preprocessing through unit propagation"); \
   OPT (setfpu,1,0,1,"set FPU to use double precision on Linux"); \
