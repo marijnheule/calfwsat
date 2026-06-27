@@ -81,8 +81,6 @@ static inline void yals_bubble_down (Yals *yals, heap *heap,
       yals_enlarge_heap (yals, heap, (IDX) + 1); \
   } while (0)
 
-#define CHECK_HEAP_IMPORTED(IDX)
-
 static inline void yals_push_heap (Yals *yals, heap *heap,
                                      unsigned idx) {
   LOG ("push heap %u", idx);

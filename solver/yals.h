@@ -523,15 +523,9 @@ long long yals_flips (Yals *);
 long long yals_mems (Yals *);
 
 int yals_minimum (Yals *);
-int yals_lkhd (Yals *);
 int yals_deref (Yals *, int lit);
 
-const int * yals_minlits (Yals *);
-
-
 int yals_flip_count (Yals *yals);
-
-int yals_nunsat_external (Yals *yals);
 
 /*------------------------------------------------------------------------*/
 

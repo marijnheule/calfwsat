@@ -738,42 +738,6 @@ void yals_save_new_minimum (Yals * yals) {
 
 /*------------------------------------------------------------------------*/
 
-static int yals_pick_by_score (Yals * yals) {
-  double s, lim, sum;
-  const double * q;
-  const int * p;
-  int res;
-
-  assert (!EMPTY (yals->scores));
-  assert (COUNT (yals->scores) == COUNT (yals->cands));
-
-  sum = 0;
-  for (q = yals->scores.start; q < yals->scores.top; q++)
-    sum += *q;
-
-  assert (sum > 0);
-  lim = (yals_rand (yals) / (1.0 + (double) UINT_MAX))*sum;
-  assert (lim < sum);
-
-  LOG ("random choice %g mod %g", lim, sum);
-
-  p = yals->cands.start; assert (p < yals->cands.top);
-  res = *p++;
-
-  q = yals->scores.start; assert (q < yals->scores.top);
-  s = *q++; assert (s > 0);
-
-  while (p < yals->cands.top && s <= lim) {
-    lim -= s;
-    res = *p++; assert (q < yals->scores.top);
-    s = *q++; assert (s > 0);
-  }
-
-  return res;
-}
-
-/*------------------------------------------------------------------------*/
-
 void yals_flip_value_of_lit (Yals * yals, int lit) {
   int idx = ABS (lit);
   LOG ("flipping %d", lit);
@@ -1033,11 +997,6 @@ static void yals_topk_rebuild_lit (Yals * yals, int p) {
   }
   // This list is now exact for the current weights: mark it current.
   yals->wt.topk_gen[p] = yals->wt.topk_epoch;
-}
-
-static void yals_topk_rebuild_all (Yals * yals) {
-  if (!yals->wt.topk_built) return;
-  for (int p = 0; p < yals->f->nbr_nlits; p++) yals_topk_rebuild_lit (yals, p);
 }
 
 // Test eligibility of a single unified-id constraint (satisfied AND
@@ -4496,55 +4455,6 @@ long long yals_mems (Yals * yals) {
 #endif
 }
 
-int yals_lkhd (Yals * yals) {
-  int res = yals_lkhd_internal (yals);
-  if (res)
-    yals_msg (yals, 1,
-      "look ahead literal %d flipped %lld times",
-      res, (long long) yals->flips [ABS (res)]);
-  else
-    yals_msg (yals, 2, "no look ahead literal found");
-  return res;
-}
-
-/*------------------------------------------------------------------------*/
-
-static void yals_minlits_cidx (Yals * yals, int cidx) {
-  const int * lits, * p;
-  int lit;
-  assert_valid_cidx (cidx);
-  lits = yals_lits (yals, cidx);
-  for (p = lits; (lit = *p); p++)
-    if (yals_best (yals, lit))
-      return;
-  for (p = lits; (lit = *p); p++) {
-    int idx = ABS (lit);
-    assert (idx < yals->nvars);
-    if (yals->mark.start[idx]) continue;
-    yals->mark.start[idx] = 1;
-    PUSH (yals->minlits, lit);
-  }
-}
-
-const int * yals_minlits (Yals * yals) {
-  int count, cidx;
-  RELEASE (yals->mark);
-  while (COUNT (yals->mark) < yals->nvars)
-    PUSH (yals->mark, 0);
-  FIT (yals->mark);
-  CLEAR (yals->minlits);
-  for (cidx = 0; cidx < yals->nclauses; cidx++)
-    yals_minlits_cidx (yals, cidx);
-  count = COUNT (yals->minlits);
-  yals_msg (yals, 1,
-    "found %d literals in unsat clauses %.0f%%",
-    count, yals_pct (count, yals->nvars));
-  PUSH (yals->minlits, 0);
-  RELEASE (yals->mark);
-  FIT (yals->minlits);
-  return yals->minlits.start;
-}
-
 /*------------------------------------------------------------------------*/
 
 void yals_stats (Yals * yals) {
@@ -5042,28 +4952,6 @@ void determine_uwvar (Yals *yals , int var)
   }
 }
 
-// outdated, now use a heap
-// outdated, now use a heap
-void yals_compute_uwrvs (Yals * yals)
-{
-  LOG ("Compute uvars");
-  yals->wt.best_weight = INT_MIN*1.0;
-  yals->wt.uwrvs_size = 0;
-  yals->wt.non_increasing_size = 0;
-  yals->wt.best_var = 0 ;
-  yals->wt.sum_uwr = 0;
-  
-
-    for (int i=0; i< COUNT(yals->wt.uvars); i++)
-      determine_uwvar (yals, PEEK (yals->wt.uvars, i));
-
-#ifndef NDEBUG
-  yals_check_global_weight_invariant (yals);
-  yals_check_global_best_weight_invariant (yals);
-#endif
-
-}
-
 void yals_init_build (Yals *yals) {
   yals_init (yals);
 }
@@ -5089,58 +4977,6 @@ void yals_update_lit_weights_on_break (Yals * yals, int cidx, int lit) {
     yals_update_var_weight (yals, lt, 0, yals->wt.clause_weights [cidx]);
     /** var_unsat_count is for quick decision **/
   }
-}
-
-int yals_pick_non_increasing (Yals * yals)
-{
-  int lit;
-  if(yals->wt.non_increasing_size > 0) // this is already ensured before the call in inner_loop_max_tries
-  {
-    int pos = yals_rand_mod (yals, yals->wt.non_increasing_size);
-    lit = yals->wt.non_increasing[pos];
-  }
-  else
-    lit = yals_pick_literals_random (yals);
-  return lit;
-}
-
-int yals_pick_literals_random (Yals * yals)
-{
-  int var = yals_rand_mod (yals, yals->nvars-1)+1;
-  int lit = yals_val (yals, var) ? var : -var;
-  return lit;
-}
-
-void yals_check_lits_weights_sanity_var (Yals *yals, int v)
-{
-  int val = yals_val (yals, v);
-  int tl = val? v : -v;
-  int s1w = 0, uw=0, occ;
-  const int * occs = yals_occs (yals, tl), *p;
-  for (p=occs; (occ = *p) >= 0; p++)
-  {
-    int cidx = occ >>LENSHIFT;
-    if (yals_satcnt (yals, cidx) == 1)
-      s1w += yals->wt.clause_weights [cidx];
-  }
-
-  assert (s1w == yals->wt.sat1_weights [get_pos(tl)]);
-   
-  occs = yals_occs (yals, -tl);
-   
-  for (p=occs; (occ = *p) >= 0; p++)
-  {
-    int cidx = occ >>LENSHIFT;
-    if (!yals_satcnt (yals, cidx))
-      uw += yals->wt.clause_weights [cidx];
-  }
-  assert (uw == yals->wt.unsat_weights [get_pos(-tl)]);
-}
-
-void yals_check_lits_weights_sanity (Yals *yals)
-{
-  for (int v=1; v< yals->nvars; v++)
-    yals_check_lits_weights_sanity_var (yals, v);
 }
 
 
@@ -5187,11 +5023,6 @@ void yals_card_update_lit_weights_at_start (Yals * yals, int cidx, int satcnt, i
   } // else: satisfied, not critically satisfied (Do nothing)
 
   yals_msg (yals, 3, "finished initial weights for cidx %d", cidx);
-}
-
-int yals_nunsat_external (Yals *yals)
-{
-  return yals_nunsat (yals);
 }
 
 int yals_flip_count (Yals *yals)
