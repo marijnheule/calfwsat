@@ -89,14 +89,11 @@ typedef struct Strat { STRATSTEMPLATE } Strat;
 
 // stats used throughout execution and displayed on exit
 typedef struct Stats {
-  int  card_maxstacksize;
   int best, worst, last, pbest, maxstacksize;
 
   // cardinality additions
   int best_cardinality, best_clauses;
   // end cardinality additions
-
-  int64_t nheap_updated;
 
   int64_t flips, bzflips, hits, unsum, get_random_sat_cnt, get_random_sat_missed;
   // Value of `flips` at the start of the current probe (the last time this
@@ -185,26 +182,11 @@ typedef STACK (int) STACK_INT;
 typedef struct WT {
 
   LitClauses* lit_clauses_map;
- 
-  /** Whole neighborhood for all the clauses **/
 
-  int neighbourhood_at_init;
-  /** On demand neighborhood for a clause **/
-
-  int prev_unsat_weights;
- 
- 
   double * clause_weights; // wt weight of each clause
   double * unsat_weights; // wt weight gain for flipping lit (unsat to sat)
   double * sat1_weights; // wt weight lost for flipping lit (sat to unsat)
-  int init_weight_done;
   STACK (int) satisfied_clauses;
- 
-
-  int last_flipped;
-
-
-  int sideways;
 
   // max_weighted_neighbour: initial weights are equal for all the clauses. just initialize the first neighbor of a clause as the max_weight neighbor
   // max_weighted_neighbour: needs to be updated after each weight transfers between a clause and its max neighbors
@@ -213,8 +195,6 @@ typedef struct WT {
   int * clauses_unsat;
   int * clasues_sat_one_lit;
 
-  // old stack implementation (now use heap)
-  int break_weight, break_weight_temp;
   int * uwrvs;
   int uwrvs_size;
   double * uwvars_gains;
@@ -229,8 +209,6 @@ typedef struct WT {
   double best_weight;
   int * sat_count_in_clause; // number of satisfied lits within a clause
   STACK (int) sat_clauses;
-  int local_minima, wt_count;
-  int conscutive_lm, count_conscutive_lm, consecutive_lm_length, max_consecutive_lm_length;
 
 
   STACK_INT uvars; // hard variables in falsified cosntraints
@@ -240,23 +218,7 @@ typedef struct WT {
   int * uvar_changed_pos; // pos in stack
   int * var_unsat_count; // number of falsified constraints a variable occurs in
 
-  double weight_update_time, uwrv_time, flip_time, wtransfer_time, neighborhood_comp_time;
-  double update_candidate_sat_clause_time, compute_uwvars_from_unsat_clauses_time; 
-  double init_neighborhood_time;
-
-  int active;
-  int recent_max_reduction;
-  int alg_switch;
-
-  double time_wt;
-  int flips_temp, flips_wt;
-
-  double sum_uwr;
   double clsselectp;
-  double wtstartth;
-  int guaranteed_uwrvs, missed_guaranteed_uwvars;
-  unsigned source_not_selected;
-  unsigned total_transfers;
 
   heap uvars_heap; // heap for variables in falsified constraints
 

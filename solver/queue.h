@@ -85,8 +85,6 @@ static inline void yals_enqueue_stack (Yals * yals, int cidx, int constraint_typ
   } else if (constraint_type == TYPECARDINALITY) {
     unsat = &(yals->card_unsat);
     pos = yals->card_pos;
-    if (yals->stats.card_maxstacksize < (size = SIZE (unsat->stack) + 1))
-      yals->stats.card_maxstacksize = size;
   } else {yals_abort (yals, "incorrect constraint type");}
 
   assert (pos[cidx] < 0);

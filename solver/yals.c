@@ -1735,7 +1735,6 @@ void yals_flip (Yals * yals, int lit) {
   //yals_check_lits_weights_sanity (yals); // checking in weight invariant now
   yals->stats.flips++;
   yals->stats.unsum += yals_nunsat (yals);
-  yals->wt.last_flipped = lit;
   // Per-variable last-flip-step bookkeeping (used by --tabu and avg-age
   // stat). Compute the age of the to-be-flipped var (= flips since its
   // previous flip) and push into the rolling K-window, skipping the
@@ -2221,7 +2220,6 @@ void yals_update_sat_and_unsat (Yals * yals) {
     // if (satcnt < bound) // falsified constraint
   }
 
-  yals->wt.init_weight_done = 1;
   yals_check_global_satisfaction_invariant (yals);
 }
 
@@ -2959,8 +2957,6 @@ Yals * yals_new_with_mem_mgr (void * mgr,
   yals->stats.probe_start_flips = 0;
   yals->stats.probe_random = 0;
   yals->limits.report.min = INT_MAX;
-
-  yals->stats.nheap_updated = 0;
 
   yals_inc_allocated (yals, sizeof *yals);
   yals_srand (yals, 0);
@@ -4122,7 +4118,6 @@ void yals_transfer_weights_for_clause (Yals *yals, int sink)
       if (sources[0] >= 0) k = 1;
     }
     if (k == 0) {
-      yals->wt.source_not_selected++;
       if (N_rand > 0) {
         k = yals_get_random_sat_top_k (yals, N_rand,
                                             sources, types);
@@ -4139,7 +4134,6 @@ void yals_transfer_weights_for_clause (Yals *yals, int sink)
     return;
   }
 
-  yals->wt.total_transfers++;
   assert (!yals_satcnt (yals, sink));
 
   double divk = (double) k;
@@ -4201,7 +4195,6 @@ void yals_transfer_weights_for_card (Yals *yals, int sink)
       if (sources[0] >= 0) k = 1;
     }
     if (k == 0) {
-      yals->wt.source_not_selected++;
       if (N_rand > 0) {
         k = yals_get_random_sat_top_k (yals, N_rand,
                                             sources, types);
@@ -4218,7 +4211,6 @@ void yals_transfer_weights_for_card (Yals *yals, int sink)
     return;
   }
 
-  yals->wt.total_transfers++;
   assert (yals_card_satcnt (yals, sink) < yals_card_bound (yals, sink));
 
   double divk = (double) k;
@@ -4253,11 +4245,6 @@ void yals_transfer_weights (Yals *yals)
       int cidx = PEEK (yals->card_unsat.stack, c);
       yals_transfer_weights_for_card (yals, cidx);
     }
-
-  if (!yals->wt.guaranteed_uwrvs)
-    yals->wt.missed_guaranteed_uwvars++;
-  yals->wt.wt_count++;
-  yals->wt.guaranteed_uwrvs = 0;
 }
 
 static void yals_outer_loop (Yals * yals) {
@@ -4654,17 +4641,10 @@ void yals_init (Yals *yals)
 {
   set_options (yals);
   yals->wt.clsselectp = (double) yals->opts.clsselectp.val / 100.0;
-  yals->wt.active = 1;
-  yals->wt.recent_max_reduction = -1;
   yals->last_flip_unsat_count = -1;
   yals->consecutive_non_improvement = 0;
-  yals->wt.alg_switch = 0;
-
 
   yals->wt.max_weighted_neighbour = calloc(yals->nclauses, sizeof (int));
-  yals->wt.break_weight = 0;
-  yals->wt.local_minima = 0;
-  yals->wt.wt_count = 0;
 
   // Per-variable last-flipped-step (used by --tabu AND by the avg-age stat
   // in "new minimum" prints). Always allocated. Init sentinel so no var
@@ -4681,17 +4661,6 @@ void yals_init (Yals *yals)
   yals->wt.age_window_head = 0;
   yals->wt.age_window_count = 0;
   yals->wt.age_window_sum  = 0;
-
-  yals->wt.conscutive_lm = 0;
-  yals->wt.count_conscutive_lm = 0;
-  yals->wt.consecutive_lm_length = 0;
-  yals->wt.max_consecutive_lm_length = -1;
-
-  yals->wt.guaranteed_uwrvs = 0;
-  yals->wt.missed_guaranteed_uwvars = 0;
-  yals->wt.sideways = 0;
-
-  yals->wt.init_weight_done = 0;
 
   yals->wt.sat_count_in_clause = calloc (yals->nclauses, sizeof (int));
   yals->wt.helper_hash_clauses = calloc (yals->nclauses, sizeof (int));
@@ -4720,21 +4689,6 @@ void yals_init (Yals *yals)
     yals->wt.uvar_pos [i] = -1;
     yals->wt.uvar_changed_pos [i] = -1;
   }
-
-  yals->wt.weight_update_time = 0; yals->wt.uwrv_time = 0; yals->wt.flip_time = 0; 
-  yals->wt.wtransfer_time = 0; yals->wt.neighborhood_comp_time = 0;
-  yals->wt.update_candidate_sat_clause_time = 0; yals->wt.compute_uwvars_from_unsat_clauses_time = 0;
-  yals->wt.init_neighborhood_time = 0;
-  /* IDEA: compute neighborhood for all the clauses, if clause-to-variable ratio is less than a threshold X
-   EG: yals->wt.neighbourhood_at_init = ((double) yals->nclauses / (double) yals->nvars) <= X ? 1 : 0*/
-  yals->wt.neighbourhood_at_init = 0; //((double) yals->nclauses / (double) yals->nvars) <= 100 ? 1 : 0;
-  yals->wt.time_wt = 0;
-
-  yals->wt.flips_temp = 0; 
-  yals->wt.flips_wt = 0;
-  yals->wt.sum_uwr = 0;
-  yals->wt.source_not_selected = 0;
-  yals->wt.total_transfers = 0;
 
   /*
     cardinality constraint initializations
@@ -4812,7 +4766,6 @@ void yals_init (Yals *yals)
 */
 void yals_update_changed_var_weights (Yals * yals) {
   int var, *pos;
-  int nChanged = COUNT (yals->wt.uvars_changed);
   double score;
 
   for (pos = yals->wt.uvars_changed.start; pos != yals->wt.uvars_changed.top; pos++) {
@@ -4832,9 +4785,6 @@ void yals_update_changed_var_weights (Yals * yals) {
     }
   }
   CLEAR (yals->wt.uvars_changed);
-
-  // update stats with nChanged (to compare vs size of uvars to loop over...)
-  yals->stats.nheap_updated += nChanged;
 }
 
 /*
@@ -4945,7 +4895,6 @@ void determine_uwvar (Yals *yals , int var)
       yals->wt.best_var = true_lit;
       yals->wt.best_weight = flip_gain;
     }
-    yals->wt.sum_uwr += flip_gain;
   }
   else if (flip_gain == 0.0) {
     yals->wt.non_increasing [yals->wt.non_increasing_size++] = true_lit;
