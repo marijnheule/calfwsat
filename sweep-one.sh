@@ -41,7 +41,7 @@ if [ -n "${2:-}" ] && ! [[ "$2" =~ ^[0-9]+$ ]]; then
 fi
 SEED_START="${2:-$SEED_START_DEFAULT}"
 SEEDS_DEFAULT="${SEEDS:-$(seq "$SEED_START" "$((SEED_START + SEED_COUNT - 1))" | paste -sd, -)}"
-TIMEOUT_DEFAULT="${TIMEOUT:-900}"
+TIMEOUT_DEFAULT="${TIMEOUT:-3600}"
 THREADS_DEFAULT="${THREADS:-8}"
 # Empty by default: do NOT override the solver's compiled cutoff default.
 # A run differs from solver defaults only by what each config row sets.
@@ -88,6 +88,11 @@ SLOPE_DEFAULT="$(grep -oE 'slope, *[0-9]+' "$SCRIPT_DIR/solver/options.h" 2>/dev
 SLOPE_DEFAULT="${SLOPE_DEFAULT:-?}"
 CLSSELECTP_DEFAULT="$(grep -oE 'clsselectp, *[0-9]+' "$SCRIPT_DIR/solver/options.h" 2>/dev/null | head -1 | grep -oE '[0-9]+')"
 CLSSELECTP_DEFAULT="${CLSSELECTP_DEFAULT:-?}"
+# inject is the additive-weighting knob (sub-N transfers inject a full N onto the
+# sink): N=1 is the post-0cd8527 default and changes solver behavior vs N=0, so
+# it is surfaced for provenance (mixing inject=0 and inject=1 runs is invalid).
+INJECT_DEFAULT="$(grep -oE 'inject, *[0-9]+' "$SCRIPT_DIR/solver/options.h" 2>/dev/null | head -1 | grep -oE '[0-9]+')"
+INJECT_DEFAULT="${INJECT_DEFAULT:-?}"
 
 echo "sweep-one: $FORMULA"
 echo "  configs:  $CONFIGS"
@@ -97,7 +102,7 @@ echo "  timeout:  ${TIMEOUT_DEFAULT}s"
 echo "  threads:  $THREADS_DEFAULT per palsat"
 echo "  cutoff:   ${CUTOFF_DEFAULT:-(solver default; per-config rows can set --cutoff=)}"
 echo "  oldestsource: $OLDESTSOURCE_DEFAULT (compiled default; per-config rows can set --oldestsource=)"
-echo "  floor:    $FLOOR_DEFAULT  slope: $SLOPE_DEFAULT  clsselectp: $CLSSELECTP_DEFAULT (compiled defaults; per-config rows can override)"
+echo "  floor:    $FLOOR_DEFAULT  slope: $SLOPE_DEFAULT  clsselectp: $CLSSELECTP_DEFAULT  inject: $INJECT_DEFAULT (compiled defaults; per-config rows can override)"
 echo "  out:      bench-results/$OUT_NAME"
 echo
 
@@ -133,7 +138,7 @@ TXT="$OUT_DIR/email.txt"
   echo "  seeds:   $NSEEDS  ($SEEDS_DEFAULT)"
   echo "  timeout: ${TIMEOUT_DEFAULT}s per run"
   echo "  oldestsource: $OLDESTSOURCE_DEFAULT (compiled default; per-config rows can override)"
-  echo "  floor: $FLOOR_DEFAULT  slope: $SLOPE_DEFAULT  clsselectp: $CLSSELECTP_DEFAULT (compiled defaults; per-config rows can override)"
+  echo "  floor: $FLOOR_DEFAULT  slope: $SLOPE_DEFAULT  clsselectp: $CLSSELECTP_DEFAULT  inject: $INJECT_DEFAULT (compiled defaults; per-config rows can override)"
   echo
   cat "$SUMMARY"
 } > "$TXT"
@@ -149,7 +154,7 @@ MD="$OUT_DIR/email.md"
   echo "- seeds: $NSEEDS ($SEEDS_DEFAULT)"
   echo "- timeout: ${TIMEOUT_DEFAULT}s per run"
   echo "- oldestsource: $OLDESTSOURCE_DEFAULT (compiled default; per-config rows can override)"
-  echo "- floor: $FLOOR_DEFAULT, slope: $SLOPE_DEFAULT, clsselectp: $CLSSELECTP_DEFAULT (compiled defaults; per-config rows can override)"
+  echo "- floor: $FLOOR_DEFAULT, slope: $SLOPE_DEFAULT, clsselectp: $CLSSELECTP_DEFAULT, inject: $INJECT_DEFAULT (compiled defaults; per-config rows can override)"
   echo
   echo "| config | runs | SAT | TO | PAR-2 | mean_flips | median_flips |"
   echo "|---|---:|---:|---:|---:|---:|---:|"
