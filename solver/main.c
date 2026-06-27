@@ -478,7 +478,7 @@ static int setopt (const char * name, int val) {
 }
 
 // Normalize an option name: convert dashes to underscores in-place so the
-// user can write either --min-weight or --min_weight; both look up the same
+// user can write either --reset-os or --reset_os; both look up the same
 // internal identifier. Stops at the first '=' or end of string.
 static void normalize_opt_name (char * name) {
   for (char * p = name; *p && *p != '='; p++)

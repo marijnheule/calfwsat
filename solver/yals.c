@@ -1211,7 +1211,7 @@ static void yals_topk_free (Yals * yals) {
 /* Sampling descends from the root proportional to weight in O(log N); a   */
 /* single weight change updates one leaf-to-root path. Satisfaction is NOT */
 /* encoded (it churns every flip and is ~all-SAT during the transfer       */
-/* phase); the caller rejection-filters drawn sources for SAT / min-weight */
+/* phase); the caller rejection-filters drawn sources for SAT / floor     */
 /* / hard-soft, which is distributionally exact and ~1 draw in expectation.*/
 /*------------------------------------------------------------------------*/
 
@@ -3419,14 +3419,15 @@ void save_current_assignment (Yals *yals)
 }
 
 // --wtstats: print the constraint-weight distribution at the end of a probe
-// (called before reset_weights wipes it). Buckets are relative to min_weight
-// (the hard floor M) so the output directly shows whether mass piles up at the
-// floor or sits at the transfer fixed point well above it. Off by default, so
-// this is dead code at default settings (bit-identical).
+// (called before reset_weights wipes it). Buckets are relative to the floor M
+// so the output directly shows whether mass piles up at the floor or sits at
+// the transfer fixed point. (The fixed absolute bands 50/70/90/110 below M are
+// vestigial when M sits high.) Off by default, so this is dead code at default
+// settings (bit-identical).
 static void yals_wtstats_one (Yals * yals, const char * tag,
                               double * w, int n) {
   if (n <= 0) { yals_report (yals, "wtstats %s n=0", tag); return; }
-  double M = (double) yals->opts.min_weight.val;
+  double M = (double) yals->opts.floor.val;
   double mn = w[0], mx = w[0], sum = 0.0;
   // Buckets: [<=M], (M,50], (50,70], (70,90], (90,110], (>110].
   long b_floor = 0, b1 = 0, b2 = 0, b3 = 0, b4 = 0, b5 = 0;
@@ -3863,7 +3864,7 @@ int yals_get_random_sat_clause (Yals * yals, int * constraint_type) {
     LOG ("Get random SAT clause");
 
     // --oldestsource: walk the LRU list head->tail, return the first satisfied
-    // source that passes the --min-weight weight floor.
+    // source that passes the --floor weight floor.
     // Replaces the random rejection-sampling loop below.
     if (yals->opts.oldestsource.val) {
       int * next = yals->wt.oldsrc_next;
@@ -3871,16 +3872,16 @@ int yals_get_random_sat_clause (Yals * yals, int * constraint_type) {
         if (u < yals->nclauses) {
           int clause = u;
           if (yals_satcnt (yals, clause) <= 0) continue;
-          // --min_weight: block source if its WT weight <= M (a source at
-          // M has zero transfer headroom and would be pointless to pick).
-          if (yals->wt.clause_weights[clause] <= yals->opts.min_weight.val)
+          // --floor: block source if its WT weight <= floor (a source at the
+          // floor has zero transfer headroom and would be pointless to pick).
+          if (yals->wt.clause_weights[clause] <= yals->opts.floor.val)
             continue;
           *constraint_type = TYPECLAUSE; return clause;
         } else {
           int card = u - yals->nclauses;
           if (yals_card_satcnt (yals, card) < yals_card_bound (yals, card)) continue;
-          // --min_weight: block source if its WT weight <= M.
-          if (yals->wt.card_weights[card] <= yals->opts.min_weight.val)
+          // --floor: block source if its WT weight <= floor.
+          if (yals->wt.card_weights[card] <= yals->opts.floor.val)
             continue;
           *constraint_type = TYPECARDINALITY; return card;
         }
@@ -3911,10 +3912,10 @@ int yals_get_random_sat_clause (Yals * yals, int * constraint_type) {
                 best_wt_cls = yals->wt.clause_weights [clause];
               }
           }
-          // --min_weight: accept source iff its WT weight > M (so transfer
-          // headroom = src_w - M > 0; src_w == M is pointless).
+          // --floor: accept source iff its WT weight > floor (so transfer
+          // headroom = src_w - floor > 0; src_w == floor is pointless).
           if (yals->wt.clause_weights[clause]
-              > yals->opts.min_weight.val) {
+              > yals->opts.floor.val) {
             source = clause;
             *constraint_type = TYPECLAUSE;
           }
@@ -3930,9 +3931,9 @@ int yals_get_random_sat_clause (Yals * yals, int * constraint_type) {
               best_wt_card = yals->wt.card_weights [card];
             }
           }
-          // --min_weight: accept source iff its WT weight > M.
+          // --floor: accept source iff its WT weight > floor.
           if (yals->wt.card_weights[card]
-              > yals->opts.min_weight.val) {
+              > yals->opts.floor.val) {
             source = card;
             *constraint_type = TYPECARDINALITY;
           }
@@ -3957,14 +3958,14 @@ int yals_get_random_sat_clause (Yals * yals, int * constraint_type) {
 /*------------------------------------------------------------------------*/
 /* --randk: top-K random-source finder.                                   */
 /* Random-sample satisfied sources (clauses + cards) until R*K have been  */
-/* collected above the --min-weight floor (R = --randtour, K = --randk),  */
+/* collected above the --floor weight floor (R = --randtour, K = --randk),*/
 /* sort by weight desc, return up to K. Applies the same admission        */
 /* filters as yals_get_random_sat_clause (hard/soft compat,          */
-/* satcnt, --min-weight floor).                                           */
+/* satcnt, --floor weight floor).                                         */
 /*                                                                        */
 /* Matches rk0's fallback: if the strict-pool (above-floor) ends up       */
 /* empty within cnt_cutoff=1000 attempts, fall back to the top-K heaviest */
-/* satisfied sources seen IGNORING the min-weight floor.                  */
+/* satisfied sources seen IGNORING the floor.                            */
 /*                                                                        */
 /* Writes (source_cidx, constraint_type) pairs into out_sources/out_types.*/
 /* Returns the count written (0..K).                                      */
@@ -3985,7 +3986,7 @@ int yals_get_random_sat_top_k (Yals * yals, int K,
   int collected = 0;
 
   // Relaxed-fallback pool: kept sorted desc by weight; tracks the top-K
-  // heaviest satisfied sources seen IGNORING --min-weight. Used only if
+  // heaviest satisfied sources seen IGNORING --floor. Used only if
   // the strict pool ends up empty.
   int    * fsrc = yals->wt.rtk_fsrc;
   int    * ftps = yals->wt.rtk_ftps;
@@ -4035,7 +4036,7 @@ int yals_get_random_sat_top_k (Yals * yals, int K,
     }
 
     // Above-floor: append to strict pool.
-    if (weight > yals->opts.min_weight.val) {
+    if (weight > yals->opts.floor.val) {
       src[collected] = cidx; tps[collected] = ctype; wts[collected] = weight;
       collected++;
     }
@@ -4137,11 +4138,11 @@ double yals_get_weight (Yals *yals, int source, int sink, int constraint_type_so
     if (w > cap) w = cap;
   }
 
-  // --min_weight: floor on source weight. No source can be drained below
-  // M; if src_w <= M we can transfer nothing, otherwise we can transfer
-  // at most (src_w - M).
+  // --floor: floor on source weight. No source can be drained below the
+  // floor; if src_w <= floor we can transfer nothing, otherwise we can
+  // transfer at most (src_w - floor).
   {
-    double headroom = src_w - (double) yals->opts.min_weight.val;
+    double headroom = src_w - (double) yals->opts.floor.val;
     if (headroom < 0.0) headroom = 0.0;
     if (w > headroom) w = headroom;
   }

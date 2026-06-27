@@ -346,7 +346,7 @@ typedef struct WT {
   // raw wt weight; internal nodes hold subtree sums; tree[1] = total. Drawn
   // proportional to weight in O(log N); a single weight change updates one
   // leaf-to-root path. Satisfaction is NOT encoded here (the caller
-  // rejection-filters drawn sources for SAT / min-weight / hard-soft).
+  // rejection-filters drawn sources for SAT / floor / hard-soft).
   int wsample_built;
   int wsample_N;          // real leaves = nclauses + card_nclauses
   int wsample_M;          // tree base = next power of two >= N
