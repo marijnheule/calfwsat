@@ -12,20 +12,15 @@ This code extends the solver yal-lin (Md Solimul Chowdhury, Cayden Codel, Marijn
 #include "yils_card.h"
 #include "invariants.h"
 
-// Minimum queue link-chunk size (formerly the --minchunksize option, removed
-// because the queue is hardcoded off -- see below -- so this is never read at
-// runtime; kept as a constant only so the dormant queue API still compiles).
-#define MIN_QUEUE_CHUNK_SIZE (1<<8)
-
 
 /*
 
-  The queue/stack is used to store falsified constraints.
+  Falsified constraints are stored on a stack.
 
-  There is currently only support for a stack implementation, 
-  the queue is disabled by hardcode in yals.c. The API is left
-  around for the queue in case it becomes useufl in furture 
-  work.
+  A linked-list queue implementation used to live here too, but it was
+  hardcoded off (pick==0 => unsat is always a stack), so the queue functions
+  were dead and have been removed. The dormant Queue/Chunk/Lnk fields remain in
+  the Yals struct in case the queue is revived in future work.
 
   We have the following stacks:
     yals->unsat for falsified clauses,
@@ -40,144 +35,6 @@ This code extends the solver yal-lin (Md Solimul Chowdhury, Cayden Codel, Marijn
 */
 
 /*------------------------------------------------------------------------*/
-
-static void yals_enqueue_lnk (Yals * yals, Lnk * l) {
-  Lnk * last = yals->unsat.queue.last;
-  if (last) last->next = l;
-  else yals->unsat.queue.first = l;
-  yals->unsat.queue.last = l;
-  l->prev = last;
-  l->next = 0;
-}
-
-static void yals_dequeue_lnk (Yals * yals, Lnk * l) {
-  Lnk * prev = l->prev, * next = l->next;
-  if (prev) {
-    assert (yals->unsat.queue.first);
-    assert (yals->unsat.queue.last);
-    assert (prev->next == l);
-    prev->next = next;
-  } else {
-    assert (yals->unsat.queue.first == l);
-    yals->unsat.queue.first = next;
-  }
-  if (next) {
-    assert (yals->unsat.queue.first);
-    assert (yals->unsat.queue.last);
-    assert (next->prev == l);
-    next->prev = prev;
-  } else {
-    assert (yals->unsat.queue.last == l);
-    yals->unsat.queue.last = prev;
-  }
-}
-
-/*------------------------------------------------------------------------*/
-
-// START QUEUE
-
-static void yals_flush_queue (Yals * yals) {
-  int count = 0;
-  Lnk * p;
-  assert (yals->unsat.usequeue);
-  for (p = yals->unsat.queue.first; p; p = p->next) {
-    int cidx = p->cidx;
-    assert_valid_cidx (cidx);
-    assert (yals->lnk[cidx] == p);
-    yals->lnk[cidx] = 0;
-    count++;
-  }
-  yals->unsat.queue.first = yals->unsat.queue.last = 0;
-  LOG ("flushed %d queue elements", count);
-  assert (count == yals->unsat.queue.count);
-  yals->unsat.queue.count = 0;
-}
-
-static void yals_release_lnks (Yals * yals) {
-  int chunks = 0, lnks = 0;
-  Chunk * q, * n;
-  assert (yals->unsat.usequeue);
-  for (q = yals->unsat.queue.chunks; q; q = n) {
-    n = q->next;
-    chunks++, lnks += q->size - 1;
-    DELN (&q->lnks, q->size);
-  }
-  LOG ("released %d links in %d chunks", lnks, chunks);
-  assert (yals->unsat.queue.nchunks == chunks);
-  assert (yals->unsat.queue.nlnks == lnks);
-  yals->unsat.queue.chunks = 0;
-  yals->unsat.queue.free = 0;
-  yals->unsat.queue.nfree = 0;
-  yals->unsat.queue.chunksize = 0;
-  yals->unsat.queue.nchunks = 0;
-  yals->unsat.queue.nlnks = 0;
-}
-
-static void yals_reset_unsat_queue (Yals * yals) {
-  assert (yals->unsat.usequeue);
-  yals_flush_queue (yals);
-  yals_release_lnks (yals);
-}
-
-static void yals_defrag_queue (Yals * yals) {
-  const int count = yals->unsat.queue.count;
-  const int size = MAX(2*(count + 1), MIN_QUEUE_CHUNK_SIZE);
-  Lnk * p, * first, * free, * prev = 0;
-  double start = yals_time (yals);
-  const Lnk * q;
-  Chunk * c;
-  assert (count);
-  yals->stats.defrag.count++;
-  yals->stats.defrag.moved += count;
-  LOG ("defragmentation chunk of size %d moving %d", size, count);
-  NEWN (p, size);
-  c = (Chunk*) p;
-  c->size = size;
-  first = c->lnks + 1;
-  for (q = yals->unsat.queue.first, p = first; q; q = q->next, p++) {
-    *p = *q;
-    p->prev = prev;
-    if (prev) prev->next = p;
-    prev = p;
-  }
-  assert (prev);
-  prev->next = 0;
-  free = p;
-  yals_reset_unsat_queue (yals);
-  assert (prev);
-  yals->unsat.queue.first = first;
-  yals->unsat.queue.last = prev;
-  yals->unsat.queue.count = count;
-  for (p = yals->unsat.queue.first; p; p = p->next) {
-    int cidx = p->cidx;
-    assert_valid_cidx (cidx);
-    assert (!yals->lnk[cidx]);
-    yals->lnk[cidx] = p;
-    assert (!p->next || p->next == p + 1);
-  }
-  assert (free < c->lnks + size);
-  yals->unsat.queue.nfree = (c->lnks + size) - free;
-  assert (yals->unsat.queue.nfree > 0);
-  prev = 0;
-  for (p = c->lnks + size-1; p >= free; p--) p->next = prev, prev = p;
-  yals->unsat.queue.free = free;
-  assert (!c->next);
-  yals->unsat.queue.chunks = c;
-  yals->unsat.queue.nchunks = 1;
-  yals->unsat.queue.nlnks = size - 1;
-  assert (yals->stats.queue.max.lnks >= yals->unsat.queue.nlnks);
-  assert (yals->stats.queue.max.chunks >= yals->unsat.queue.nchunks);
-  yals->stats.time.defrag += yals_time (yals) - start;
-}
-
-
-static int yals_need_to_defrag_queue (Yals * yals) {
-  if (!yals->opts.defrag.val) return 0;
-  if (!yals->unsat.queue.count) return 0;
-  if (yals->unsat.queue.nlnks <= MIN_QUEUE_CHUNK_SIZE) return 0;
-  if (yals->unsat.queue.count > yals->unsat.queue.nfree/4) return 0;
-  return 1;
-}
 
 static inline void yals_dequeue_stack (Yals * yals, int cidx, int constraint_type) {
   int * pos = 0;
@@ -205,7 +62,7 @@ static inline void yals_dequeue_stack (Yals * yals, int cidx, int constraint_typ
 
 static inline void yals_dequeue (Yals * yals, int cidx, int constraint_type) {
   LOG ("dequeue %d", cidx);
-  
+
   if (constraint_type == TYPECLAUSE) {
     assert_valid_cidx (cidx);
     yals_dequeue_stack (yals, cidx, constraint_type);
@@ -215,48 +72,6 @@ static inline void yals_dequeue (Yals * yals, int cidx, int constraint_type) {
     yals_dequeue_stack (yals, cidx, constraint_type);
     yals_delete_vars_from_uvars (yals, cidx, TYPECARDINALITY);
   } else yals_abort (yals, "incorrect constraint type");
-}
-
-static void yals_new_chunk (Yals * yals) {
-  Lnk * p, * first, * prev = 0;
-  Chunk * c;
-  int size;
-  size = yals->unsat.queue.chunksize;
-  assert (size >= MIN_QUEUE_CHUNK_SIZE);
-  LOG ("new chunk of size %d", size);
-  NEWN (p, size);
-  c = (Chunk*) p;
-  c->size = size;
-  first = c->lnks + 1;
-  for (p = c->lnks + size-1; p >= first; p--) p->next = prev, prev = p;
-  yals->unsat.queue.nfree += size-1;
-  yals->unsat.queue.free = first;
-  c->next = yals->unsat.queue.chunks;
-  yals->unsat.queue.chunks = c;
-  yals->unsat.queue.nlnks += size - 1;
-  if (yals->stats.queue.max.lnks < yals->unsat.queue.nlnks)
-    yals->stats.queue.max.lnks = yals->unsat.queue.nlnks;
-  if (yals->stats.queue.max.chunks < ++yals->unsat.queue.nchunks)
-    yals->stats.queue.max.chunks = yals->unsat.queue.nchunks;
-}
-
-static void yals_larger_new_chunk (Yals * yals) {
-  if (!yals->unsat.queue.chunksize)
-    yals->unsat.queue.chunksize = MIN_QUEUE_CHUNK_SIZE;
-  else yals->unsat.queue.chunksize *= 2;
-  yals_new_chunk (yals);
-}
-
-static Lnk * yals_new_lnk (Yals * yals) {
-  Lnk * res = yals->unsat.queue.free;
-  if (!res) {
-    yals_larger_new_chunk (yals);
-    res = yals->unsat.queue.free;
-  }
-  yals->unsat.queue.free = res->next;
-  assert (yals->unsat.queue.nfree);
-  yals->unsat.queue.nfree--;
-  return res;
 }
 
 static inline void yals_enqueue_stack (Yals * yals, int cidx, int constraint_type) {

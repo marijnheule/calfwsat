@@ -1435,8 +1435,7 @@ void yals_reset (Yals * yals)
 
 static void yals_reset_unsat (Yals * yals) {
   assert (!yals->unsat.usequeue);
-  if (yals->unsat.usequeue) yals_reset_unsat_queue (yals); // queue is not supported
-  else yals_reset_unsat_stack (yals);
+  yals_reset_unsat_stack (yals);
 }
 
 
