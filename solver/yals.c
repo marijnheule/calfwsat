@@ -680,17 +680,13 @@ int yals_clauses_nunsat (Yals * yals) {
 
   yals_msg (yals, 4, "falsified clause cnt %d", COUNT (yals->unsat.stack));
 
-  if (yals->unsat.usequeue) return yals->unsat.queue.count;
-  else return COUNT (yals->unsat.stack);
+  return COUNT (yals->unsat.stack);
 }
 
-int yals_card_nunsat (Yals * yals) { 
-  assert (!yals->unsat.usequeue); // only using the stack...
-
+int yals_card_nunsat (Yals * yals) {
   yals_msg (yals, 4, "falsified card cnt %d", COUNT (yals->card_unsat.stack));
 
-  if (yals->unsat.usequeue) return yals->card_unsat.queue.count;
-  else return COUNT (yals->card_unsat.stack);
+  return COUNT (yals->card_unsat.stack);
 }
 
 int yals_nunsat (Yals * yals) { // now grabbing from all types of clauses
@@ -1434,7 +1430,6 @@ void yals_reset (Yals * yals)
 }
 
 static void yals_reset_unsat (Yals * yals) {
-  assert (!yals->unsat.usequeue);
   yals_reset_unsat_stack (yals);
 }
 
@@ -2546,19 +2541,10 @@ static void yals_connect (Yals * yals) {
   // avglen is read during search, so non-owners need it too.
   yals->avglen = yals_avg (sumlen, yals->nclauses);
 
-  yals->pick = 0;
+  yals_msg (yals, 1, "using stack for unsat clauses");
 
-  yals->unsat.usequeue = (yals->pick > 0);
-
-  yals_msg (yals, 1,
-    "using %s for unsat clauses",
-    yals->unsat.usequeue ? "queue" : "stack");
-
-  if (yals->unsat.usequeue) NEWN (yals->lnk, nclauses);
-  else {
-    NEWN (yals->pos, nclauses);
-    for (cidx = 0; cidx < nclauses; cidx++) yals->pos[cidx] = -1;
-  }
+  NEWN (yals->pos, nclauses);
+  for (cidx = 0; cidx < nclauses; cidx++) yals->pos[cidx] = -1;
 
   yals->nvarwords = (nvars + BITS_PER_WORD - 1) / BITS_PER_WORD;
 
@@ -2793,15 +2779,8 @@ void yals_card_connect (Yals * yals) {
   // card_avglen is read during search, so non-owners need it too.
   yals->card_avglen = yals_avg (sumlen, yals->nclauses);
 
-  yals->card_unsat.usequeue = 0; // always a stack!
-
-  // yals_msg (yals, 1,
-  //   "using %s for unsat clauses",
-
-  // else {
-    NEWN (yals->card_pos, yals->card_nclauses);
-    for (cidx = 0; cidx < yals->card_nclauses; cidx++) yals->card_pos[cidx] = -1;
-  // }
+  NEWN (yals->card_pos, yals->card_nclauses);
+  for (cidx = 0; cidx < yals->card_nclauses; cidx++) yals->card_pos[cidx] = -1;
 
 
   // yals_msg (yals, 1, "%d x %d-bit words per assignment (%d bytes = %d KB)",
@@ -3086,8 +3065,7 @@ void yals_del (Yals * yals) {
   RELEASE (yals->exp.table.two);
   RELEASE (yals->exp.table.cb);
   RELEASE (yals->minlits);
-  if (yals->unsat.usequeue) DELN (yals->lnk, yals->nclauses);
-  else DELN (yals->pos, yals->nclauses);
+  DELN (yals->pos, yals->nclauses);
   if (yals->owns_formula) DELN (yals->f->lits, yals->nclauses);
   if (yals->crit) DELN (yals->crit, yals->nclauses);
   if (yals->satcntbytes == 1) DELN (yals->satcnt1, yals->nclauses);
@@ -4425,8 +4403,6 @@ int yals_sat (Yals * yals) {
 
   if (yals->opts.setfpu.val) yals_set_fpu (yals);
 
-  yals->pick = 0; // we only use the stack for unsat clauses
-
   yals_connect (yals);
 
   yals_card_connect (yals);
@@ -4625,20 +4601,7 @@ void yals_stats (Yals * yals) {
     (long long) s->pick.best,
     (long long) s->pick.keep, (long long) s->pick.pos,
     (long long) s->pick.neg, (long long) s->pick.rnd);
-  if (yals->unsat.usequeue) {
-    yals_msg (yals, 0,
-      "allocated max %d chunks %d links %lld unfair",
-      s->queue.max.chunks, s->queue.max.lnks, (long long) s->queue.unfair);
-    yals_msg (yals, 0,
-      "%lld defragmentations in %.3f seconds %.0f%%",
-      (long long) s->defrag.count,
-      s->time.defrag, yals_pct (s->time.defrag, s->time.total));
-    yals_msg (yals, 0,
-      "moved %lld in total and %.1f on average per defragmentation",
-      (long long) s->defrag.moved,
-      yals_avg (s->defrag.moved, s->defrag.count));
-  } else
-    yals_msg (yals, 0, "maximum unsat stack size %d", s->maxstacksize);
+  yals_msg (yals, 0, "maximum unsat stack size %d", s->maxstacksize);
 
 #ifndef NYALSTATS
   yals_msg (yals, 0,

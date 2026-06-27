@@ -232,11 +232,7 @@ static void yals_check_global_satisfaction_invariant (Yals * yals) {
       if (yals_val (yals, lit)) sat++;
     assert (yals_satcnt (yals, cidx) == sat);
     if (!sat) nunsat++;
-    if (yals->unsat.usequeue) {
-      Lnk * l = yals->lnk[cidx];
-      assert (l);
-      assert (l->cidx == cidx);
-    } else {
+    {
       int pos = yals->pos[cidx];
       if (sat) assert (pos < 0);
       else {
@@ -262,11 +258,7 @@ assert (PEEK (yals->unsat.stack, pos) == cidx);
     LOGCARDCIDX (cidx, "nsat %d satcnt %d", sat, yals_card_satcnt (yals, cidx) );
     assert (yals_card_satcnt (yals, cidx) == sat);
     if (sat < bound) nunsat++;
-    if (yals->card_unsat.usequeue) {
-      Lnk * l = yals->lnk[cidx];
-      assert (l);
-      assert (l->cidx == cidx);
-    } else {
+    {
       int pos = yals->card_pos[cidx];
       if (sat >= bound) assert (pos < 0);
       else {

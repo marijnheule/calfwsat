@@ -19,8 +19,8 @@ This code extends the solver yal-lin (Md Solimul Chowdhury, Cayden Codel, Marijn
 
   A linked-list queue implementation used to live here too, but it was
   hardcoded off (pick==0 => unsat is always a stack), so the queue functions
-  were dead and have been removed. The dormant Queue/Chunk/Lnk fields remain in
-  the Yals struct in case the queue is revived in future work.
+  and all of its supporting struct fields (usequeue, Queue/Chunk/Lnk, the
+  defrag option and stats) have been removed.
 
   We have the following stacks:
     yals->unsat for falsified clauses,
@@ -48,7 +48,6 @@ static inline void yals_dequeue_stack (Yals * yals, int cidx, int constraint_typ
   } else {yals_abort (yals, "incorrect constraint type");}
 
   int cpos = pos[cidx], didx;
-  assert (!unsat->usequeue);
   // // assert_valid_pos (cpos);
   assert (PEEK (unsat->stack, cpos) == cidx);
   didx = POP (unsat->stack);
@@ -90,7 +89,6 @@ static inline void yals_enqueue_stack (Yals * yals, int cidx, int constraint_typ
       yals->stats.card_maxstacksize = size;
   } else {yals_abort (yals, "incorrect constraint type");}
 
-  assert (!unsat->usequeue);
   assert (pos[cidx] < 0);
   pos[cidx] = COUNT (unsat->stack);
   PUSH (unsat->stack, cidx);
@@ -98,8 +96,6 @@ static inline void yals_enqueue_stack (Yals * yals, int cidx, int constraint_typ
 
 static inline void yals_enqueue (Yals * yals, int cidx, int constraint_type) {
   LOG ("enqueue %d", cidx);
-
-  assert (!yals->unsat.usequeue);
 
   if (constraint_type == TYPECLAUSE) {
     assert_valid_cidx (cidx);
@@ -113,7 +109,6 @@ static inline void yals_enqueue (Yals * yals, int cidx, int constraint_type) {
 }
 
 static inline void yals_reset_unsat_stack (Yals * yals) {
-  assert (!yals->unsat.usequeue);
   while (!EMPTY (yals->unsat.stack)) {
     int cidx = POP (yals->unsat.stack);
     assert_valid_cidx (cidx);

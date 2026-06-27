@@ -112,12 +112,10 @@ typedef struct Stats {
     struct { int64_t count; } inner;
     int64_t bypassed;  // # times --bypass extended a probe past cutoff
   } restart;
-  struct { struct { int chunks, lnks; } max; int64_t unfair; } queue;
   struct { int64_t def, rnd; } strat;
   struct { int64_t best, keep, pos, neg, rnd; } pick;
-  struct { int64_t count, moved; } defrag;
   struct { size_t current, max; } allocated;
-  struct { volatile double total, defrag, restart, entered; } time;
+  struct { volatile double total, restart, entered; } time;
 #ifdef __GNUC__
   volatile int flushing_time;
 #endif
@@ -140,22 +138,6 @@ typedef struct Limits {
   struct { int min; } report;
   int term;
 } Limits;
-
-typedef struct Lnk {
-  int cidx;
-  struct Lnk * prev, * next;
-} Lnk;
-
-typedef union Chunk {
-  struct { int size; union Chunk * next; };
-  Lnk lnks[1]; // actually of 'size'
-} Chunk;
-
-typedef struct Queue {
-  int count, chunksize, nchunks, nlnks, nfree;
-  Lnk * first, * last, * free;
-  Chunk * chunks;
-} Queue;
 
 typedef struct Exp {
   struct { STACK(double) two, cb; } table;
@@ -392,7 +374,7 @@ typedef struct WT {
 // structure for stack constaining falsified constraints,
 // also stores the weight of falsified constraints in the stack
 typedef struct UNSAT_STACK {
-  int usequeue; int hard_cnt; Queue queue; STACK_INT stack;
+  int hard_cnt; STACK_INT stack;
 } UNSAT_STACK;
 
 // Read-only formula data: built once during parsing and yals_connect /
@@ -452,11 +434,11 @@ typedef struct Yals {
   STACK(int) card_cdb;
   int nvars; int64_t * flips;
   STACK(signed char) mark;
-  int trivial, mt, pick;
+  int trivial, mt;
   Word * vals, * best, * pbest_vals, * clear, * set, *curr; int nvarwords;
   STACK(int) trail, phases, clause;
   int satcntbytes; union { U1 * satcnt1; U2 * satcnt2; U4 * satcnt4; };
-  int * pos; Lnk ** lnk;
+  int * pos;
   int * crit;
   int nclauses, nbin, ntrn, minlen, maxlen; double avglen;
   STACK(unsigned) breaks; STACK(double) scores; STACK(int) cands;
@@ -486,7 +468,7 @@ typedef struct Yals {
 
   double card_avglen;
 
-  int * card_pos; // Lnk ** card_lnk; // Only stack currently
+  int * card_pos; // Only stack currently
 
   int card_minlen, card_maxlen;
   int card_satcntbytes; union { U1 * card_satcnt1; U2 * card_satcnt2; U4 * card_satcnt4; };
