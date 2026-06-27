@@ -4101,14 +4101,9 @@ double yals_get_weight (Yals *yals, int source, int sink, int constraint_type_so
     if (w > cap) w = cap;
   }
 
-  // --floor: floor on source weight. No source can be drained below the
-  // floor; if src_w <= floor we can transfer nothing, otherwise we can
-  // transfer at most (src_w - floor).
-  {
-    double headroom = src_w - (double) yals->opts.floor.val;
-    if (headroom < 0.0) headroom = 0.0;
-    if (w > headroom) w = headroom;
-  }
+  // No explicit floor clamp needed: the transfer w = slope*(src_w - floor)
+  // with slope <= 1 already satisfies w <= src_w - floor, so a source is
+  // never drained below the floor.
 
   return w;
 }
