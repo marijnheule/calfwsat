@@ -30,7 +30,7 @@ This code extends the solver yal-lin (Md Solimul Chowdhury, Cayden Codel, Marijn
   OPT (dynmul,10,0,INT_MAX,"extend cutoff to D*probe-flips on improvement (0=off)"); \
   OPT (slope,500,0,1000,"weight-transfer slope: w = slope/1000 * (source_weight - floor)"); \
   OPT (floor,80,0,INT_MAX,"weight-transfer floor: source weight where transfer = 0 (below it the source is skipped)"); \
-  OPT (inject,1,0,INT_MAX,"additive weighting: if a transfer amount w is 0<=w<=N, inject N onto the sink (source still loses only w), raising total weight; cures the floor-drained livelock (0=off, conservative transfer)"); \
+  OPT (inject,10,0,INT_MAX,"additive weighting: if a transfer amount w is 0<=w<=N, inject N onto the sink (source still loses only w), raising total weight; cures the floor-drained livelock (0=off, conservative transfer)"); \
   OPT (keep,0,0,1,"keep assignment during restart"); \
   OPT (maxtries,INT_MAX , 0,INT_MAX,"Maximum number of tries (default INT_MAX = unlimited)"); \
   OPT (pol,0,-1,1,"negative=-1 positive=1 or random=0 polarity"); \
