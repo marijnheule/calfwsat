@@ -35,7 +35,7 @@ set -uo pipefail
 # comes from the optional 2nd positional arg if given, else SEED_START_DEFAULT.
 # An explicit SEEDS env var overrides the whole list (highest precedence).
 SEED_START_DEFAULT=5501
-SEED_COUNT=100
+SEED_COUNT=30
 if [ -n "${2:-}" ] && ! [[ "$2" =~ ^[0-9]+$ ]]; then
   echo "error: seed-start (2nd arg) must be a positive integer, got '$2'" >&2; exit 2
 fi
@@ -47,7 +47,7 @@ THREADS_DEFAULT="${THREADS:-8}"
 # A run differs from solver defaults only by what each config row sets.
 # Override deliberately with e.g. CUTOFF=20000 bash sweep-one.sh <formula>.
 CUTOFF_DEFAULT="${CUTOFF:-}"
-CONFIGS_REL="${CONFIGS:-bench/configs-inject.tsv}"
+CONFIGS_REL="${CONFIGS:-bench/configs-slope-floor.tsv}"
 # ------------------------------------------------------------------
 
 FORMULA="${1:?usage: $0 <formula.knf> [seed-start]}"

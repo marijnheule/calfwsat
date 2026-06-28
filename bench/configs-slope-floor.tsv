@@ -1,20 +1,36 @@
-# 2D zoom sweep: --slope in {580,600,620} x --floor in {93,94,95,96},
-# zooming into the top-right corner that won on ntil-43 and ntil-45 (s600_f94).
-# Riding the other compiled defaults (clsselectp=15, min_weight=10,
-# oldestsource=1). Each transfer is slope/1000*(src_w-floor): slope is the
-# gradient and floor is the source weight at which the transfer hits 0.
-# Resolves whether the corner optimum is boundary-pinned or a local spike.
-# 12 configs total.
+# 2D sweep: --slope in {350,400,450,500,550,600} x --floor in {70,75,80,85,90}.
+# Runs under the new inject=10 default (commit f214840). Floors span below the
+# default 80 (70,75) to probe the low-floor / large-multiplicative-transfer
+# regime where inject fires less often. Each transfer is slope/1000*(src_w-floor).
+# s500_f80 is the compiled-default anchor. 30 configs total.
 # name	args
-s580_f93	--slope=580 --floor=93
-s580_f94	--slope=580 --floor=94
-s580_f95	--slope=580 --floor=95
-s580_f96	--slope=580 --floor=96
-s600_f93	--slope=600 --floor=93
-s600_f94	--slope=600 --floor=94
-s600_f95	--slope=600 --floor=95
-s600_f96	--slope=600 --floor=96
-s620_f93	--slope=620 --floor=93
-s620_f94	--slope=620 --floor=94
-s620_f95	--slope=620 --floor=95
-s620_f96	--slope=620 --floor=96
+s350_f70	--slope=350 --floor=70
+s350_f75	--slope=350 --floor=75
+s350_f80	--slope=350 --floor=80
+s350_f85	--slope=350 --floor=85
+s350_f90	--slope=350 --floor=90
+s400_f70	--slope=400 --floor=70
+s400_f75	--slope=400 --floor=75
+s400_f80	--slope=400 --floor=80
+s400_f85	--slope=400 --floor=85
+s400_f90	--slope=400 --floor=90
+s450_f70	--slope=450 --floor=70
+s450_f75	--slope=450 --floor=75
+s450_f80	--slope=450 --floor=80
+s450_f85	--slope=450 --floor=85
+s450_f90	--slope=450 --floor=90
+s500_f70	--slope=500 --floor=70
+s500_f75	--slope=500 --floor=75
+s500_f80	--slope=500 --floor=80
+s500_f85	--slope=500 --floor=85
+s500_f90	--slope=500 --floor=90
+s550_f70	--slope=550 --floor=70
+s550_f75	--slope=550 --floor=75
+s550_f80	--slope=550 --floor=80
+s550_f85	--slope=550 --floor=85
+s550_f90	--slope=550 --floor=90
+s600_f70	--slope=600 --floor=70
+s600_f75	--slope=600 --floor=75
+s600_f80	--slope=600 --floor=80
+s600_f85	--slope=600 --floor=85
+s600_f90	--slope=600 --floor=90
