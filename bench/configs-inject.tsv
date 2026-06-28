@@ -1,0 +1,13 @@
+# 1D inject sweep at the high-floor corner: slope=600, floor=95 fixed,
+# --inject in {1,2,3,4,5}. At floor=95 the multiplicative transfer
+# w = 0.6*(src_w-95) collapses below the inject threshold almost immediately,
+# so the additive inject (sink gains +N per drained-source event) dominates
+# the sink-weighting dynamics. This sweep measures how the additive step size
+# N trades off: too small may under-drive escape from local minima, too large
+# may over-inflate weights and thrash. inject=1 is the compiled default.
+# name	args
+inj1	--slope=600 --floor=95 --inject=1
+inj2	--slope=600 --floor=95 --inject=2
+inj3	--slope=600 --floor=95 --inject=3
+inj4	--slope=600 --floor=95 --inject=4
+inj5	--slope=600 --floor=95 --inject=5
