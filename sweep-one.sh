@@ -35,7 +35,7 @@ set -uo pipefail
 # comes from the optional 2nd positional arg if given, else SEED_START_DEFAULT.
 # An explicit SEEDS env var overrides the whole list (highest precedence).
 SEED_START_DEFAULT=5501
-SEED_COUNT=20
+SEED_COUNT=40
 if [ -n "${2:-}" ] && ! [[ "$2" =~ ^[0-9]+$ ]]; then
   echo "error: seed-start (2nd arg) must be a positive integer, got '$2'" >&2; exit 2
 fi
