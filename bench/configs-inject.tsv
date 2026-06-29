@@ -1,13 +1,17 @@
-# 1D inject sweep at the high-floor corner: slope=600, floor=95 fixed,
-# --inject in {1,2,3,4,5}. At floor=95 the multiplicative transfer
-# w = 0.6*(src_w-95) collapses below the inject threshold almost immediately,
-# so the additive inject (sink gains +N per drained-source event) dominates
-# the sink-weighting dynamics. This sweep measures how the additive step size
-# N trades off: too small may under-drive escape from local minima, too large
-# may over-inflate weights and thrash. inject=1 is the compiled default.
+# 1D inject sweep at the current compiled defaults: slope=425, floor=80 fixed,
+# --inject in {6,8,10,12,15}. Isolates the additive-injection knob with the
+# multiplicative transfer held constant (the slope x floor grid could not: along
+# its slope axis, transfer magnitude and injection frequency move together).
+# At slope=425/floor=80 an init-weight source transfers w = 0.425*(100-80) = 8.5,
+# which is below inject for N>=10 (sink gets max(w,N)=N, net +N-8.5) and at/below
+# for N=8 (knife-edge near w), and ABOVE for N=6 (w>N -> conservative, no inject).
+# So this ladder straddles the inject-fires / inject-dormant boundary: N=6 is
+# (mostly) conservative, N=8 sits on the edge, N=10/12/15 inject with growing
+# top-up. inject=10 is the compiled default (the anchor).
+# slope and floor are pinned explicitly so inject is the only variable.
 # name	args
-inj1	--slope=600 --floor=95 --inject=1
-inj2	--slope=600 --floor=95 --inject=2
-inj3	--slope=600 --floor=95 --inject=3
-inj4	--slope=600 --floor=95 --inject=4
-inj5	--slope=600 --floor=95 --inject=5
+inj6	--slope=425 --floor=80 --inject=6
+inj8	--slope=425 --floor=80 --inject=8
+inj10	--slope=425 --floor=80 --inject=10
+inj12	--slope=425 --floor=80 --inject=12
+inj15	--slope=425 --floor=80 --inject=15
