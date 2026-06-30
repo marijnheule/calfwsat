@@ -704,12 +704,21 @@ void yals_save_new_minimum (Yals * yals) {
   yals->stats.best_cardinality = yals_card_nunsat (yals);
   yals->stats.hits = 1;
   memcpy (yals->best, yals->vals, bytes);
-  // Report every local-best improvement (for this thread) at -v. Previously
-  // verbose==1 was throttled to only print when the minimum had halved since
-  // the last report, so many local improvements went unprinted.
+  // Verbose "new minimum" line. At verbose==1, throttle while the minimum is
+  // still large (>= 1024): print only when it has at least halved since the
+  // last printed line (nunsat <= ceil(prev/2)), so early search shows geometric
+  // steps instead of one line per tiny improvement. Once the minimum drops
+  // below 1024 (the interesting endgame) print every improvement. verbose>=2
+  // prints every improvement unconditionally. report.min tracks the last
+  // *printed* minimum; ceil(prev/2) is computed overflow-safe (prev starts at
+  // INT_MAX).
   if (yals->opts.verbose.val >= 1) {
-    yals_report (yals, "new minimum");
-    yals->limits.report.min = nunsat;
+    int prev = yals->limits.report.min;
+    int half = prev / 2 + (prev & 1);   // ceil(prev/2), no overflow at INT_MAX
+    if (yals->opts.verbose.val >= 2 || nunsat < 1024 || nunsat <= half) {
+      yals_report (yals, "new minimum");
+      yals->limits.report.min = nunsat;
+    }
   }
 
 }
@@ -1804,6 +1813,11 @@ struct YalsProbePool {
   // first reached (smaller is better for an equal score).
   int       best_score;
   int64_t   best_score_flips;
+  // Throttle for the verbose==1 "new global best score" line: the last score
+  // we actually printed. While the best is >= 1024 we only print when it has
+  // at least halved (score <= ceil(prev/2)); below 1024 every win prints.
+  // INT_MAX = nothing printed yet.
+  int       report_best;
 };
 
 YalsProbePool * yals_probe_pool_new (void) {
@@ -1819,6 +1833,7 @@ YalsProbePool * yals_probe_pool_new (void) {
   p->total = 0;
   p->best_score = INT_MAX;
   p->best_score_flips = 0;
+  p->report_best = INT_MAX;
   return p;
 }
 
@@ -1882,6 +1897,7 @@ static void yals_probe_pool_offer_best (Yals * yals, int score,
   YalsProbePool * p = yals->probe_pool;
   if (!p || score < 0) return;
   int improved = 0;  // 0 = no win, 1 = same score / fewer flips, 2 = new best
+  int report_now = 0;  // print this win? (verbose==1 halving throttle)
   pthread_mutex_lock (&p->lock);
   if (score < p->best_score) {
     p->best_score = score;
@@ -1891,8 +1907,16 @@ static void yals_probe_pool_offer_best (Yals * yals, int score,
     p->best_score_flips = probe_flips;
     improved = 1;
   }
-  pthread_mutex_unlock (&p->lock);
   if (improved && yals->opts.verbose.val >= 1) {
+    int prev = p->report_best;
+    int half = prev / 2 + (prev & 1);   // ceil(prev/2), no overflow at INT_MAX
+    if (yals->opts.verbose.val >= 2 || score < 1024 || score <= half) {
+      report_now = 1;
+      p->report_best = score;
+    }
+  }
+  pthread_mutex_unlock (&p->lock);
+  if (report_now) {
     yals_msglock (yals);
     fprintf (yals->out,
       "%s%s global best score %d reached in %lld flips since probe start\n",
@@ -4217,6 +4241,17 @@ void yals_transfer_weights (Yals *yals)
 }
 
 static void yals_outer_loop (Yals * yals) {
+    // --cutoff=0 means "unlimited flips per try". But --dynmul>0 overrides the
+    // static cutoff with a purely dynamic budget (seeded at 1000 flips, extended
+    // on improvement), so it would silently re-impose a finite per-probe limit.
+    // Force dynmul off so cutoff=0 actually means unlimited. The compiled cutoff
+    // default is nonzero, so cutoff.val==0 implies the user explicitly set it.
+    if (!yals->opts.cutoff.val && yals->opts.dynmul.val) {
+      yals_msg (yals, 1,
+        "--cutoff=0 (unlimited): forcing --dynmul=0 (was %d)",
+        yals->opts.dynmul.val);
+      yals->opts.dynmul.val = 0;
+    }
     yals_set_default_strategy (yals);
     yals_pick_assignment (yals, 1);
     yals_update_sat_and_unsat (yals);
