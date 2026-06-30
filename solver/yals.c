@@ -622,6 +622,19 @@ double yals_card_get_calculated_weight_change_neg (Yals * yals, int cidx) {
 
 // helper functions for reporting solutions
 
+// Average wt weight over all constraints (clauses + cardinality). Used in the
+// per-report line. Returns 0 if there are no constraints (or the weight arrays
+// are not yet allocated).
+static double yals_avg_weight (Yals * yals) {
+  double sum = 0.0;
+  long n = 0;
+  if (yals->wt.clause_weights)
+    for (int i = 0; i < yals->nclauses; i++) { sum += yals->wt.clause_weights[i]; n++; }
+  if (yals->wt.card_weights)
+    for (int i = 0; i < yals->card_nclauses; i++) { sum += yals->wt.card_weights[i]; n++; }
+  return n ? sum / n : 0.0;
+}
+
 static void yals_report (Yals * yals, const char * fmt, ...) {
   double t, f;
   va_list ap;
@@ -634,8 +647,9 @@ static void yals_report (Yals * yals, const char * fmt, ...) {
   vfprintf (yals->out, fmt, ap);
   va_end (ap);
   fprintf (yals->out,
-    " : best %d (pbest %d), clauses %d, constraints %d, flips %.0f, %.2f sec, %.2f kflips/sec\n",
-    yals->stats.best, yals->stats.pbest, yals->stats.best_clauses, yals->stats.best_cardinality, f, t, yals_avg (f/1e3, t));
+    " : best %d, cls %d, card %d, avgw %.3f, flips %.0f, %.2f sec, %.2f kflips/sec\n",
+    yals->stats.best, yals->stats.best_clauses, yals->stats.best_cardinality,
+    yals_avg_weight (yals), f, t, yals_avg (f/1e3, t));
   fflush (yals->out);
   yals_msgunlock (yals);
 }
