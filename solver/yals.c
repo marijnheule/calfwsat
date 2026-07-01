@@ -4325,10 +4325,10 @@ double basic_score (Yals * yals, int var) {
   LOG ("determine uwvar %d with gain %lf, unsat %lf, sat %lf", var, flip_gain,yals->wt.unsat_weights [get_pos (false_lit)], yals->wt.sat1_weights [get_pos (true_lit)]);
 
   // Snap near-zero gains to 0 so noisy residuals are treated as non-improving.
-  // eps = flip_gain_eps_e4 / 10000 (0 disables).
-  int e4 = yals->opts.flip_gain_eps_e4.val;
-  if (e4 > 0) {
-    double eps = e4 / 10000.0;
+  // eps = min_gain / 1000 (0 disables).
+  int mg = yals->opts.min_gain.val;
+  if (mg > 0) {
+    double eps = mg / 1000.0;
     if (flip_gain > -eps && flip_gain < eps) flip_gain = 0.0;
   }
 

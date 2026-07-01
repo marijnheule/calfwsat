@@ -35,19 +35,19 @@ set -uo pipefail
 # comes from the optional 2nd positional arg if given, else SEED_START_DEFAULT.
 # An explicit SEEDS env var overrides the whole list (highest precedence).
 SEED_START_DEFAULT=5501
-SEED_COUNT=30
+SEED_COUNT=200
 if [ -n "${2:-}" ] && ! [[ "$2" =~ ^[0-9]+$ ]]; then
   echo "error: seed-start (2nd arg) must be a positive integer, got '$2'" >&2; exit 2
 fi
 SEED_START="${2:-$SEED_START_DEFAULT}"
 SEEDS_DEFAULT="${SEEDS:-$(seq "$SEED_START" "$((SEED_START + SEED_COUNT - 1))" | paste -sd, -)}"
-TIMEOUT_DEFAULT="${TIMEOUT:-3600}"
+TIMEOUT_DEFAULT="${TIMEOUT:-900}"
 THREADS_DEFAULT="${THREADS:-8}"
 # Empty by default: do NOT override the solver's compiled cutoff default.
 # A run differs from solver defaults only by what each config row sets.
 # Override deliberately with e.g. CUTOFF=20000 bash sweep-one.sh <formula>.
 CUTOFF_DEFAULT="${CUTOFF:-}"
-CONFIGS_REL="${CONFIGS:-bench/configs-inject.tsv}"
+CONFIGS_REL="${CONFIGS:-bench/configs-min-gain.tsv}"
 # ------------------------------------------------------------------
 
 FORMULA="${1:?usage: $0 <formula.knf> [seed-start]}"
@@ -93,6 +93,10 @@ CLSSELECTP_DEFAULT="${CLSSELECTP_DEFAULT:-?}"
 # it is surfaced for provenance (mixing inject=0 and inject=1 runs is invalid).
 INJECT_DEFAULT="$(grep -oE 'inject, *[0-9]+' "$SCRIPT_DIR/solver/options.h" 2>/dev/null | head -1 | grep -oE '[0-9]+')"
 INJECT_DEFAULT="${INJECT_DEFAULT:-?}"
+# min_gain snaps |flip_gain| < min_gain/1000 to 0 (near-zero-gain suppression).
+# Surfaced for provenance; this sweep varies it, per-config rows set --min-gain=.
+MIN_GAIN_DEFAULT="$(grep -oE 'min_gain, *[0-9]+' "$SCRIPT_DIR/solver/options.h" 2>/dev/null | head -1 | grep -oE '[0-9]+')"
+MIN_GAIN_DEFAULT="${MIN_GAIN_DEFAULT:-?}"
 
 echo "sweep-one: $FORMULA"
 echo "  configs:  $CONFIGS"
@@ -102,7 +106,7 @@ echo "  timeout:  ${TIMEOUT_DEFAULT}s"
 echo "  threads:  $THREADS_DEFAULT per palsat"
 echo "  cutoff:   ${CUTOFF_DEFAULT:-(solver default; per-config rows can set --cutoff=)}"
 echo "  oldestsource: $OLDESTSOURCE_DEFAULT (compiled default; per-config rows can set --oldestsource=)"
-echo "  floor:    $FLOOR_DEFAULT  slope: $SLOPE_DEFAULT  clsselectp: $CLSSELECTP_DEFAULT  inject: $INJECT_DEFAULT (compiled defaults; per-config rows can override)"
+echo "  floor:    $FLOOR_DEFAULT  slope: $SLOPE_DEFAULT  clsselectp: $CLSSELECTP_DEFAULT  inject: $INJECT_DEFAULT  min_gain: $MIN_GAIN_DEFAULT (compiled defaults; per-config rows can override)"
 echo "  out:      bench-results/$OUT_NAME"
 echo
 
@@ -138,7 +142,7 @@ TXT="$OUT_DIR/email.txt"
   echo "  seeds:   $NSEEDS  ($SEEDS_DEFAULT)"
   echo "  timeout: ${TIMEOUT_DEFAULT}s per run"
   echo "  oldestsource: $OLDESTSOURCE_DEFAULT (compiled default; per-config rows can override)"
-  echo "  floor: $FLOOR_DEFAULT  slope: $SLOPE_DEFAULT  clsselectp: $CLSSELECTP_DEFAULT  inject: $INJECT_DEFAULT (compiled defaults; per-config rows can override)"
+  echo "  floor: $FLOOR_DEFAULT  slope: $SLOPE_DEFAULT  clsselectp: $CLSSELECTP_DEFAULT  inject: $INJECT_DEFAULT  min_gain: $MIN_GAIN_DEFAULT (compiled defaults; per-config rows can override)"
   echo
   cat "$SUMMARY"
 } > "$TXT"
@@ -154,7 +158,7 @@ MD="$OUT_DIR/email.md"
   echo "- seeds: $NSEEDS ($SEEDS_DEFAULT)"
   echo "- timeout: ${TIMEOUT_DEFAULT}s per run"
   echo "- oldestsource: $OLDESTSOURCE_DEFAULT (compiled default; per-config rows can override)"
-  echo "- floor: $FLOOR_DEFAULT, slope: $SLOPE_DEFAULT, clsselectp: $CLSSELECTP_DEFAULT, inject: $INJECT_DEFAULT (compiled defaults; per-config rows can override)"
+  echo "- floor: $FLOOR_DEFAULT, slope: $SLOPE_DEFAULT, clsselectp: $CLSSELECTP_DEFAULT, inject: $INJECT_DEFAULT, min_gain: $MIN_GAIN_DEFAULT (compiled defaults; per-config rows can override)"
   echo
   echo "| config | runs | SAT | TO | PAR-2 | mean_flips | median_flips |"
   echo "|---|---:|---:|---:|---:|---:|---:|"

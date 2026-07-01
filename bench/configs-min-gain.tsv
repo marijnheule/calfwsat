@@ -1,0 +1,14 @@
+# 1D --min-gain sweep at the current compiled defaults (slope=425, floor=80,
+# inject=8). --min-gain snaps |flip_gain| < min_gain/1000 to 0, so noisy
+# near-zero residual gains are treated as non-improving. The compiled default
+# is 100 (eps = 0.1). This ladder widens the dead-zone well past the default:
+#   min_gain  250  500  1000  2000  4000
+#   eps       0.25 0.50 1.00  2.00  4.00
+# Larger eps means more flips are judged non-improving (fewer "improving"
+# moves survive the snap), so this probes how aggressive the near-zero-gain
+# suppression should be. All other knobs stay at the compiled defaults.
+mg250	--min-gain=250
+mg500	--min-gain=500
+mg1000	--min-gain=1000
+mg2000	--min-gain=2000
+mg4000	--min-gain=4000
