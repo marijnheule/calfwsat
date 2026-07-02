@@ -1,18 +1,15 @@
-# Wide geometric --min-gain sweep to locate the plateau EDGES and its center.
-# Prior 250-4000 sweep was statistically flat (5-way homogeneity p=0.12/0.27 on
-# ntil-47/49) EXCEPT the lowest point mg250 degraded on ntil-47 -- a hint that
-# the compiled default (100) sits near the LOW edge, not the center, and that
-# the plateau extends well above 100 (4000 was still fine). This ladder brackets
-# both sides: off -> default -> known-flat -> unexplored high, ~4x geometric.
-#   min_gain  0    100  500  2000  8000  32000  128000
-#   eps       0   0.1  0.5   2.0   8.0   32.0   128.0
-# mg0 tests whether the snap mechanism matters at all; the high end should find
-# the upper cliff (eps so large that improving moves snap to 0). Center of the
-# resulting good band -> principled default. All other knobs at compiled defaults.
-mg0	--min-gain=0
+# Decade --min-gain sweep to locate the plateau edges and its center.
+# Prior 250-4000 ladder was statistically flat (5-way homogeneity p=0.12/0.27 on
+# ntil-47/49) except mg250 dipping on ntil-47 -- a hint the compiled default
+# (100) sits near the LOW edge, not the center. This clean decade ladder spans
+# one decade below the default to three above:
+#   min_gain  10    100   1000   10000   100000
+#   eps       0.01  0.1   1.0    10.0    100.0
+# mg10 probes below the default; the high end should find the upper cliff (eps so
+# large improving moves snap to 0). Center of the good band -> principled default.
+# All other knobs at compiled defaults.
+mg10	--min-gain=10
 mg100	--min-gain=100
-mg500	--min-gain=500
-mg2000	--min-gain=2000
-mg8000	--min-gain=8000
-mg32000	--min-gain=32000
-mg128000	--min-gain=128000
+mg1000	--min-gain=1000
+mg10000	--min-gain=10000
+mg100000	--min-gain=100000
