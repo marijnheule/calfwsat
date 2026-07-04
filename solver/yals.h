@@ -382,6 +382,17 @@ typedef struct YalsFormula {
 // structure for solver
 typedef struct Yals {
   RNG rng;
+  // Per-probe reproducibility. base_seed is this worker's command-line seed
+  // (the LCG-derived one for palsat threads); every probe reseeds the RNG from
+  // a per-probe seed derived as splitmix64(base_seed ^ splitmix64(probe_idx)),
+  // making each probe an independent, addressable function of one 64-bit token.
+  // probe_seed holds the current probe's token. Because a probe is a pure
+  // function of that token, any probe can be replayed as probe 1 of a
+  // single-thread run: we log a "reproduce seed" S = splitmix64_inv(token) ^
+  // splitmix64(1), and `-t 1 --maxtries=1 <instance> S` rebuilds that exact
+  // probe -- everything flows through the normal positional seed, no extra flag.
+  unsigned long long base_seed;
+  unsigned long long probe_seed;
   FILE * out;
   UNSAT_STACK unsat; // falsified constraints
   YalsFormula * f; // shared read-only formula data (see YalsFormula above)
@@ -392,6 +403,14 @@ typedef struct Yals {
   // during search (yals_card_sort_sat / incsatcnt partition moves), so every
   // worker needs its own mutable copy. The card index arrays in *f stay shared.
   STACK(int) card_cdb;
+  // Pristine snapshot of card_cdb's literal order, taken once before any search
+  // reordering (yals_card_sort_sat / incsatcnt partition moves mutate card_cdb
+  // in place and the order persists across probes). Restored at each fresh probe
+  // start so a probe's starting card layout is constant, making the probe a pure
+  // function of its per-probe seed (genuinely independent, token-reproducible).
+  // Same length/constraint-boundaries as card_cdb -- only intra-constraint
+  // literal order is ever restored, so the shared *f card index stays valid.
+  STACK(int) card_cdb0;
   int nvars; int64_t * flips;
   STACK(signed char) mark;
   int trivial, mt;
@@ -959,12 +978,60 @@ static inline void yals_strdel (Yals * yals, char * str) {
 
 /*------------------------------------------------------------------------*/
 
-static inline void yals_srand (Yals * yals, unsigned long long seed) {
+// Set the raw MWC state from a 64-bit seed WITHOUT touching base_seed. Used by
+// the per-probe reseed (yals_restart_inner), which must preserve base_seed so
+// the probe-index enumeration keeps referring to the original command-line seed.
+static inline void yals_seed_rng (Yals * yals, unsigned long long seed) {
   unsigned z = seed >> 32, w = seed;
   if (!z) z = ~z;
   if (!w) w = ~w;
   yals->rng.z = z, yals->rng.w = w;
+}
+
+static inline void yals_srand (Yals * yals, unsigned long long seed) {
+  yals_seed_rng (yals, seed);
+  yals->base_seed = seed;   // remembered for per-probe seed derivation
   yals_msg (yals, 2, "setting random seed %llu", seed);
+}
+
+// splitmix64: a strong finalizer that decorrelates adjacent inputs. The raw MWC
+// above correlates neighbouring seeds, so we hash both the base seed and the
+// probe index through this before combining them into a per-probe seed.
+static inline unsigned long long yals_splitmix64 (unsigned long long x) {
+  x += 0x9E3779B97F4A7C15ull;
+  x = (x ^ (x >> 30)) * 0xBF58476D1CE4E5B9ull;
+  x = (x ^ (x >> 27)) * 0x94D049BB133111EBull;
+  return x ^ (x >> 31);
+}
+
+// Exact inverse of yals_splitmix64 (splitmix64 is a bijection on 64 bits). The
+// two multiplier constants are the modular inverses of splitmix64's, and each
+// (x ^ x>>k) step inverts as x ^ x>>k ^ x>>2k (two terms suffice since 2k<64<3k
+// for k in {30,31,27}). Verified round-trip over 1M+ random inputs. Used to
+// derive the reproduce seed below.
+static inline unsigned long long yals_splitmix64_inv (unsigned long long z) {
+  z = z ^ (z >> 31) ^ (z >> 62);
+  z *= 0x319642b2d24d8ec3ull;   // inverse of 0x94D049BB133111EB mod 2^64
+  z = z ^ (z >> 27) ^ (z >> 54);
+  z *= 0x96de1b173f119089ull;   // inverse of 0xBF58476D1CE4E5B9 mod 2^64
+  z = z ^ (z >> 30) ^ (z >> 60);
+  z -= 0x9E3779B97F4A7C15ull;
+  return z;
+}
+
+// The RNG seed for probe number `idx` on this worker.
+static inline unsigned long long yals_probe_seed (Yals * yals,
+                                                  unsigned long long idx) {
+  return yals_splitmix64 (yals->base_seed ^ yals_splitmix64 (idx));
+}
+
+// The positional command-line seed that reproduces a probe (given its token)
+// as probe 1 of a single-thread run: solving yals_probe_seed(S,1) == token for
+// S gives S = splitmix64_inv(token) ^ splitmix64(1). Since a probe is a pure
+// function of its token, `-t 1 --maxtries=1 <instance> <this value>` rebuilds
+// that exact probe regardless of which thread/index originally produced it.
+static inline unsigned long long yals_reproduce_seed (unsigned long long token) {
+  return yals_splitmix64_inv (token) ^ yals_splitmix64 (1);
 }
 
 static inline unsigned yals_rand (Yals * yals) {

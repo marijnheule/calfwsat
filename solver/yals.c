@@ -1335,6 +1335,15 @@ static void yals_nbr_build (Yals * yals) {
 void yals_reset (Yals * yals)
 {
   CLEAR (yals->wt.uvars);
+  // Per-probe reproducibility: uvars_changed is a work stack normally drained
+  // (and CLEARed) by yals_update_changed_var_weights every flip. But the very
+  // first update_sat_and_unsat (in yals_outer_loop, over the initial
+  // positional-seed assignment) fills it and it is NOT consumed before probe 1
+  // resets. Those stale, positional-dependent entries would then sit at the
+  // front of the stack ahead of this probe's fresh pushes, changing the heap
+  // push order (and hence equal-score tie-breaks). Clear it so the rebuilt
+  // uvars_changed order is a pure function of this probe's assignment.
+  CLEAR (yals->wt.uvars_changed);
   for (int v=1; v<yals->nvars; v++)
   {
     yals->wt.var_unsat_count [v] = 0;
@@ -1351,6 +1360,17 @@ void yals_reset (Yals * yals)
   }
 
   yals_clear_heap (yals, &yals->wt.uvars_heap);
+
+  // Per-probe reproducibility: yals_clear_heap empties the heap stack but leaves
+  // the score[] array holding the previous probe's final scores. yals_push_heap
+  // reads score[idx] to place a var transiently during the lazy rebuild (before
+  // yals_update_heap overwrites it), so stale scores perturb the relative order
+  // of equal-score vars and surface later as a nondeterministic heap tie-break.
+  // Zero them so the rebuilt heap is a pure function of this probe's scores.
+  {
+    heap * h = &yals->wt.uvars_heap;
+    for (unsigned i = 0; i < h->vars; i++) h->score[i] = 0.0;
+  }
 
   // for resetting constraint weights on restart
   if (yals->opts.reset_weights.val) {
@@ -1918,11 +1938,23 @@ static void yals_probe_pool_offer_best (Yals * yals, int score,
   pthread_mutex_unlock (&p->lock);
   if (report_now) {
     yals_msglock (yals);
-    fprintf (yals->out,
-      "%s%s global best score %d reached in %lld flips since probe start\n",
-      yals->opts.prefix,
-      (improved == 2) ? "new" : "same",
-      score, (long long) probe_flips);
+    // probe_seed == 0 is the pre-probe initial best (from yals_outer_loop before
+    // the first reseed); it has no standalone token so we omit the reproduce
+    // hint. Every real probe prints the positional seed that replays it.
+    if (yals->probe_seed)
+      fprintf (yals->out,
+        "%s%s global best score %d reached in %lld flips since probe start"
+        " (reproduce: -t 1 --maxtries=1 <instance> %llu)\n",
+        yals->opts.prefix,
+        (improved == 2) ? "new" : "same",
+        score, (long long) probe_flips,
+        (unsigned long long) yals_reproduce_seed (yals->probe_seed));
+    else
+      fprintf (yals->out,
+        "%s%s global best score %d reached in %lld flips since probe start\n",
+        yals->opts.prefix,
+        (improved == 2) ? "new" : "same",
+        score, (long long) probe_flips);
     fflush (yals->out);
     yals_msgunlock (yals);
   }
@@ -3018,6 +3050,7 @@ void yals_del (Yals * yals) {
   if (yals->owns_formula) RELEASE (yals->f->clause_size); // missing from original....
   // cardinality structures
   RELEASE (yals->card_cdb); // per-thread: every worker frees its own copy
+  RELEASE (yals->card_cdb0); // pristine snapshot for per-probe restore
   if (yals->owns_formula) RELEASE (yals->f->card_size);
   DELN (yals->card_pos, yals->card_nclauses);
   if (yals->owns_formula && yals->f->card_refs) DELN (yals->f->card_refs, 2*yals->nvars);
@@ -3382,9 +3415,32 @@ static void yals_restart_inner (Yals * yals) {
       yals_msg (yals, 2,
         "keeping strategy and assignment thus essentially skipping restart");
     } else {
+      // Per-probe reseed: make this fresh probe an independent, reproducible
+      // function of one 64-bit token. Must happen BEFORE yals_pick_assignment,
+      // which draws the starting assignment from the RNG. restart.inner.count
+      // was just incremented above, so it is this probe's 1-based index. Under
+      // the current defaults (keep=0 -> random assignment, reset_weights=1 ->
+      // weights wiped to init) the probe carries no state across restarts, so
+      // this token fully determines it; the logged reproduce seed replays it as
+      // probe 1 of a `-t 1 --maxtries=1` run. With keep=1 or reset_weights=0 the
+      // probe inherits assignment/weights and standalone reproduction is inexact.
+      yals->probe_seed =
+        yals_probe_seed (yals, (unsigned long long) yals->stats.restart.inner.count);
+      yals_seed_rng (yals, yals->probe_seed);
+      yals_msg (yals, 2, "probe %lld token %llu reproduce -t 1 --maxtries=1 %llu",
+        (long long) yals->stats.restart.inner.count,
+        (unsigned long long) yals->probe_seed,
+        (unsigned long long) yals_reproduce_seed (yals->probe_seed));
       yals_pick_strategy (yals);
       save_current_assignment (yals);
       yals_pick_assignment (yals, 0);
+      // Restore the pristine card_cdb literal order so this probe's starting
+      // card layout does not depend on prior probes / setup (the leak that
+      // otherwise makes a probe depend on more than its per-probe seed).
+      // update_sat_and_unsat below rebuilds satcnt/crit/sort from this order.
+      if (!EMPTY (yals->card_cdb0))
+        memcpy (yals->card_cdb.start, yals->card_cdb0.start,
+                COUNT (yals->card_cdb) * sizeof (int));
       yals_update_sat_and_unsat (yals);
       yals->stats.pbest = INT_MAX;
       yals->stats.probe_start_flips = yals->stats.flips;
@@ -4251,6 +4307,16 @@ static void yals_outer_loop (Yals * yals) {
         "--cutoff=0 (unlimited): forcing --dynmul=0 (was %d)",
         yals->opts.dynmul.val);
       yals->opts.dynmul.val = 0;
+    }
+    // Snapshot the pristine card_cdb order before the first update_sat_and_unsat
+    // reorders it. Restored at each fresh probe start (yals_restart_inner) so a
+    // probe's starting card layout is constant and the probe is a pure function
+    // of its per-probe seed. card_cdb never changes length after this point
+    // (only intra-constraint literal order), so the snapshot stays size-matched.
+    if (EMPTY (yals->card_cdb0) && !EMPTY (yals->card_cdb)) {
+      const int * p;
+      for (p = yals->card_cdb.start; p < yals->card_cdb.top; p++)
+        PUSH (yals->card_cdb0, *p);
     }
     yals_set_default_strategy (yals);
     yals_pick_assignment (yals, 1);
