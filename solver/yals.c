@@ -1944,7 +1944,7 @@ static void yals_probe_pool_offer_best (Yals * yals, int score,
     if (yals->probe_seed)
       fprintf (yals->out,
         "%s%s global best score %d reached in %lld flips since probe start"
-        " (reproduce: -t 1 --maxtries=1 <instance> %llu)\n",
+        " (replay-seed: %llu)\n",
         yals->opts.prefix,
         (improved == 2) ? "new" : "same",
         score, (long long) probe_flips,
@@ -3427,7 +3427,7 @@ static void yals_restart_inner (Yals * yals) {
       yals->probe_seed =
         yals_probe_seed (yals, (unsigned long long) yals->stats.restart.inner.count);
       yals_seed_rng (yals, yals->probe_seed);
-      yals_msg (yals, 2, "probe %lld token %llu reproduce -t 1 --maxtries=1 %llu",
+      yals_msg (yals, 2, "probe %lld token %llu replay-seed: %llu",
         (long long) yals->stats.restart.inner.count,
         (unsigned long long) yals->probe_seed,
         (unsigned long long) yals_reproduce_seed (yals->probe_seed));
