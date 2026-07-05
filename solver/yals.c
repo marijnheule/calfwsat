@@ -22,6 +22,7 @@ This code extends the solver yal-lin (Md Solimul Chowdhury, Cayden Codel, Marijn
 #include <assert.h>
 #include <ctype.h>
 #include <limits.h>
+#include <stdint.h>
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -5065,6 +5066,51 @@ void yals_print_combined_bypass_stats (Yals ** ys, int n) {
 }
 
 /*------------------------------------------------------------------------*/
+/* --boost: print the tier histogram summed across `n` workers. Tier L has  */
+/* ceiling N^L * cutoff; term[L] probes restarted there, reached[L] hit it. */
+/* No-op unless --boost is active (>=2) on at least one worker.             */
+/*------------------------------------------------------------------------*/
+void yals_print_combined_boost_stats (Yals ** ys, int n) {
+  if (n <= 0 || !ys || !ys[0]) return;
+  int boost = 0, cutoff = 0;
+  for (int i = 0; i < n; i++)
+    if (ys[i]->opts.boost.val >= 2 && ys[i]->opts.cutoff.val > 0) {
+      boost = ys[i]->opts.boost.val;
+      cutoff = ys[i]->opts.cutoff.val;
+      break;
+    }
+  if (!boost) return;
+  int64_t reached[YALS_MAX_BOOST_TIERS], term[YALS_MAX_BOOST_TIERS];
+  for (int L = 0; L < YALS_MAX_BOOST_TIERS; L++) {
+    reached[L] = term[L] = 0;
+    for (int i = 0; i < n; i++) {
+      reached[L] += ys[i]->stats.boost.reached[L];
+      term[L]    += ys[i]->stats.boost.term[L];
+    }
+  }
+  int64_t total_term = 0;
+  for (int L = 0; L < YALS_MAX_BOOST_TIERS; L++) total_term += term[L];
+  yals_msg (ys[0], 0,
+    "boost N=%d base-cutoff=%d: %lld probes terminated across tiers "
+    "(summed across %d worker%s)",
+    boost, cutoff, (long long) total_term, n, (n == 1 ? "" : "s"));
+  int64_t tier_ceil = cutoff;
+  for (int L = 0; L < YALS_MAX_BOOST_TIERS; L++) {
+    if (reached[L] == 0 && term[L] == 0) {
+      // No probe ever hit this tier; nothing beyond it either.
+      break;
+    }
+    yals_msg (ys[0], 0,
+      "  tier=%-2d  ceiling=%-12lld  reached=%-8lld  terminated=%-8lld  (%.1f%%)",
+      L, (long long) tier_ceil, (long long) reached[L], (long long) term[L],
+      yals_pct (term[L], total_term));
+    // Advance ceiling to N^(L+1)*cutoff, guarding int64 overflow.
+    if (tier_ceil > INT64_MAX / boost) break;
+    tier_ceil *= boost;
+  }
+}
+
+/*------------------------------------------------------------------------*/
 /* --heat: print the per-variable counter as `var count` lines, one per   */
 /* variable with a nonzero count, in descending order of count. The      */
 /* heat array lives in the shared YalsProbePool so a single read from    */
@@ -5547,19 +5593,65 @@ int yals_inner_loop_max_tries (Yals * yals)
     // below the static --cutoff. prev_pbest tracks the probe-best (stats.pbest,
     // set to the starting assignment's nunsat by the preceding restart) so a
     // drop in it signals an improvement. D=0 leaves the static cutoff alone.
-    int dynmul = yals->opts.dynmul.val;
+    // --boost: tiered cutoff. Tier L has ceiling N^L * cutoff. On hitting a
+    // tier's ceiling, extend the probe (*N) iff its best falsified count is
+    // strictly below the running average over all probes that reached this
+    // tier (incl. this one); else restart. Requires a finite base cutoff and
+    // N>=2; when active it takes over the budget (dynmul/bypass are bypassed).
+    int boost = yals->opts.boost.val;
+    int boost_active = (boost >= 2 && yals->opts.cutoff.val > 0);
+    int boost_level = 0;
+    int64_t boost_limit = yals->opts.cutoff.val;
+    int dynmul = boost_active ? 0 : yals->opts.dynmul.val;
     int prev_pbest = yals->stats.pbest;
     int64_t dyn_limit = 0;
     while (1) {
       // Cutoff reached? With dynmul on the budget is purely dynamic: a restart
       // seeds it at 1000 flips, and each improvement extends it to D*flips
       // (effective budget = max(1000, dynmul limit)). D=0 uses static --cutoff.
-      int64_t limit = yals->opts.cutoff.val;
-      if (dynmul > 0) {
-        limit = 1000;
-        if (dyn_limit > limit) limit = dyn_limit;
+      int64_t limit;
+      if (boost_active) {
+        limit = boost_limit;
+      } else {
+        limit = yals->opts.cutoff.val;
+        if (dynmul > 0) {
+          limit = 1000;
+          if (dyn_limit > limit) limit = dyn_limit;
+        }
       }
       if (limit > 0 && (int64_t) c >= limit) {
+        if (boost_active) {
+          // Record this probe reaching tier L, then decide extend vs restart.
+          // Strict "better than the tier average": pbest < sum/reached, i.e.
+          // pbest*reached < sum (pbest lower = better). With the current probe
+          // already folded into sum/reached this is algebraically identical to
+          // pbest < avg-of-prior-probes, so the pioneer (no prior data, avg ==
+          // itself) does NOT extend -- it restarts and seeds the tier average.
+          int L = boost_level;
+          yals->stats.boost.reached[L]++;
+          yals->stats.boost.sum[L] += yals->stats.pbest;
+          int extend = 0;
+          if (yals->stats.pbest != INT_MAX
+              && L + 1 < YALS_MAX_BOOST_TIERS
+              && boost_limit <= INT64_MAX / boost
+              && (int64_t) yals->stats.pbest * yals->stats.boost.reached[L]
+                   < yals->stats.boost.sum[L])
+            extend = 1;
+          if (extend) {
+            yals_msg (yals, 2,
+              "boost tier %d at flips %lld: best %d < avg (%lld/%lld) -- "
+              "extending cutoff to %lld",
+              L, (long long) yals->stats.flips, yals->stats.pbest,
+              (long long) yals->stats.boost.sum[L],
+              (long long) yals->stats.boost.reached[L],
+              (long long) (boost_limit * boost));
+            boost_level++;
+            boost_limit *= boost;
+            continue;  // keep flipping under the higher ceiling; c not reset
+          }
+          yals->stats.boost.term[L]++;
+          break;  // restart at this tier
+        }
         cutoffs_this_probe++;
         // Attribute every cutoff hit to the current best, whether or not
         // the subsequent bypass roll succeeds. bypass_by_tmp[v] /

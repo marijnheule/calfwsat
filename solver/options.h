@@ -28,6 +28,7 @@ This code extends the solver yal-lin (Md Solimul Chowdhury, Cayden Codel, Marijn
   OPT (topk,8,0,64,"per-literal top-K heaviest neighbors (0 = full scan)"); \
   OPT (cutoff,300000,0,INT_MAX,"flips per try (0 = unlimited)"); \
   OPT (dynmul,10,0,INT_MAX,"extend cutoff to D*probe-flips on improvement (0=off)"); \
+  OPT (boost,0,0,INT_MAX,"tiered cutoff boost: at each N^k*cutoff, extend by *N iff probe's best < avg best of probes reaching that tier (0/1=off)"); \
   OPT (slope,425,0,1000,"weight-transfer slope: w = slope/1000 * (source_weight - floor)"); \
   OPT (floor,80,0,INT_MAX,"weight-transfer floor: source weight where transfer = 0 (below it the source is skipped)"); \
   OPT (inject,8,0,INT_MAX,"weight-transfer inject: if 0<=w<=N, sink gains N not w, raising total weight (0=off)"); \

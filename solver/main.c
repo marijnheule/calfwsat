@@ -322,6 +322,7 @@ static void stats () {
     for (i = 0; i < threads; i++) ys[i] = worker[i].yals;
     msg ("");
     yals_print_combined_bypass_stats (ys, threads);
+    yals_print_combined_boost_stats (ys, threads);
     yals_print_combined_probe_hist (ys, threads);
     yals_print_combined_heat (ys, threads);
     // Heat-slack ranking (lowest 20 constraints by heat-implied slack).
@@ -357,6 +358,7 @@ static void stats () {
   if (verbose) {
     Yals * single[1] = { yals };
     yals_print_combined_bypass_stats (single, 1);
+    yals_print_combined_boost_stats (single, 1);
     yals_print_combined_probe_hist (single, 1);
     yals_print_combined_heat (single, 1);
     yals_print_heat_slack (yals, 20);

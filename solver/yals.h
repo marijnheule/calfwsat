@@ -87,6 +87,11 @@ typedef struct Mem {
 
 typedef struct Strat { STRATSTEMPLATE } Strat;
 
+// Maximum number of --boost tiers tracked. Tier L has ceiling N^L * cutoff,
+// so with cutoff>=1 and N>=2 an int64 ceiling overflows well before 64 tiers;
+// the loop stops boosting at the cap regardless.
+#define YALS_MAX_BOOST_TIERS 64
+
 // stats used throughout execution and displayed on exit
 typedef struct Stats {
   int best, worst, last, pbest, maxstacksize;
@@ -113,6 +118,15 @@ typedef struct Stats {
     struct { int64_t count; } inner;
     int64_t bypassed;  // # times --bypass extended a probe past cutoff
   } restart;
+  // --boost tiered-cutoff histogram. Tier L has cutoff N^L * base_cutoff.
+  // reached[L] = # probes that hit tier L's ceiling; sum[L] = sum of their
+  // pbest (running average = sum/reached, computed including the current
+  // probe); term[L] = # probes that terminated (restarted) at tier L.
+  struct {
+    int64_t reached[YALS_MAX_BOOST_TIERS];
+    int64_t sum[YALS_MAX_BOOST_TIERS];
+    int64_t term[YALS_MAX_BOOST_TIERS];
+  } boost;
   struct { int64_t def, rnd; } strat;
   struct { int64_t best, keep, pos, neg, rnd; } pick;
   struct { size_t current, max; } allocated;
@@ -525,6 +539,11 @@ void yals_set_probe_pool (Yals *, YalsProbePool *);
 // workers (count + fraction of total cutoff hits that were bypassed).
 // Mirror of yals_print_combined_probe_hist for the bypass counter.
 void yals_print_combined_bypass_stats (Yals ** ys, int n);
+
+// Print the --boost tier histogram aggregated across `n` workers: how many
+// probes terminated (restarted) at each ceiling cutoff, N*cutoff, N^2*cutoff,
+// ... No-op if --boost is disabled on every worker.
+void yals_print_combined_boost_stats (Yals ** ys, int n);
 
 // Print the --heat per-variable counter (one line per nonzero variable,
 // sorted by count descending). Pool is read once; safe to call after
