@@ -5116,20 +5116,39 @@ void yals_print_combined_boost_stats (Yals ** ys, int n) {
       break;
     }
   if (!boost) return;
-  // sum[L]/reached[L] across ALL workers is the tier's true population
-  // average best-falsified score -- the same quantity used (per-worker or
-  // pooled, per --global) as the extend/restart threshold at that tier.
-  // reached[]/sum[] bookkeeping is unconditional (see the inner loop), so
-  // this aggregate is meaningful regardless of --global.
+  // reached[]/term[] are always summed across workers -- that bookkeeping is
+  // unconditional (see the inner loop) regardless of --global. avg_best is
+  // computed two different ways depending on --global, to match what each
+  // mode actually compared probes against at runtime:
+  //   global=1: one pooled average, so avg_best = total sum / total reached
+  //             (a single number, weighted by how many probes each worker
+  //             contributed -- this is exactly the shared threshold used).
+  //   global=0: each worker kept its OWN average and compared against only
+  //             that, so avg_best = the unweighted mean of the workers'
+  //             individual averages (workers that never reached this tier
+  //             are excluded, not counted as 0).
   int64_t reached[YALS_MAX_BOOST_TIERS], term[YALS_MAX_BOOST_TIERS];
   int64_t sum[YALS_MAX_BOOST_TIERS];
+  double avg_best[YALS_MAX_BOOST_TIERS];
   for (int L = 0; L < YALS_MAX_BOOST_TIERS; L++) {
     reached[L] = term[L] = sum[L] = 0;
+    double per_worker_avg_sum = 0.0;
+    int per_worker_avg_cnt = 0;
     for (int i = 0; i < n; i++) {
-      reached[L] += ys[i]->stats.boost.reached[L];
+      int64_t r = ys[i]->stats.boost.reached[L];
+      reached[L] += r;
       term[L]    += ys[i]->stats.boost.term[L];
       sum[L]     += ys[i]->stats.boost.sum[L];
+      if (r > 0) {
+        per_worker_avg_sum += (double) ys[i]->stats.boost.sum[L] / (double) r;
+        per_worker_avg_cnt++;
+      }
     }
+    if (global)
+      avg_best[L] = reached[L] ? (double) sum[L] / (double) reached[L] : 0.0;
+    else
+      avg_best[L] = per_worker_avg_cnt
+        ? per_worker_avg_sum / (double) per_worker_avg_cnt : 0.0;
   }
   int64_t total_term = 0;
   for (int L = 0; L < YALS_MAX_BOOST_TIERS; L++) total_term += term[L];
@@ -5143,12 +5162,11 @@ void yals_print_combined_boost_stats (Yals ** ys, int n) {
       // No probe ever hit this tier; nothing beyond it either.
       break;
     }
-    double avg_best = reached[L] ? (double) sum[L] / (double) reached[L] : 0.0;
     yals_msg (ys[0], 0,
       "  tier=%-2d  ceiling=%-12lld  reached=%-8lld  terminated=%-8lld  "
       "(%.1f%%)  avg_best=%.1f",
       L, (long long) tier_ceil, (long long) reached[L], (long long) term[L],
-      yals_pct (term[L], total_term), avg_best);
+      yals_pct (term[L], total_term), avg_best[L]);
     // Advance ceiling to N^(L+1)*cutoff, guarding int64 overflow.
     if (tier_ceil > INT64_MAX / boost) break;
     tier_ceil *= boost;
