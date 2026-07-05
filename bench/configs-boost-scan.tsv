@@ -1,0 +1,14 @@
+# --boost tiered-cutoff scan. Everything else at compiled defaults (dynmul=10
+# is the compiled default, but --boost>=2 with a finite --cutoff silently
+# takes over the per-probe budget and disables dynmul -- see yals.c
+# yals_outer_loop, which now warns about this at --verbose>=1). Each row
+# pairs a boost multiplier N with a base --cutoff so tier ceilings land in a
+# comparable range across rows (N^k * cutoff): tier0=cutoff, tier1=N*cutoff,
+# etc. A probe extends past a tier iff its best-falsified count is strictly
+# below the running average of probes that reached that tier; otherwise it
+# restarts. See yals_print_combined_boost_stats for the per-tier histogram.
+# name	args
+boost2_c200k	--boost=2 --cutoff=200000
+boost3_c100k	--boost=3 --cutoff=100000
+boost5_c50k	--boost=5 --cutoff=50000
+boost7_c30k	--boost=7 --cutoff=30000
