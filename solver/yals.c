@@ -1843,6 +1843,12 @@ struct YalsProbePool {
   // at least halved (score <= ceil(prev/2)); below 1024 every win prints.
   // INT_MAX = nothing printed yet.
   int       report_best;
+  // --boost with --global=1: per-tier reached/sum pooled across all workers
+  // (instead of each worker keeping its own tier average). Fixed-size --
+  // tiers are capped at YALS_MAX_BOOST_TIERS, unlike the pbest-indexed
+  // arrays above which grow on demand.
+  int64_t   boost_reached[YALS_MAX_BOOST_TIERS];
+  int64_t   boost_sum[YALS_MAX_BOOST_TIERS];
 };
 
 YalsProbePool * yals_probe_pool_new (void) {
@@ -1980,6 +1986,25 @@ static void yals_probe_pool_record_cutoff (YalsProbePool * p, int v) {
   pthread_mutex_lock (&p->lock);
   yals_probe_pool_ensure_capacity (p, v);
   p->cutoffs_by_tmp[v]++;
+  pthread_mutex_unlock (&p->lock);
+}
+
+// --boost with --global=1: record this probe reaching tier L (pooled across
+// all workers) and hand back the just-updated reached/sum in one locked step,
+// so the caller's extend-vs-restart check is against a consistent snapshot
+// even with concurrent workers recording at the same tier.
+static void yals_probe_pool_boost_record (YalsProbePool * p, int L, int pbest,
+                                          int64_t * out_reached,
+                                          int64_t * out_sum) {
+  if (!p || L < 0 || L >= YALS_MAX_BOOST_TIERS) {
+    *out_reached = 0; *out_sum = 0;
+    return;
+  }
+  pthread_mutex_lock (&p->lock);
+  p->boost_reached[L]++;
+  p->boost_sum[L] += pbest;
+  *out_reached = p->boost_reached[L];
+  *out_sum = p->boost_sum[L];
   pthread_mutex_unlock (&p->lock);
 }
 
@@ -5082,11 +5107,12 @@ void yals_print_combined_bypass_stats (Yals ** ys, int n) {
 /*------------------------------------------------------------------------*/
 void yals_print_combined_boost_stats (Yals ** ys, int n) {
   if (n <= 0 || !ys || !ys[0]) return;
-  int boost = 0, cutoff = 0;
+  int boost = 0, cutoff = 0, global = 0;
   for (int i = 0; i < n; i++)
     if (ys[i]->opts.boost.val >= 2 && ys[i]->opts.cutoff.val > 0) {
       boost = ys[i]->opts.boost.val;
       cutoff = ys[i]->opts.cutoff.val;
+      global = ys[i]->opts.global.val;
       break;
     }
   if (!boost) return;
@@ -5101,9 +5127,9 @@ void yals_print_combined_boost_stats (Yals ** ys, int n) {
   int64_t total_term = 0;
   for (int L = 0; L < YALS_MAX_BOOST_TIERS; L++) total_term += term[L];
   yals_msg (ys[0], 0,
-    "boost N=%d base-cutoff=%d: %lld probes terminated across tiers "
-    "(summed across %d worker%s)",
-    boost, cutoff, (long long) total_term, n, (n == 1 ? "" : "s"));
+    "boost N=%d base-cutoff=%d global=%d: %lld probes terminated across "
+    "tiers (summed across %d worker%s)",
+    boost, cutoff, global, (long long) total_term, n, (n == 1 ? "" : "s"));
   int64_t tier_ceil = cutoff;
   for (int L = 0; L < YALS_MAX_BOOST_TIERS; L++) {
     if (reached[L] == 0 && term[L] == 0) {
@@ -5637,23 +5663,35 @@ int yals_inner_loop_max_tries (Yals * yals)
           // already folded into sum/reached this is algebraically identical to
           // pbest < avg-of-prior-probes, so the pioneer (no prior data, avg ==
           // itself) does NOT extend -- it restarts and seeds the tier average.
+          // Bookkeeping (for the end-of-run histogram) is always per-worker.
+          // The average used for the extend/restart DECISION is per-worker
+          // reached/sum unless --global (the default), in which case it's
+          // pooled across all workers via probe_pool for one shared average.
           int L = boost_level;
           yals->stats.boost.reached[L]++;
           yals->stats.boost.sum[L] += yals->stats.pbest;
+          int64_t decision_reached, decision_sum;
+          if (yals->opts.global.val && yals->probe_pool) {
+            yals_probe_pool_boost_record (yals->probe_pool, L,
+              yals->stats.pbest, &decision_reached, &decision_sum);
+          } else {
+            decision_reached = yals->stats.boost.reached[L];
+            decision_sum = yals->stats.boost.sum[L];
+          }
           int extend = 0;
           if (yals->stats.pbest != INT_MAX
               && L + 1 < YALS_MAX_BOOST_TIERS
               && boost_limit <= INT64_MAX / boost
-              && (int64_t) yals->stats.pbest * yals->stats.boost.reached[L]
-                   < yals->stats.boost.sum[L])
+              && (int64_t) yals->stats.pbest * decision_reached
+                   < decision_sum)
             extend = 1;
           if (extend) {
             yals_msg (yals, 2,
-              "boost tier %d at flips %lld: best %d < avg (%lld/%lld) -- "
+              "boost tier %d at flips %lld: best %d < avg (%lld/%lld, %s) -- "
               "extending cutoff to %lld",
               L, (long long) yals->stats.flips, yals->stats.pbest,
-              (long long) yals->stats.boost.sum[L],
-              (long long) yals->stats.boost.reached[L],
+              (long long) decision_sum, (long long) decision_reached,
+              (yals->opts.global.val ? "global" : "per-worker"),
               (long long) (boost_limit * boost));
             boost_level++;
             boost_limit *= boost;
