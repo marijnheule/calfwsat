@@ -4507,6 +4507,7 @@ int yals_deref (Yals * yals, int lit) {
 int yals_minimum (Yals * yals) { return yals->stats.best; }
 
 long long yals_flips (Yals * yals) { return yals->stats.flips; }
+long long yals_inner_restarts (Yals * yals) { return yals->stats.restart.inner.count; }
 
 /*------------------------------------------------------------------------*/
 

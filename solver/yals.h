@@ -499,6 +499,7 @@ int yals_sat (Yals *);
 /*------------------------------------------------------------------------*/
 
 long long yals_flips (Yals *);
+long long yals_inner_restarts (Yals *);
 
 int yals_minimum (Yals *);
 int yals_deref (Yals *, int lit);

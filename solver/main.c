@@ -339,6 +339,10 @@ static void stats () {
     long long total_flips = 0;
     for (i = 0; i < threads; i++) total_flips += yals_flips (worker[i].yals);
     msg ("total flips %lld", total_flips);
+    long long total_probes = 0;
+    for (i = 0; i < threads; i++)
+      total_probes += yals_inner_restarts (worker[i].yals);
+    msg ("total probes %lld", total_probes);
   }
   msg ("");
   yals_print_length_weights (WINNER);
@@ -356,6 +360,7 @@ static void stats () {
     yals_print_heat_slack (yals, 20);
   }
   msg ("total flips %lld", yals_flips (yals));
+  msg ("total probes %lld", yals_inner_restarts (yals));
   yals_print_length_weights (yals);
   msg ("total process time of %.2f seconds", getime ());
   printf ("%f %.1f |\n", yals_process_time (), mem.max/(double)(1<<20) );
