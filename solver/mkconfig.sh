@@ -18,3 +18,11 @@ echo "#define YALS_COMPILED \"`date`\""
 echo "#define YALS_RELEASED \"Fr 1. Mär 05:17:48 CET 2019\""
 echo "#define YALS_VERSION \"03v\""
 echo "#define YALS_ID \"b1316746d40f72f147cde3f4ec54fadbe0730427\""
+
+# Current repo commit the binary is built from. "-dirty" if tracked files
+# differ from HEAD (untracked junk is ignored on purpose). "unknown" if git
+# is unavailable or this is not a checkout.
+GITID="`git rev-parse --short HEAD 2>/dev/null`"
+[ -z "$GITID" ] && GITID="unknown"
+git diff --quiet HEAD 2>/dev/null || GITID="$GITID-dirty"
+echo "#define YALS_GITID \"$GITID\""

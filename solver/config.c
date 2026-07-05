@@ -18,6 +18,7 @@ This code extends the solver yal-lin (Md Solimul Chowdhury, Cayden Codel, Marijn
 void yals_banner (const char * prefix) {
   MSG ("Developed by Joseph Reeves (AWS-ARG-ATS-Science).");
   MSG ("Extends Yal-lin which in trun extends YalSAT from Armin Biere, JKU, Linz, Austria.");
+  MSG ("commit " YALS_GITID);
   MSG ("Compiled " YALS_COMPILED);
   MSG (YALS_OS);
   MSG ("CC " YALS_CC);

@@ -18,8 +18,10 @@ yals.o: yals.c yals.h options.h yils_card.h makefile
 	$(CC) $(CFLAGS) -pthread -c yals.c
 config.o: config.c config.h cflags.h  yils_card.h makefile
 	$(CC) $(CFLAGS) $(CFLAGS) -c config.c
-config.h: VERSION yals.c yals.h  yils_card.h main.c
+config.h: VERSION yals.c yals.h  yils_card.h main.c mkconfig.sh FORCE
 	rm -f $@; ./mkconfig.sh >$@
+.PHONY: FORCE
+FORCE:
 cflags.h: makefile
 	rm -f $@
 	echo '#define YALS_CC "$(shell $(CC) --version|head -1)"' >>$@
