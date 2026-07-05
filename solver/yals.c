@@ -642,14 +642,18 @@ static void yals_report (Yals * yals, const char * fmt, ...) {
   yals_msglock (yals);
   f = yals->stats.flips;
   t = yals_sec (yals);
+  // avgl = avg probe length = total flips / probes so far (restart.inner.count
+  // is the 1-based index of the current probe; guard the pre-probe case).
+  const long long probes = yals->stats.restart.inner.count;
+  const double avgl = probes > 0 ? f / (double) probes : f;
   fprintf (yals->out, "%s", yals->opts.prefix);
   va_start (ap, fmt);
   vfprintf (yals->out, fmt, ap);
   va_end (ap);
   fprintf (yals->out,
-    " : best %d, cls %d, card %d, avgw %.3f, flips %.0f, %.2f sec, %.2f kflips/sec\n",
+    " : best %d, cls %d, card %d, avgw %.3f, avgl %.0f, flips %.0f, %.2f sec, %.2f kflips/sec\n",
     yals->stats.best, yals->stats.best_clauses, yals->stats.best_cardinality,
-    yals_avg_weight (yals), f, t, yals_avg (f/1e3, t));
+    yals_avg_weight (yals), avgl, f, t, yals_avg (f/1e3, t));
   fflush (yals->out);
   yals_msgunlock (yals);
 }
@@ -1944,7 +1948,7 @@ static void yals_probe_pool_offer_best (Yals * yals, int score,
     if (yals->probe_seed)
       fprintf (yals->out,
         "%s%s global best score %d reached in %lld flips since probe start"
-        " (replay-seed: %llu)\n",
+        ", seed %llu\n",
         yals->opts.prefix,
         (improved == 2) ? "new" : "same",
         score, (long long) probe_flips,
@@ -3427,7 +3431,7 @@ static void yals_restart_inner (Yals * yals) {
       yals->probe_seed =
         yals_probe_seed (yals, (unsigned long long) yals->stats.restart.inner.count);
       yals_seed_rng (yals, yals->probe_seed);
-      yals_msg (yals, 2, "probe %lld token %llu replay-seed: %llu",
+      yals_msg (yals, 2, "probe %lld token %llu seed %llu",
         (long long) yals->stats.restart.inner.count,
         (unsigned long long) yals->probe_seed,
         (unsigned long long) yals_reproduce_seed (yals->probe_seed));
