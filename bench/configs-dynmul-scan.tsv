@@ -1,0 +1,12 @@
+# --dynmul magnitude scan. Everything else at compiled defaults.
+# With dynmul>0 the static --cutoff is IGNORED (yals.c:5546-5549): the budget
+# is purely dynamic -- each probe starts at 1000 flips and every probe-best
+# improvement extends the deadline to D*(flips-so-far). Larger D lets improving
+# probes run longer before the next improvement is required. dynmul=0 uses a
+# flat static --cutoff (1000000 compiled default) for every probe.
+# name	args
+dyn0	--dynmul=0
+dyn3	--dynmul=3
+dyn6	--dynmul=6
+dyn10	--dynmul=10
+dyn20	--dynmul=20

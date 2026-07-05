@@ -1,0 +1,11 @@
+# --dynmul on/off isolation: is the current-default dynmul=0 the regression?
+# Everything else at compiled defaults. With dynmul>0 the static --cutoff is
+# IGNORED (yals.c:5546-5549): the budget is purely dynamic -- each probe starts
+# at 1000 flips and every probe-best improvement extends the deadline to
+# D*(flips-so-far), so stuck probes restart fast (~1000 flips) while improving
+# probes run long. dynmul=0 uses a flat static --cutoff (1000000 compiled
+# default) for every probe. dyn10 reproduces the PRIOR default behavior
+# (cutoff is moot for dyn10); dyn0 is the new compiled default.
+# name	args
+dyn0	--dynmul=0
+dyn10	--dynmul=10
