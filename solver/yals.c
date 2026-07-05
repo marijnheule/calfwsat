@@ -4314,6 +4314,16 @@ static void yals_outer_loop (Yals * yals) {
         yals->opts.dynmul.val);
       yals->opts.dynmul.val = 0;
     }
+    // --boost>=2 (with a finite --cutoff) takes over the per-probe budget
+    // entirely -- see boost_active in the inner flip loop -- so --dynmul
+    // (and --bypass) are silently skipped in that mode. Warn once so a
+    // sweep config that sets both isn't a silent surprise.
+    if (yals->opts.boost.val >= 2 && yals->opts.cutoff.val > 0
+        && yals->opts.dynmul.val) {
+      yals_msg (yals, 1,
+        "--boost=%d active (cutoff=%d): --dynmul=%d is ignored",
+        yals->opts.boost.val, yals->opts.cutoff.val, yals->opts.dynmul.val);
+    }
     // Snapshot the pristine card_cdb order before the first update_sat_and_unsat
     // reorders it. Restored at each fresh probe start (yals_restart_inner) so a
     // probe's starting card layout is constant and the probe is a pure function
