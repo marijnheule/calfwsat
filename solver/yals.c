@@ -2993,6 +2993,7 @@ Yals * yals_new_with_mem_mgr (void * mgr,
   yals->stats.best = INT_MAX;
   yals->stats.last = INT_MAX;
   yals->stats.probe_start_flips = 0;
+  yals->stats.solved_probe_flips = -1;
   yals->stats.probe_random = 0;
   yals->limits.report.min = INT_MAX;
 
@@ -4508,6 +4509,7 @@ int yals_minimum (Yals * yals) { return yals->stats.best; }
 
 long long yals_flips (Yals * yals) { return yals->stats.flips; }
 long long yals_inner_restarts (Yals * yals) { return yals->stats.restart.inner.count; }
+long long yals_solved_probe_flips (Yals * yals) { return yals->stats.solved_probe_flips; }
 
 /*------------------------------------------------------------------------*/
 
@@ -5524,8 +5526,12 @@ int yals_inner_loop_max_tries (Yals * yals)
   int lit = 0;
   for (int t=0; t<yals->opts.maxtries.val; t++)
   {
-    if (!yals_nunsat(yals))
+    if (!yals_nunsat(yals)) {
+      if (yals->stats.solved_probe_flips < 0)
+        yals->stats.solved_probe_flips =
+          yals->stats.flips - yals->stats.probe_start_flips;
       return 1;
+    }
     yals_restart_inner (yals);
     // Hand-rolled inner cutoff loop so we can intercept the natural
     // cutoff exit and apply --bypass (probabilistic re-extension
@@ -5589,8 +5595,11 @@ int yals_inner_loop_max_tries (Yals * yals)
         }
         break;  // normal cutoff exit
       }
-       if (!yals_nunsat(yals))
+       if (!yals_nunsat(yals)) {
+        yals->stats.solved_probe_flips =
+          yals->stats.flips - yals->stats.probe_start_flips;
         return 1;
+       }
        // Check external termination callback (e.g., palsat sibling worker won).
        // Throttle: only call the callback every termint iterations.
        if (yals->cbs.term.fun && yals->limits.term-- <= 0) {

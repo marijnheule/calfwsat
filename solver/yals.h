@@ -100,6 +100,10 @@ typedef struct Stats {
   // worker began from a freshly picked assignment). Used to report how many
   // flips a probe needed to reach the global best score.
   int64_t probe_start_flips;
+  // Flips spent in the probe that solved the instance (flips since that
+  // probe's start, at the moment nunsat hit 0). -1 until/unless this worker
+  // solves. There is at most one successful probe per run.
+  int64_t solved_probe_flips;
   // 1 iff the current probe started from a freshly generated random
   // assignment (not a best/keep/all-polarity pick). Only random-started
   // probes contribute to the global-best tracker.
@@ -500,6 +504,7 @@ int yals_sat (Yals *);
 
 long long yals_flips (Yals *);
 long long yals_inner_restarts (Yals *);
+long long yals_solved_probe_flips (Yals *);
 
 int yals_minimum (Yals *);
 int yals_deref (Yals *, int lit);

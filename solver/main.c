@@ -343,6 +343,8 @@ static void stats () {
     for (i = 0; i < threads; i++)
       total_probes += yals_inner_restarts (worker[i].yals);
     msg ("total probes %lld", total_probes);
+    // Flips spent in the winning worker's solving probe (-1 if no solve).
+    msg ("success flips %lld", yals_solved_probe_flips (WINNER));
   }
   msg ("");
   yals_print_length_weights (WINNER);
@@ -361,6 +363,7 @@ static void stats () {
   }
   msg ("total flips %lld", yals_flips (yals));
   msg ("total probes %lld", yals_inner_restarts (yals));
+  msg ("success flips %lld", yals_solved_probe_flips (yals));
   yals_print_length_weights (yals);
   msg ("total process time of %.2f seconds", getime ());
   printf ("%f %.1f |\n", yals_process_time (), mem.max/(double)(1<<20) );

@@ -189,47 +189,46 @@ do_aggregate() {
   fi
 
   {
-    echo "config,instance,vars,seed,result,rc,wall,best,flips,probes"
+    echo "config,instance,vars,seed,result,rc,wall,best,flips,probes,success"
     ls "$ROW_DIR"/*.row 2>/dev/null | sort | while read -r f; do cat "$f"; done
   } > "$CSV"
   local nrows=$(($(wc -l < "$CSV") - 1))
 
   # Summary columns: PAR-2 (from wall), median probe length (per-run flips /
-  # probes), and median flips, all over ALL runs.
+  # probes over ALL runs), median flips over ALL runs, and median success
+  # flips (winning-probe flips, over SAT runs only).
   awk -F, -v T="$TIMEOUT_SEC" '
     NR==1 { next }
-    { cfg=$1; res=$5; wall=$7+0; flips=$9+0; probes=$10+0
+    { cfg=$1; res=$5; wall=$7+0; flips=$9+0; probes=$10+0; succ=$11+0
       n[cfg]++
       if (res == "SAT") s[cfg]++
       par_sum[cfg] += (res == "SAT" ? wall : 2*T)
       plen = probes > 0 ? flips/probes : 0
       flist[cfg] = flist[cfg] " " flips
-      plist[cfg] = plist[cfg] " " plen }
+      plist[cfg] = plist[cfg] " " plen
+      if (succ >= 0) slist[cfg] = slist[cfg] " " succ }
+    function median(str,   arr, k, i, j, tmp, w) {
+      k = split(str, arr, " "); w = 0
+      for (i = 1; i <= k; i++) if (arr[i] != "") { w++; arr[w] = arr[i] }
+      if (w == 0) return -1
+      for (i = 1; i <= w; i++) for (j = i+1; j <= w; j++)
+        if (arr[i]+0 > arr[j]+0) { tmp = arr[i]; arr[i] = arr[j]; arr[j] = tmp }
+      return (w % 2 == 1) ? arr[(w+1)/2] : (arr[w/2] + arr[w/2+1]) / 2
+    }
     END {
       for (c in n) {
         ss = s[c] ? s[c] : 0; tt = n[c] - ss
         par2 = par_sum[c] / n[c]
-        # median flips
-        nf = split(flist[c], arr, " "); m = 0
-        for (i = 1; i <= nf; i++) if (arr[i] != "") { m++; v[m] = arr[i] }
-        for (i = 1; i <= m; i++) for (j = i+1; j <= m; j++)
-          if (v[i]+0 > v[j]+0) { tmp = v[i]; v[i] = v[j]; v[j] = tmp }
-        median_f = m == 0 ? 0 : (m % 2 == 1 ? v[(m+1)/2] : (v[m/2] + v[m/2+1])/2)
-        delete v
-        # median probe length
-        np = split(plist[c], parr, " "); mp = 0
-        for (i = 1; i <= np; i++) if (parr[i] != "") { mp++; p[mp] = parr[i] }
-        for (i = 1; i <= mp; i++) for (j = i+1; j <= mp; j++)
-          if (p[i]+0 > p[j]+0) { tmp = p[i]; p[i] = p[j]; p[j] = tmp }
-        median_p = mp == 0 ? 0 : (mp % 2 == 1 ? p[(mp+1)/2] : (p[mp/2] + p[mp/2+1])/2)
-        delete p
-        printf "%-30s %6d %6d %6d %10.2f %16.0f %16.0f\n", \
-          c, n[c], ss, tt, par2, median_p, median_f
+        median_p = median(plist[c])
+        median_f = median(flist[c])
+        median_s = median(slist[c])   # -1 if no SAT runs
+        printf "%-30s %6d %6d %6d %10.2f %16.0f %16.0f %16.0f\n", \
+          c, n[c], ss, tt, par2, median_p, median_f, median_s
       } }
   ' "$CSV" | sort -k5 -n > "$SUMMARY.body" 2>/dev/null
   {
-    printf "%-30s %6s %6s %6s %10s %16s %16s\n" \
-      "config" "runs" "SAT" "TO" "PAR-2" "median_plen" "median_flips"
+    printf "%-30s %6s %6s %6s %10s %16s %16s %16s\n" \
+      "config" "runs" "SAT" "TO" "PAR-2" "median_plen" "median_flips" "median_succ"
     cat "$SUMMARY.body" 2>/dev/null
   } > "$SUMMARY"
   rm -f "$SUMMARY.body"
@@ -367,7 +366,7 @@ run_one() {
     $cutoff_arg $cargs "$inst" "$seed" > "$log" 2>&1
   local rc=$?
 
-  local st res wall best vars flips probes
+  local st res wall best vars flips probes success
   st=$(grep -E "^s " "$log" | head -1)
   case "$st" in
     *SATISFIABLE*)   res=SAT ;;
@@ -382,10 +381,12 @@ run_one() {
   [ -z "$flips" ] && flips=0
   probes=$(grep "total probes" "$log" | sed -E 's/.*total probes ([0-9]+).*/\1/' | head -1)
   [ -z "$probes" ] && probes=0
+  success=$(grep "success flips" "$log" | sed -E 's/.*success flips (-?[0-9]+).*/\1/' | head -1)
+  [ -z "$success" ] && success=-1
 
   # Write atomically: write to tmp then rename.
-  printf "%s,%s,%s,%s,%s,%s,%s,%s,%s,%s\n" \
-    "$cname" "$inst_base" "${vars:-0}" "$seed" "$res" "$rc" "$wall" "${best:-}" "$flips" "$probes" > "${row}.tmp"
+  printf "%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s\n" \
+    "$cname" "$inst_base" "${vars:-0}" "$seed" "$res" "$rc" "$wall" "${best:-}" "$flips" "$probes" "$success" > "${row}.tmp"
   mv -f "${row}.tmp" "$row"
 }
 

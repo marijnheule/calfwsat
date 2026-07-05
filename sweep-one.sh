@@ -160,11 +160,11 @@ MD="$OUT_DIR/email.md"
   echo "- oldestsource: $OLDESTSOURCE_DEFAULT (compiled default; per-config rows can override)"
   echo "- floor: $FLOOR_DEFAULT, slope: $SLOPE_DEFAULT, clsselectp: $CLSSELECTP_DEFAULT, inject: $INJECT_DEFAULT, min_gain: $MIN_GAIN_DEFAULT (compiled defaults; per-config rows can override)"
   echo
-  echo "| config | runs | SAT | TO | PAR-2 | median_plen | median_flips |"
-  echo "|---|---:|---:|---:|---:|---:|---:|"
+  echo "| config | runs | SAT | TO | PAR-2 | median_plen | median_flips | median_succ |"
+  echo "|---|---:|---:|---:|---:|---:|---:|---:|"
   awk 'NR>1 {
-    printf "| %s | %s | %s | %s | %s | %s | %s |\n",
-      $1, $2, $3, $4, $5, $6, $7
+    printf "| %s | %s | %s | %s | %s | %s | %s | %s |\n",
+      $1, $2, $3, $4, $5, $6, $7, $8
   }' "$SUMMARY"
 } > "$MD"
 
