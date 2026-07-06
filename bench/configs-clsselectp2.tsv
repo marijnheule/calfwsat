@@ -1,0 +1,17 @@
+# --clsselectp scan, round 2, centered on the current compiled default (15).
+# The first scan (configs-clsselectp.tsv: cs0/10/20/30) predates several
+# defaults changes since (slope, floor, inject, dynmul, oldestsource) and
+# anchored at 0 rather than the current default, so it's stale for a clean
+# comparison under today's compiled defaults. This round brackets the
+# current default symmetrically: {5,15,25,35,45}.
+# clsselectp is the random-source-shortcut probability in percent: with
+# probability clsselectp/100 the neighbor scan is skipped and the sink draws
+# random satisfied source(s) instead (also the only channel that moves
+# weight between the positive- and negative-literal constraint classes).
+# Everything else at compiled defaults.
+# name	args
+cs5	--clsselectp=5
+cs15	--clsselectp=15
+cs25	--clsselectp=25
+cs35	--clsselectp=35
+cs45	--clsselectp=45
