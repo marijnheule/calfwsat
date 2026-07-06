@@ -1,0 +1,17 @@
+# --dynmul magnitude scan, round 2: narrowing in on dyn6's apparent sweet spot
+# from the first scan (configs-dynmul-scan.tsv, dyn0/dyn3/dyn6/dyn10/dyn20 @
+# commit dbf7845). On both ntil-45.knf and ntil-47.knf, dyn6 had the best
+# PAR-2, fewest timeouts, and much smaller median_plen/median_succ than
+# dyn10/dyn0/dyn20 -- dyn3 restarted too eagerly (starving promising probes,
+# more timeouts on the harder instance) and dyn20 over-extended (wasting
+# budget on unproductive probes). This round brackets 6 tightly to pinpoint
+# the true optimum. Everything else at compiled defaults.
+# With dynmul>0 the static --cutoff is IGNORED (yals.c:5546-5549): the budget
+# is purely dynamic -- each probe starts at 1000 flips and every probe-best
+# improvement extends the deadline to D*(flips-so-far).
+# name	args
+dyn5	--dynmul=5
+dyn6	--dynmul=6
+dyn7	--dynmul=7
+dyn8	--dynmul=8
+dyn9	--dynmul=9
