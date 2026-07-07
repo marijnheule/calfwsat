@@ -1,0 +1,4 @@
+# Compare compiled defaults (floor=80, slope=425) against floor=0, slope=160.
+# name	args
+default
+fl0_s160	--floor=0 --slope=160
