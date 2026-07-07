@@ -5,15 +5,17 @@
 # result table suitable for sharing via email.
 #
 # Usage:
-#   bash sweep-one.sh <formula> [seed-start]
+#   bash sweep-one.sh <formula> [seed-start] [seed-count]
 #
-# The optional 2nd arg sets the start of the seed range; the sweep always uses
-# SEED_COUNT (200) consecutive seeds. Omit it to use the baked-in default start.
-# (The SEEDS env var still overrides the whole list and takes precedence.)
+# The optional 2nd arg sets the start of the seed range; the optional 3rd arg
+# sets how many consecutive seeds to use (default SEED_COUNT_DEFAULT, 200).
+# Omit either to use the baked-in defaults. (The SEEDS env var still overrides
+# the whole list and takes precedence over both.)
 #
 # Example:
-#   bash sweep-one.sh ntil-40.knf          # seeds <default-start> .. +199
-#   bash sweep-one.sh ntil-40.knf 6000     # seeds 6000 .. 6199
+#   bash sweep-one.sh ntil-40.knf              # seeds <default-start> .. +199
+#   bash sweep-one.sh ntil-40.knf 6000         # seeds 6000 .. 6199
+#   bash sweep-one.sh ntil-40.knf 6000 50      # seeds 6000 .. 6049
 #
 # Hardcoded defaults (edit at top of script to change):
 #   configs:   bench/configs-cutoff.tsv  (per-try flip cutoff sweep)
@@ -32,14 +34,19 @@ set -uo pipefail
 #   TIMEOUT=300 SEEDS="1,2,3" bash sweep-one.sh <formula>
 #
 # Seed range: SEED_COUNT consecutive seeds starting at SEED_START. The start
-# comes from the optional 2nd positional arg if given, else SEED_START_DEFAULT.
+# comes from the optional 2nd positional arg if given, else SEED_START_DEFAULT;
+# the count comes from the optional 3rd positional arg, else SEED_COUNT_DEFAULT.
 # An explicit SEEDS env var overrides the whole list (highest precedence).
 SEED_START_DEFAULT=5701
-SEED_COUNT=200
+SEED_COUNT_DEFAULT=200
 if [ -n "${2:-}" ] && ! [[ "$2" =~ ^[0-9]+$ ]]; then
   echo "error: seed-start (2nd arg) must be a positive integer, got '$2'" >&2; exit 2
 fi
+if [ -n "${3:-}" ] && ! [[ "$3" =~ ^[0-9]+$ ]]; then
+  echo "error: seed-count (3rd arg) must be a positive integer, got '$3'" >&2; exit 2
+fi
 SEED_START="${2:-$SEED_START_DEFAULT}"
+SEED_COUNT="${3:-$SEED_COUNT_DEFAULT}"
 SEEDS_DEFAULT="${SEEDS:-$(seq "$SEED_START" "$((SEED_START + SEED_COUNT - 1))" | paste -sd, -)}"
 TIMEOUT_DEFAULT="${TIMEOUT:-3600}"
 THREADS_DEFAULT="${THREADS:-8}"
@@ -50,7 +57,7 @@ CUTOFF_DEFAULT="${CUTOFF:-}"
 CONFIGS_REL="${CONFIGS:-bench/configs-floor0-slope160.tsv}"
 # ------------------------------------------------------------------
 
-FORMULA="${1:?usage: $0 <formula.knf> [seed-start]}"
+FORMULA="${1:?usage: $0 <formula.knf> [seed-start] [seed-count]}"
 [ -r "$FORMULA" ] || { echo "error: cannot read formula '$FORMULA'" >&2; exit 2; }
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
