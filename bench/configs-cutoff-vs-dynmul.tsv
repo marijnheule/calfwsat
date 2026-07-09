@@ -1,0 +1,16 @@
+# Static --cutoff sweep vs the current dynmul-driven default. With dynmul>0
+# (compiled default dynmul=7) the static --cutoff is IGNORED (yals.c) --
+# budget is purely dynamic, each probe starting at 1000 flips and every
+# probe-best improvement extending the deadline to D*(flips-so-far). This
+# sweep asks whether a flat static cutoff can match/beat that dynamic
+# default, and if so where the best flat value sits. `default` is the
+# baseline (dynmul=7, cutoff irrelevant); the dyn0_* rows force dynmul=0
+# (flat --cutoff every probe, no dynamic extension) across a log-ish range
+# spanning the current compiled --cutoff default (300000).
+# name	args
+default
+dyn0_c100k	--dynmul=0 --cutoff=100000
+dyn0_c300k	--dynmul=0 --cutoff=300000
+dyn0_c500k	--dynmul=0 --cutoff=500000
+dyn0_c1m	--dynmul=0 --cutoff=1000000
+dyn0_c2m	--dynmul=0 --cutoff=2000000
